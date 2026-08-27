@@ -408,28 +408,49 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         if asin:
             n_asin += 1
 
-    # ---- 扩展记录（转单） ----
+    # ---- 扩展记录（转单）----
     # row 追加顺序：唯一SKU(idx+0)、SPU(idx+1)、SPU带尺寸(idx+2)、包裹类型(idx+3)、发货SKU(idx+4)、ASIN(idx+5)、listing(idx+6)
     IDX_FAHUO = len(idx) + 4          # 发货SKU 列索引（扩展记录需改成「否」）
-    expanded_groups = set()
-    result = []
+    IDX_ASIN = len(idx) + 5           # ASIN 列索引（追加列偏移）
+    IDX_LISTING = len(idx) + 6        # listing后台状态 列索引（追加列偏移）
+    result = list(rows)               # 先保留全部原始行（发货SKU=是）
     n_added = 0
+
+    # ① 先为每个转单组挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
+    #    优先级：有 ASIN（无则弃） -> 单件 -> 在售(在售/PUBLISHED)
+    #    best_rep[rep] = (优先级元组, row)；同一组只保留一条最优，供复制组内其他 SKU
+    def tmpl_prio(row):
+        """模板优先级：数值越小越优。(-有ASIN, -单件, -在售)"""
+        return (
+            -1 if (row[IDX_ASIN] or '').strip() else 0,                # ①有ASIN 绝对优先
+            -1 if pkg_cache[pkg_key(row)] == '单件' else 0,            # ②单件 优先
+            -1 if row[IDX_LISTING] in ('在售', 'PUBLISHED') else 0,    # ③在售(在售/PUBLISHED) 优先
+        )
+
+    best_rep = {}
     for row in rows:
-        result.append(row)
         X = row[idx[COL_MEM]]
         if X in mem2rep:
             rep = mem2rep[X]
-            if rep not in expanded_groups:
-                expanded_groups.add(rep)
-                for sku in groups[rep]:
-                    if sku == X:
-                        continue
-                    copy = list(row)
-                    copy[idx[COL_MEM]] = sku
-                    copy[IDX_FAHUO] = '否'   # 发货SKU：转单扩展记录=否（勿用 copy[-1]，会误改 listing）
-                    # 唯一SKU/包裹类型/ASIN/listing状态 随 copy 继承（= X 及模板）
-                    result.append(copy)
-                    n_added += 1
+            prio = tmpl_prio(row)
+            cur = best_rep.get(rep)
+            if cur is None or prio < cur[0]:
+                best_rep[rep] = (prio, row)
+
+    # ② 对每个有最优模板的组，用该模板复制「组内除自身外」的所有 SKU
+    for rep, (_prio, tmpl) in best_rep.items():
+        tmpl_X = tmpl[idx[COL_MEM]]
+        for sku in groups[rep]:
+            if sku == tmpl_X:
+                continue
+            copy = list(tmpl)
+            copy[idx[COL_MEM]] = sku
+            copy[IDX_FAHUO] = '否'   # 发货SKU：转单扩展记录=否（勿用 copy[-1]，会误改 listing）
+            # 唯一SKU/包裹类型/ASIN/listing状态 随 copy 继承（= 最优模板）
+            result.append(copy)
+            n_added += 1
+
+    # 结果 = 所有原始行 + 扩展行（原始行在前，扩展行在后）
 
     # ---- 缺失平台信息异常：数据源(领星/walmart)有、平台信息表无 的 SKU ----
     # 平台信息表 SKU 集合 = 原始清洗数据的 14K货号（上架SKU）；数据源 SKU 集合从 match_map 键重建
@@ -529,7 +550,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         'total': len(result),
         'original': len(rows),
         'expanded': n_added,
-        'expanded_groups': len(expanded_groups),
+        'expanded_groups': len(best_rep),
         'pkg_dist': dict(Counter(r[fidx['包裹类型']] for r in result)),
         'fahuo_dist': dict(Counter(r[fidx['发货SKU']] for r in result)),
         'anomaly_count': sum(1 for r in result if r[fidx['包裹类型']] == '异常'),
