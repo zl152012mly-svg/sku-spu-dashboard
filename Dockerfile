@@ -16,7 +16,7 @@ COPY templates/ ./templates/
 COPY static/ ./static/
 # 随仓库带上数据源留档，供冷启动自动重建主数据
 COPY reference/ ./reference/
-COPY uploads/ ./uploads/ 2>/dev/null || true
+COPY uploads/ ./uploads/
 
 # 运行前建立可写目录（云端磁盘可能为临时卷）
 RUN mkdir -p /app/data /app/uploads /app/reference
