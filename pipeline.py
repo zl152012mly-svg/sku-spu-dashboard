@@ -417,14 +417,14 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
     n_added = 0
 
     # ① 先为每个转单组挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
-    #    优先级：有 ASIN（无则弃） -> 单件 -> 在售(在售/PUBLISHED)
+    #    优先级：有 ASIN -> 在售(在售/PUBLISHED) -> 单件
     #    best_rep[rep] = (优先级元组, row)；同一组只保留一条最优，供复制组内其他 SKU
     def tmpl_prio(row):
-        """模板优先级：数值越小越优。(-有ASIN, -单件, -在售)"""
+        """模板优先级：数值越小越优。(-有ASIN, -在售, -单件)"""
         return (
             -1 if (row[IDX_ASIN] or '').strip() else 0,                # ①有ASIN 绝对优先
-            -1 if pkg_cache[pkg_key(row)] == '单件' else 0,            # ②单件 优先
-            -1 if row[IDX_LISTING] in ('在售', 'PUBLISHED') else 0,    # ③在售(在售/PUBLISHED) 优先
+            -1 if row[IDX_LISTING] in ('在售', 'PUBLISHED') else 0,    # ②在售(在售/PUBLISHED) 优先
+            -1 if pkg_cache[pkg_key(row)] == '单件' else 0,            # ③单件 优先
         )
 
     best_rep = {}
