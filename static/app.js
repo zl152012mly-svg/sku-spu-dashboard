@@ -52,6 +52,27 @@ function showLogin() {
   if (inp) { inp.focus(); }
 }
 
+/* 带 token 的下载：fetch 拿 blob → URL.createObjectURL 触发下载。
+   浏览器原生导航(window.location.href)不会携带 X-Auth-Token，会被鉴权拦截 401。 */
+async function authedDownload(url) {
+  const tok = localStorage.getItem(AUTH_KEY);
+  const r = await fetch(url, { headers: { 'X-Auth-Token': tok || '' } });
+  if (r.status === 401) { showLogin(); return; }
+  if (!r.ok) { alert('下载失败：' + r.status); return; }
+  const blob = await r.blob();
+  const cd = r.headers.get('Content-Disposition') || '';
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  let name = 'download';
+  if (m) { try { name = decodeURIComponent(m[1]); } catch (e) { name = m[1]; } }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
 async function doLogin() {
   const pwd = ($$('#login-pwd') || {}).value || '';
   const msg = $$('#login-msg');
@@ -79,7 +100,7 @@ async function doLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   bindUploadUI();
   bindMissingPanel();
-  $$('#btn-download').onclick = () => { window.location.href = '/api/download'; };
+  $$('#btn-download').onclick = () => { authedDownload('/api/download'); };
   $$('#btn-new').onclick = () => { refreshStatus().then(showUploadPanel); };
   $$('#btn-reset').onclick = resetFilters;
   $$('#btn-ref-change').onclick = () => { refreshStatus().then(showUploadPanel); };
@@ -501,7 +522,7 @@ function bindMissingPanel() {
     MISSING_FILTERS = { sku: '', spu: '', source: '' };
     if (MISSING_TABLE) MISSING_TABLE.draw();
   };
-  $$('#btn-missing-dl').onclick = () => { window.location.href = '/api/missing_platform/download'; };
+  $$('#btn-missing-dl').onclick = () => { authedDownload('/api/missing_platform/download'); };
 }
 
 /* ---------- 筛选控件 ---------- */
