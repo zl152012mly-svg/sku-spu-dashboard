@@ -411,16 +411,72 @@ def _apply_annotations():
             r[ni] = ann[k].get('note', '')
 
 
+def _ensure_cloud_ds():
+    """冷启动时，若云端 Storage 已有更新版数据源，则拉取覆盖本地留档文件。
+    这样 Render/HF 休眠重启后能用「网页上传的最新数据源」重建，而非仓库里提交的旧数据源。
+    返回 (has_raw, has_ref) —— 是否能从云取到原始表 / 转单表。"""
+    if not storage._use_supabase():
+        return False, False
+    ok_raw = ok_ref = False
+    # 原始报表
+    try:
+        data = storage.ds_file_download(storage.OBJ_RAW)
+        if data:
+            _atomic_write_bytes(LATEST_RAW, data)
+            ok_raw = True
+    except Exception:
+        pass
+    # 转单表：云端覆盖本地当前 reference（存为新版本文件并更新 meta）
+    try:
+        data = storage.ds_file_download(storage.OBJ_REF)
+        if data:
+            stored = '转单_cloud_%s.xlsx' % datetime.now().strftime('%Y%m%d%H%M%S')
+            p = os.path.join(REF_DIR, stored)
+            _atomic_write_bytes(p, data)
+            try:
+                summary = summarize_transfer(p)
+            except Exception:
+                summary = None
+            if summary:
+                _write_ref_meta({'stored': stored, 'filename': '转单.xlsx',
+                                 'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                 'summary': summary})
+                ok_ref = True
+    except Exception:
+        pass
+    # 领星 / walmart（可选，取到就覆盖留档）
+    try:
+        data = storage.ds_file_download(storage.OBJ_LX)
+        if data:
+            _atomic_write_bytes(LATEST_LINGXING, data)
+    except Exception:
+        pass
+    try:
+        data = storage.ds_file_download(storage.OBJ_WM)
+        if data:
+            _atomic_write_bytes(LATEST_WALMART, data)
+    except Exception:
+        pass
+    return ok_raw, ok_ref
+
+
 def _boot_rebuild():
     """云端/冷启动：若主数据未加载(空看板)且数据源齐备，则自动跑一次流水线重建。
     Hugging Face / Render 等平台磁盘是临时/全新的，data/current.json 会丢失，
     但数据源(reference/转单.xlsx + uploads/latest_raw.csv + 领星/walmart 留档)
     随代码仓库一起部署，故重启后自动重建，避免「打开看板是空的」。
-    幂等：同进程只重建一次；已加载数据则跳过。人工确认字段走 storage 层，不受影响。"""
+    优先从云端 Storage 拉取「网页上传的最新数据源」重建（覆盖仓库旧数据源），
+    云端无数据源时回退到仓库内提交的数据源。幂等：同进程只重建一次；已加载数据则跳过。
+    人工确认字段走 storage 层，不受影响。"""
     if STATE['rows'] is not None:
         return
     if getattr(_boot_rebuild, '_done', False):
         return
+    # 优先从云端拉取最新数据源（覆盖本地留档），失败则用仓库内数据源兜底
+    try:
+        _ensure_cloud_ds()
+    except Exception:
+        pass
     if not os.path.exists(LATEST_RAW):
         app.logger.info('冷启动：无原始 CSV(latest_raw.csv)，跳过自动重建')
         return
@@ -514,6 +570,12 @@ def api_reference_upload():
             'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'summary': summary}
     _write_ref_meta(meta)
+    # 校验通过后同步到云 Storage（供冷启动取最新转单表）
+    try:
+        with open(path, 'rb') as _rf:
+            storage.ds_file_upload(storage.OBJ_REF, _rf.read())
+    except Exception:
+        pass
     return jsonify({'ok': True, 'reference': meta,
                     'has_raw': os.path.exists(LATEST_RAW),
                     'ready': STATE['rows'] is not None})
@@ -551,6 +613,12 @@ def api_upload_lingxing():
             'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'summary': summary}
     _write_meta_file(LINGXING_META, meta)
+    # 校验通过后同步到云 Storage
+    try:
+        with open(LATEST_LINGXING, 'rb') as _lf:
+            storage.ds_file_upload(storage.OBJ_LX, _lf.read())
+    except Exception:
+        pass
     return jsonify({'ok': True, 'lingxing': meta,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
@@ -606,6 +674,12 @@ def api_upload_walmart():
             'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'summary': summary}
     _write_meta_file(WALMART_META, meta)
+    # 校验通过后同步到云 Storage
+    try:
+        with open(LATEST_WALMART, 'rb') as _wf:
+            storage.ds_file_upload(storage.OBJ_WM, _wf.read())
+    except Exception:
+        pass
     return jsonify({'ok': True, 'walmart': meta,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
@@ -631,6 +705,12 @@ def api_upload():
                 json.dump({'filename': f.filename,
                            'uploaded_at': STATE['uploaded_at']}, m, ensure_ascii=False)
         except OSError:
+            pass
+        # 校验成功后才同步到云 Storage（供冷启动取最新原始表）
+        try:
+            with open(LATEST_RAW, 'rb') as _rf:
+                storage.ds_file_upload(storage.OBJ_RAW, _rf.read())
+        except Exception:
             pass
     if not ok:
         return jsonify({'ok': False, 'msg': payload}), code

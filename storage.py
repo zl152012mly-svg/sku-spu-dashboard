@@ -7,18 +7,22 @@ storage.py —— 可插拔存储层（异常确认状态/备注 + 数据源版�
     与既有 app.py 的 _save_state/_load_state 完全兼容，改动最小即可跑通。
   - Supabase 模式（配置 SUPABASE_URL + SUPABASE_KEY 后启用）：
     异常确认记录逐行存到云表（每行含主键 + version），支持行级冲突检测；
-    数据源版本元信息存到云表。
+    数据源版本元信息存到云表；数据源文件本体上传到对象存储（Storage bucket），
+    使 Render/HF 冷启动能从云端拉取最新数据源重建，实现「网页上传→全平台永久同步」。
 
 统一对外接口（storage 就是模块级单例），app.py 只调用 storage.*，不关心后端：
   storage.annot_update(id_key, status, note, expect_version) -> (ok, msg)
       若 expect_version 与云端当前 version 不一致 -> 返回冲突错误（他人已改）
   storage.annot_get() -> {id_key: {status,note,version}}
   storage.ds_update(meta) / storage.ds_get()
+  storage.ds_file_upload(key, data) / ds_file_download(key) / ds_file_exists(key)
+      数据源文件本体上云/取云（key 为 OBJ_RAW/OBJ_REF/OBJ_LX/OBJ_WM 之一）
 
 环境变量：
   SUPABASE_URL    如 https://<proj>.supabase.co
   SUPABASE_KEY    anon / service_role key（service_role 可直接写，无 RLS 限制）
   STORAGE_MODE    'json' | 'supabase'（默认按是否有连接串自动选择）
+  SUPABASE_DS_BUCKET 数据源对象存储 bucket名（默认 ds_data）
 """
 
 import os
@@ -82,6 +86,67 @@ def _json_save_annot():
 # ==================== Supabase 模式 ====================
 _TABLE_ANNOT = 'sku_annotations'   # 异常确认表
 _COL = ('id_key', 'status', 'note', 'version', 'updated_at')
+
+# --- 数据源文件对象存储（Storage bucket）---
+# web 上传数据源时，除存本地留档外，同时把文件二进制上传到此 bucket，
+# 使 Render 冷启动（休眠后重启）时能优先从云端拉取最新数据源重建，实现「所有人上传→全平台永久同步」。
+_BUCKET = os.environ.get('SUPABASE_DS_BUCKET', 'ds_data')   # bucket 名
+# 每个数据源对应一个对象 key（覆盖式更新，保留最新一份即可）
+OBJ_RAW = 'raw/latest_raw.csv'            # 原始报表 CSV
+OBJ_REF = 'ref/latest_transfer.xlsx'      # 转单表 xlsx
+OBJ_LX = 'lx/latest_lingxing.xlsx'        # 领星清单 xlsx
+OBJ_WM = 'wm/latest_walmart.csv'          # walmart 报表 csv
+
+
+def _ensure_bucket(c):
+    """确保数据源 bucket 存在（service_role 可创建）。返回 bucket proxy。"""
+    try:
+        c.storage.get_bucket(_BUCKET)
+    except Exception:
+        # 不存在则尝试创建（需 service_role 具备 storage 权限）
+        try:
+            c.storage.create_bucket(_BUCKET, options={'public': False})
+        except Exception:
+            pass
+    return c.storage.from_(_BUCKET)
+
+
+def ds_file_upload(key, data):
+    """上传单个数据源文件二进制到云 Storage。key 为 OBJ_* 之一。失败不抛出（尽量不影响主流程）。"""
+    if not _use_supabase():
+        return False
+    try:
+        c = _client()
+        b = _ensure_bucket(c)
+        b.upload(key, data, file_options={'content-type': 'application/octet-stream'})
+        return True
+    except Exception:
+        return False
+
+
+def ds_file_download(key):
+    """从云 Storage 下载数据源二进制；不存在返回 None。"""
+    if not _use_supabase():
+        return None
+    try:
+        c = _client()
+        b = _ensure_bucket(c)
+        res = b.download(key)
+        return res if res else None
+    except Exception:
+        return None
+
+
+def ds_file_exists(key):
+    """云 Storage 是否已存在某数据源对象。"""
+    if not _use_supabase():
+        return False
+    try:
+        c = _client()
+        b = _ensure_bucket(c)
+        return bool(b.exists(key))
+    except Exception:
+        return False
 
 
 def _sb_annot_table():

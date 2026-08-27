@@ -6,7 +6,9 @@
 
 - **应用**：Render Docker Web Service（免费实例，一直在线；空闲 15 分钟休眠，首访需 30~50 秒唤醒）
 - **人工编辑字段**（异常确认状态/备注 + 数据源版本）：Supabase 云数据库（免费 500MB，永不丢，支持多人在线编辑）
-- **数据源**（转单.xlsx + 原始 CSV + 领星/walmart 留档）：随代码仓库提交，应用启动时**自动重建主数据**
+- **数据源文件本体**（转单.xlsx + 原始 CSV + 领星/walmart 留档）：除随仓库提交外，**上线后任意人在网页上传，也会同步上传到 Supabase 对象存储（Storage bucket `ds_data`）**；应用冷启动时会**优先从云端拉取最新数据源重建**，云端无数据源时才回退到仓库内提交的数据源。
+
+> 这样就实现了「**任意人在公网链接上传数据源 → 全平台看板永久同步更新**」，即使 Render 实例休眠重启，也用最新数据重建，不会回退到旧数据。
 
 ## 部署步骤
 
@@ -41,6 +43,7 @@ git push -u origin main
 | `STORAGE_MODE` | `supabase` |
 | `SUPABASE_URL` | 你的 Supabase URL |
 | `SUPABASE_KEY` | Supabase `service_role` 或 `anon` key（建议 `service_role`，无 RLS 限制） |
+| `SUPABASE_DS_BUCKET` | 数据源对象存储 bucket 名（可选，默认 `ds_data`） |
 
 ### 3. 部署完成
 
@@ -55,6 +58,7 @@ git push -u origin main
   - `supabase`（推荐）：人工编辑字段存 Supabase，多人可编辑、在线同步
   - `json` 或不填：存容器临时磁盘，重启/重建**可能丢失**，无法多人在线同步
 - `SUPABASE_URL` / `SUPABASE_KEY`：连接 Supabase。**未配置时走 JSON 本地模式**（仅单机演示用）。
+- `SUPABASE_DS_BUCKET`：数据源对象存储 bucket 名（默认 `ds_data`）。应用首次上传数据源时若 bucket 不存在会尝试自动创建；若失败（无 storage 权限），需在 Supabase 控制台手动建一个 **private** bucket，名为该值。
 
 ## Supabase 建表 SQL
 
@@ -82,8 +86,11 @@ grant all on public.sku_annotations to service_role;
 grant all on public.sku_ds_meta to service_role;
 ```
 
+> 数据源对象存储：请到 Supabase 控制台 **Storage** → 新建一个 **private bucket**，命名 `ds_data`（或你配置的 `SUPABASE_DS_BUCKET`）。`service_role` key 默认有 Storage 写权限；若自动创建失败可手动建。
+
 ## 注意事项
 
 - **免费实例休眠**：Render 免费层 15 分钟无访问会休眠；下次访问自动唤醒，需几十秒。若需一直即时响应，可升级付费（$7/月）关闭休眠。
-- **数据源更新后的重算**：在新代码里更新 `reference/转单.xlsx`、`uploads/latest_*.csv` 后重新推送即可；应用启动会自动重建最新数据。人工编辑字段不受影响（在 Supabase）。
+- **数据源更新（网页上传即可永久共享）**：任意登录用户可在网页上传转单表/原始报表/领星/walmart，上传后**数据源会同步上传到 Supabase 对象存储**，并从当前最新数据源重算看板；后续 Render 休眠重启也会从云端拉取最新数据源重建，全平台永久同步。
+- **数据源更新（改仓库提交）**：若直接在仓库改 `reference/转单.xlsx`、`uploads/latest_*.csv` 后重新推送，应用启动也会自动重建最新数据；人工编辑字段不受影响（在 Supabase）。
 - **端口**：Render 注入 `PORT` 环境变量，应用已适配；本地默认 8092。
