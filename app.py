@@ -444,17 +444,33 @@ def _ensure_cloud_ds():
                 ok_ref = True
     except Exception:
         pass
-    # 领星 / walmart（可选，取到就覆盖留档）
+    # 领星 / walmart（可选，取到就覆盖留档 + 重建 meta，页面才能显示「已上传」）
     try:
         data = storage.ds_file_download(storage.OBJ_LX)
         if data:
             _atomic_write_bytes(LATEST_LINGXING, data)
+            # 重建领星 meta（上传接口写 meta 的运行期文件，这里冷启动需同一套生成逻辑）
+            try:
+                _, summary = load_lingxing(LATEST_LINGXING)
+                _write_meta_file(LINGXING_META, {'filename': 'Listing（云端同步）',
+                                                 'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                 'summary': summary})
+            except Exception:
+                pass
     except Exception:
         pass
     try:
         data = storage.ds_file_download(storage.OBJ_WM)
         if data:
             _atomic_write_bytes(LATEST_WALMART, data)
+            # 重建 walmart meta
+            try:
+                _, summary = load_walmart(LATEST_WALMART)
+                _write_meta_file(WALMART_META, {'filename': 'ItemReport（云端同步）',
+                                                'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                'summary': summary})
+            except Exception:
+                pass
     except Exception:
         pass
     return ok_raw, ok_ref
