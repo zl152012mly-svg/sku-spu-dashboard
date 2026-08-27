@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SKU&SPU 清洗看板</title>
+<link rel="stylesheet" href="/static/libs/datatables.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>SKU&SPU 清洗看板</h1>
+      <div class="sub">上传原始「SKU平台信息套件成员货品体现」表格 → 自动清洗 / 打标 / 转单扩展 / 包裹类型判定 → 看板 + 下载</div>
+    </div>
+    <div class="toolbar">
+      <span id="status-bar"></span>
+      <button class="btn ghost" id="btn-new">重新上传</button>
+      <button class="btn" id="btn-download" disabled>下载清洗结果 CSV</button>
+    </div>
+  </header>
+
+  <!-- 上传区 -->
+  <section id="upload-zone">
+    <div id="persist-hint" class="persist-hint"></div>
+    <div class="steps">
+
+      <!-- 步骤 1：转单表 -->
+      <div class="step" id="step-ref">
+        <div class="step-hd"><span class="no">1</span><h2>转单表（参考表，数据会更新）</h2></div>
+        <div class="ref-box">
+          <div id="ref-info" class="ref-info">未上传转单表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-ref">上传 / 更新转单表</button>
+            <a class="btn link" id="lnk-ref-dl" href="/api/reference/download">下载当前转单表</a>
+          </div>
+          <div class="hint">支持 .xlsx；<b>自动读取全部 sheet</b>（每行 = 同品的多个 SKU 名称，首行为表头）。上传后自动校验并保留历史版本；不更新时沿用上一版。</div>
+          <div id="ref-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 2：领星清单（可选数据源） -->
+      <div class="step" id="step-lx">
+        <div class="step-hd"><span class="no">2</span><h2>领星清单（可选：Amazon 店 ASIN + listing 后台状态）</h2></div>
+        <div class="ref-box">
+          <div id="lx-info" class="ref-info">未上传领星清单</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-lx">上传 / 更新领星清单</button>
+          </div>
+          <div class="hint">支持 .xlsx；含列 <b>MSKU / 状态 / 店铺 / ASIN</b>。MSKU = 14K货号 = 上架SKU；店铺自动映射（HulalahomeDeco-US、HOME NEST-US、Urban Living-US、JYT HOME STORE-US、XYT HOME-US）。不更新时沿用上一版。</div>
+          <div id="lx-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 3：walmart 后台报表（可选数据源） -->
+      <div class="step" id="step-wm">
+        <div class="step-hd"><span class="no">3</span><h2>Walmart 后台报表（可选：Walmart 店 ASIN + listing 后台状态）</h2></div>
+        <div class="ref-box">
+          <div id="wm-info" class="ref-info">未上传 walmart 报表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-wm">上传 / 更新 walmart 报表</button>
+          </div>
+          <div class="hint">支持 .csv 或 .zip（zip 自动解压）；取 <b>SKU / Item ID / Publish Status</b>，Item ID 自动转文本。报表无店铺字段，默认店铺 = US-Walmart。</div>
+          <div id="wm-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 4：原始报表 -->
+      <div class="step" id="step-raw">
+        <div class="step-hd"><span class="no">4</span><h2>原始「SKU平台信息套件成员货品体现」表格</h2></div>
+        <div class="drop" id="drop-raw">
+          <p class="big">拖入 CSV，或点击选择文件</p>
+          <p style="margin-top:12px">
+            <button class="btn" id="btn-pick">选择文件并生成看板</button>
+          </p>
+        </div>
+        <div id="upload-msg" class="msg err"></div>
+      </div>
+
+    </div>
+    <input type="file" id="file-input" accept=".csv,text/csv">
+    <input type="file" id="ref-input" accept=".xlsx,.xlsm">
+    <input type="file" id="lx-input" accept=".xlsx,.xlsm">
+    <input type="file" id="wm-input" accept=".csv,.zip">
+  </section>
+
+  <!-- 看板 -->
+  <section id="dashboard" class="hide">
+    <div class="refbar">
+      <span id="refbar-text"></span>
+      <span class="grow"></span>
+      <button class="btn ghost sm" id="btn-ref-change">更换数据源</button>
+      <button class="btn sm" id="btn-rebuild">按当前数据源重算</button>
+    </div>
+    <div id="ref-stale" class="stale hide">
+      转单表/领星清单/walmart 报表已更新，但当前看板仍是用旧版生成的 —— 点「按当前数据源重算」即可刷新（无需重新上传原始表）。
+    </div>
+    <div id="ds-stale" class="stale hide">
+      可选数据源（领星清单 / walmart 报表）已更新，但当前看板仍是旧版 —— 点「按当前数据源重算」即可刷新。
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="charts">
+      <div class="panel"><h3>包裹类型分布</h3><div id="chart-pkg" class="chart"></div></div>
+      <div class="panel"><h3>发货 SKU（原始 / 转单扩展）</h3><div id="chart-fahuo" class="chart"></div></div>
+    </div>
+
+    <!-- 缺失平台信息异常（独立面板） -->
+    <div class="missing-panel" id="missing-panel">
+      <div class="missing-hd">
+        <div>
+          <h3>缺失平台信息异常</h3>
+          <p class="missing-sub">数据源（领星 / walmart）中有记录，但「SKU平台信息」表中无对应上架SKU 的异常清单</p>
+        </div>
+        <div class="missing-actions">
+          <span class="missing-count" id="missing-count">0 条</span>
+          <button class="btn sm" id="btn-missing-dl">导出 CSV</button>
+        </div>
+      </div>
+      <div class="missing-filters">
+        <div class="fgroup" style="flex:1;min-width:200px">
+          <label>SKU 搜索</label>
+          <input type="text" id="missing-sku" placeholder="输入 SKU / 上架SKU 关键字">
+        </div>
+        <div class="fgroup" style="flex:1;min-width:200px">
+          <label>SPU 搜索</label>
+          <input type="text" id="missing-spu" placeholder="输入 SPU 关键字">
+        </div>
+        <div class="fgroup" style="flex:1;min-width:180px">
+          <label>来源</label>
+          <div class="selin"><select id="missing-source"><option value="">全部</option><option value="lingxing">领星</option><option value="walmart">walmart</option></select></div>
+        </div>
+        <div class="fgroup">
+          <label>&nbsp;</label>
+          <button class="btn ghost" id="btn-missing-reset">重置</button>
+        </div>
+      </div>
+      <div class="missing-table-wrap">
+        <table id="tbl-missing" class="display nowrap" style="width:100%"></table>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="row">
+        <div class="fgroup" style="flex:1;min-width:240px">
+          <label>店铺（多选）</label>
+          <div class="chips" id="f-store"></div>
+        </div>
+        <div class="fgroup" style="flex:1;min-width:240px">
+          <label>包裹类型（多选）</label>
+          <div class="chips" id="f-pkg"></div>
+        </div>
+        <div class="fgroup">
+          <label>是否重复维护</label>
+          <div class="selin"><select id="f-tag"><option value="">全部</option></select></div>
+        </div>
+        <div class="fgroup">
+          <label>发货 SKU</label>
+          <div class="selin"><select id="f-fahuo"><option value="">全部</option></select></div>
+        </div>
+        <div class="fgroup">
+          <label>异常确认状态</label>
+          <div class="selin"><select id="f-anom">
+            <option value="">全部</option><option value="待确认">待确认</option><option value="已确认">已确认</option>
+          </select></div>
+        </div>
+        <div class="fgroup">
+          <label>&nbsp;</label>
+          <button class="btn ghost" id="btn-reset">重置筛选</button>
+        </div>
+        <div class="count-note" id="anom-count"></div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl" class="display nowrap" style="width:100%"></table>
+    </div>
+  </section>
+
+</div>
+
+<!-- 访问口令弹窗 -->
+<div id="login-modal" class="hide modal-mask">
+  <div class="modal login-box">
+    <p class="lg-title">SKU&SPU 清洗看板</p>
+    <p class="lg-sub">请输入访问口令</p>
+    <input id="login-pwd" type="password" placeholder="口令" autocomplete="off">
+    <p id="login-msg" class="lg-msg"></p>
+    <button class="btn lg-btn" onclick="doLogin()">进入</button>
+  </div>
+</div>
+
+<script src="/static/libs/jquery.min.js"></script>
+<script src="/static/libs/datatables.min.js"></script>
+<script src="/static/libs/echarts.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
