@@ -71,6 +71,13 @@ def parse_leadtime(s):
         return None
 
 
+def _is_blank_record(row, idx):
+    """14K货号为空 且 非活动=否 -> 空白记录（True）。
+    这类记录不参与 是否重复维护/包裹类型/发货SKU/异常确认 判定，相关字段直接留空。
+    """
+    return row[idx['14K货号']].strip() == '' and row[idx['非活动']].strip() == '否'
+
+
 # ========================== 阶段一：三步清洗 + 打标 ==========================
 def _stage1(raw_path):
     with open(raw_path, encoding='utf-8-sig', newline='') as f:
@@ -118,6 +125,12 @@ def _stage1(raw_path):
     for row in rows_sorted:
         if row[idx['非活动']].strip() == '是':
             row[-1] = DUP_INACTIVE
+
+    # 规则（2026-08-27 用户拍板）：14K货号为空 且 非活动=否 的行，是否重复维护直接留空，
+    # 后续不参与 包裹类型/发货SKU/异常确认状态/异常确认备注 的判定（这些字段由 _stage2 一并置空）。
+    for row in rows_sorted:
+        if _is_blank_record(row, idx):
+            row[-1] = ''
 
     def sortkey2(row):
         lt = parse_leadtime(row[idx['leadtime']])
@@ -397,11 +410,12 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
     for row in rows:
         uniq_sku = row[idx[COL_MEM]]
         spu = _spu(uniq_sku)
+        blank = _is_blank_record(row, idx)                    # 空白记录：14K货号空 + 非活动=否
         row.append(uniq_sku)                                 # 唯一SKU
         row.append(spu)                                      # SPU
         row.append(_spu_size(uniq_sku, spu))                 # SPU带尺寸
-        row.append(pkg_cache[pkg_key(row)])                  # 包裹类型
-        row.append('是')                                     # 发货SKU：原始=是
+        row.append('' if blank else pkg_cache[pkg_key(row)]) # 包裹类型（空白记录留空，跳过判定）
+        row.append('' if blank else '是')                    # 发货SKU（空白记录留空，跳过判定）
         asin, listing = lookup_asin(row)
         row.append(asin)                                     # ASIN
         row.append(listing)                                  # listing后台状态（领星+后台）
@@ -468,9 +482,13 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         header + ['唯一SKU', 'SPU', 'SPU带尺寸', '包裹类型', '发货SKU', COL_ASIN, COL_LISTING,
                   '异常确认状态', '异常确认备注'])}
 
-    # ---- 新增：异常确认状态 / 异常确认备注（仅异常行默认待确认） ----
+    # ---- 新增：异常确认状态 / 异常确认备注（仅异常行默认待确认；空白记录全程留空） ----
     for row in result:
-        if row[fidx['包裹类型']] == '异常':
+        # 空白记录（14K货号空 + 非活动=否）：跳过异常确认判定，两列留空。
+        if _is_blank_record(row, fidx):
+            row.append('')           # 异常确认状态（空白记录留空）
+            row.append('')           # 异常确认备注
+        elif row[fidx['包裹类型']] == '异常':
             row.append('待确认')      # 异常确认状态
             row.append('')           # 异常确认备注
         else:
