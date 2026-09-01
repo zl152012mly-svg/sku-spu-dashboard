@@ -405,10 +405,50 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         by_key[pkg_key(row)].append(row)
     pkg_cache = {k: _pkg_type(g, idx) for k, g in by_key.items()}
 
+    # ---- 阶段二前：先算每行的 ASIN/listing/pkg（不修改 row）----
+    # 供「转单组最优模板行」按 (-有ASIN, -在售, -单件) 优先级排序。
+    # 必须在赋值循环之前算好 best_rep，否则同转单组内的「原始行」+「扩展行」
+    # 会出现唯一SKU 不一致（原始行用自己的成员货品，扩展行用模板的成员货品）。
+    row_meta = {}                       # 行号 i -> (asin, listing, pkg)
+    for i, row in enumerate(rows):
+        asin, listing = lookup_asin(row)
+        pkg = pkg_cache.get(pkg_key(row), '')
+        row_meta[i] = (asin, listing, pkg)
+
+    def _tmpl_prio_meta(asin, listing, pkg):
+        return (
+            -1 if (asin or '').strip() else 0,                # ①有ASIN 绝对优先
+            -1 if (listing or '') in ('在售', 'PUBLISHED') else 0,  # ②在售(在售/PUBLISHED) 优先
+            -1 if pkg == '单件' else 0,                        # ③单件 优先
+        )
+
+    # ① 先为每个转单组挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
+    #    优先级：有 ASIN -> 在售(在售/PUBLISHED) -> 单件
+    #    best_rep[rep] = (优先级元组, 行号 i)；同一组只保留一条最优，供复制组内其他 SKU
+    best_rep = {}
+    for i, row in enumerate(rows):
+        X = row[idx[COL_MEM]]
+        if X in mem2rep:
+            rep = mem2rep[X]
+            asin, listing, pkg = row_meta[i]
+            prio = _tmpl_prio_meta(asin, listing, pkg)
+            cur = best_rep.get(rep)
+            if cur is None or prio < cur[0]:
+                best_rep[rep] = (prio, i)
+
+    # 成员货品 -> 该组「最佳模板」的成员货品（同组原始行+扩展行都用这个值=唯一SKU）
+    mem2best_member = {}
+    for rep, (_, i) in best_rep.items():
+        tmpl_mem = rows[i][idx[COL_MEM]]
+        for sku in groups[rep]:
+            mem2best_member[sku] = tmpl_mem
+
     # ---- 赋值 唯一SKU + SPU + SPU带尺寸 + 包裹类型 + 发货SKU + ASIN + listing后台状态 ----
+    # 唯一SKU：转单组内 = 组最佳模板的成员货品；非转单组 = 自己的成员货品
     n_asin = 0
-    for row in rows:
-        uniq_sku = row[idx[COL_MEM]]
+    for i, row in enumerate(rows):
+        mem = row[idx[COL_MEM]]
+        uniq_sku = mem2best_member.get(mem, mem)            # 同组同唯一SKU
         spu = _spu(uniq_sku)
         blank = _is_blank_record(row, idx)                    # 空白记录：14K货号空 + 非活动=否
         row.append(uniq_sku)                                 # 唯一SKU
@@ -416,7 +456,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         row.append(_spu_size(uniq_sku, spu))                 # SPU带尺寸
         row.append('' if blank else pkg_cache[pkg_key(row)]) # 包裹类型（空白记录留空，跳过判定）
         row.append('' if blank else '是')                    # 发货SKU（空白记录留空，跳过判定）
-        asin, listing = lookup_asin(row)
+        asin, listing, _pkg = row_meta[i]                    # 复用提前算好的 ASIN/listing
         row.append(asin)                                     # ASIN
         row.append(listing)                                  # listing后台状态（领星+后台）
         if asin:
@@ -430,29 +470,9 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
     result = list(rows)               # 先保留全部原始行（发货SKU=是）
     n_added = 0
 
-    # ① 先为每个转单组挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
-    #    优先级：有 ASIN -> 在售(在售/PUBLISHED) -> 单件
-    #    best_rep[rep] = (优先级元组, row)；同一组只保留一条最优，供复制组内其他 SKU
-    def tmpl_prio(row):
-        """模板优先级：数值越小越优。(-有ASIN, -在售, -单件)"""
-        return (
-            -1 if (row[IDX_ASIN] or '').strip() else 0,                # ①有ASIN 绝对优先
-            -1 if row[IDX_LISTING] in ('在售', 'PUBLISHED') else 0,    # ②在售(在售/PUBLISHED) 优先
-            -1 if pkg_cache[pkg_key(row)] == '单件' else 0,            # ③单件 优先
-        )
-
-    best_rep = {}
-    for row in rows:
-        X = row[idx[COL_MEM]]
-        if X in mem2rep:
-            rep = mem2rep[X]
-            prio = tmpl_prio(row)
-            cur = best_rep.get(rep)
-            if cur is None or prio < cur[0]:
-                best_rep[rep] = (prio, row)
-
     # ② 对每个有最优模板的组，用该模板复制「组内除自身外」的所有 SKU
-    for rep, (_prio, tmpl) in best_rep.items():
+    for rep, (_prio, i) in best_rep.items():
+        tmpl = rows[i]
         tmpl_X = tmpl[idx[COL_MEM]]
         for sku in groups[rep]:
             if sku == tmpl_X:
