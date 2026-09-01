@@ -92,6 +92,38 @@ select,input[type=text]{padding:6px 8px;border:1px solid var(--line);border-radi
 .selin{display:flex;gap:8px;align-items:center}
 .count-note{font-size:12px;color:var(--anomaly);margin-left:auto;align-self:center}
 
+/* 搜索式多选下拉（SPU / 唯一SKU，取值上千上万） */
+.msel{position:relative}
+.msel-box{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:34px;
+  padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:text}
+.msel-box.open{border-color:var(--primary);box-shadow:0 0 0 3px rgba(47,111,237,.12)}
+.msel-sel{display:contents}
+.msel-ph{font-size:12px;color:#9aa3b2;padding:0 2px}
+.msel-tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;line-height:1.6;
+  padding:1px 6px;border-radius:6px;background:#eaf1ff;color:var(--primary-d);
+  border:1px solid #cddffe;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msel-tag b{cursor:pointer;font-weight:700;opacity:.65;padding:0 1px}
+.msel-tag b:hover{opacity:1;color:#b91c1c}
+.msel-tag.more{background:#f1f3f7;color:var(--muted);border-color:var(--line)}
+.msel-input{flex:1;min-width:90px;border:0!important;outline:none;padding:2px 4px!important;
+  font-size:13px;background:transparent}
+.msel-pop{position:absolute;z-index:60;top:calc(100% + 4px);left:0;right:0;min-width:280px;
+  background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(16,24,40,.14)}
+.msel-pop-hd{display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.msel-pop-hd .grow{flex:1}
+.msel-mini{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:6px;
+  background:#fff;color:var(--text);cursor:pointer}
+.msel-mini:hover{border-color:var(--primary);color:var(--primary)}
+.msel-list{max-height:264px;overflow:auto;padding:4px}
+.msel-opt{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;
+  font-size:12.5px;cursor:pointer;white-space:nowrap}
+.msel-opt:hover{background:#f3f6fc}
+.msel-opt.on{background:#eaf1ff;color:var(--primary-d);font-weight:600}
+.msel-cb{width:14px;flex:none;text-align:center;color:var(--primary);font-weight:700}
+.msel-ox{overflow:hidden;text-overflow:ellipsis}
+.msel-empty{padding:14px;text-align:center;color:var(--muted);font-size:12px}
+
 /* 缺失平台信息异常（独立面板） */
 .missing-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;
   padding:16px 18px;box-shadow:var(--shadow);margin-bottom:16px}

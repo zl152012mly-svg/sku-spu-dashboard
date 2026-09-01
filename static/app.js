@@ -9,7 +9,7 @@ let LX_STALE = false, WM_STALE = false;                // 数据源是否比当�
 let COL = {};                 // 列名 -> 索引
 let TABLE = null, MISSING_TABLE = null;
 let PKG_CHART = null, FAHUO_CHART = null;
-const F = { stores: new Set(), pkgs: new Set(), tag: '', fahuo: '', anom: '' };
+const F = { stores: new Set(), pkgs: new Set(), spus: new Set(), skus: new Set(), tag: '', fahuo: '', anom: '' };
 let noteTimer = null;
 
 const $$ = (s, r = document) => r.querySelector(s);
@@ -117,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (settings.nTable.id !== 'tbl') return true;
     if (F.stores.size && !F.stores.has(rowArr[COL['店铺']])) return false;
     if (F.pkgs.size && !F.pkgs.has(rowArr[COL['包裹类型']])) return false;
+    if (F.spus.size && !F.spus.has(rowArr[COL['SPU']])) return false;
+    if (F.skus.size && !F.skus.has(rowArr[COL['唯一SKU']])) return false;
     if (F.tag && rowArr[COL['是否重复维护']] !== F.tag) return false;
     if (F.fahuo && rowArr[COL['发货SKU']] !== F.fahuo) return false;
     if (F.anom && rowArr[COL['异常确认状态']] !== F.anom) return false;
@@ -549,6 +551,10 @@ function buildFilters() {
     else { F.pkgs.add(v); ch.classList.add('on'); }
     if (TABLE) TABLE.draw();
   });
+  // SPU / 唯一SKU 搜索式多选（取值上千上万，不能用 chip 平铺）
+  F.spus.clear(); F.skus.clear();
+  buildMultiSelect('#f-spu', uniq(COL['SPU']), F.spus);
+  buildMultiSelect('#f-sku', uniq(COL['唯一SKU']), F.skus);
   // 是否重复维护 / 发货SKU 下拉
   fillSelect('#f-tag', uniq(COL['是否重复维护']));
   fillSelect('#f-fahuo', uniq(COL['发货SKU']));
@@ -563,11 +569,140 @@ function fillSelect(sel, vals) {
     vals.map(v => `<option value="${escAttr(v)}">${escHtml(v)}</option>`).join('');
 }
 
+/* ---------- 搜索式多选下拉（SPU / 唯一SKU 取值上万，不能用 chip 平铺） ----------
+   结构：.msel > .msel-box(已选标签 + 搜索框) + .msel-pop(选项面板，限渲染 MAX_OPT 条)
+   行为：输入关键字实时过滤；勾选后存入 target Set；已选标签可点 × 移除；
+        点面板外关闭；Escape 关闭；支持「全选当前筛选结果 / 清空」。 */
+const MAX_OPT = 200;          // 面板最多渲染选项条数（防止上万节点卡死）
+const MSEL_STATE = {};        // id -> { all:[全部取值], target:Set, box, pop, input, selWrap }
+
+function buildMultiSelect(id, values, target) {
+  const root = $$(id);
+  if (!root) return;
+  const all = values.slice().sort();
+  root.innerHTML =
+    `<div class="msel-box">
+       <div class="msel-sel" id="${id.slice(1)}-sel"></div>
+       <input type="text" class="msel-input" id="${id.slice(1)}-input"
+              placeholder="${escAttr(all.length > MAX_OPT ? '输入关键字搜索…' : '搜索 / 选择…')}" autocomplete="off">
+     </div>
+     <div class="msel-pop hide" id="${id.slice(1)}-pop">
+       <div class="msel-pop-hd">
+         <span class="msel-cnt" id="${id.slice(1)}-cnt"></span>
+         <span class="grow"></span>
+         <button type="button" class="msel-mini" id="${id.slice(1)}-all">全选筛选结果</button>
+         <button type="button" class="msel-mini" id="${id.slice(1)}-clear">清空</button>
+       </div>
+       <div class="msel-list" id="${id.slice(1)}-list"></div>
+     </div>`;
+
+  const st = {
+    all, target,
+    box: $$('.msel-box', root),
+    selWrap: $$('.msel-sel', root),
+    input: $$('.msel-input', root),
+    pop: $$('.msel-pop', root),
+    list: $$('.msel-list', root),
+    cnt: $$('.msel-cnt', root)
+  };
+  MSEL_STATE[id] = st;
+
+  const key = id.slice(1);
+  $$('#' + key + '-input').addEventListener('focus', () => openMsel(st));
+  $$('#' + key + '-input').addEventListener('input', () => { openMsel(st); renderMsel(st); });
+  $$('#' + key + '-all').onclick = e => {
+    e.stopPropagation();
+    filterVals(st).forEach(v => st.target.add(v));
+    renderMselSel(st); renderMsel(st);
+    if (TABLE) TABLE.draw();
+  };
+  $$('#' + key + '-clear').onclick = e => {
+    e.stopPropagation();
+    st.target.clear();
+    renderMselSel(st); renderMsel(st);
+    if (TABLE) TABLE.draw();
+  };
+  // 点面板外关闭
+  document.addEventListener('click', ev => {
+    if (!root.contains(ev.target)) closeMsel(st);
+  });
+
+  renderMselSel(st);
+  renderMsel(st);
+}
+
+function filterVals(st) {
+  const kw = (st.input.value || '').trim().toLowerCase();
+  if (!kw) return st.all;
+  return st.all.filter(v => v.toLowerCase().includes(kw));
+}
+
+function openMsel(st) {
+  st.pop.classList.remove('hide');
+  st.box.classList.add('open');
+}
+
+function closeMsel(st) {
+  st.pop.classList.add('hide');
+  st.box.classList.remove('open');
+  st.input.value = '';
+  renderMsel(st);
+}
+
+/** 渲染已选标签区 */
+function renderMselSel(st) {
+  const arr = [...st.target];
+  if (!arr.length) {
+    st.selWrap.innerHTML = '<span class="msel-ph">未筛选</span>';
+    return;
+  }
+  const MAX_SHOW = 12;
+  const shown = arr.slice(0, MAX_SHOW);
+  st.selWrap.innerHTML =
+    shown.map(v => `<span class="msel-tag" data-v="${escAttr(v)}">${escHtml(v)}<b>×</b></span>`).join('') +
+    (arr.length > MAX_SHOW ? `<span class="msel-tag more">+${arr.length - MAX_SHOW}</span>` : '');
+  $$a('.msel-tag[data-v]', st.selWrap).forEach(t => {
+    t.querySelector('b').onclick = ev => {
+      ev.stopPropagation();
+      st.target.delete(t.dataset.v);
+      renderMselSel(st); renderMsel(st);
+      if (TABLE) TABLE.draw();
+    };
+  });
+}
+
+/** 渲染下拉选项面板（限制 DOM 条数） */
+function renderMsel(st) {
+  const vals = filterVals(st);
+  const shown = vals.slice(0, MAX_OPT);
+  st.cnt.textContent = `匹配 ${vals.length} 项` +
+    (vals.length > MAX_OPT ? `（显示前 ${MAX_OPT} 条，请输入更多关键字）` : '');
+  st.list.innerHTML = shown.map(v => {
+    const on = st.target.has(v);
+    return `<div class="msel-opt${on ? ' on' : ''}" data-v="${escAttr(v)}">
+              <span class="msel-cb">${on ? '✓' : ''}</span><span class="msel-ox">${escHtml(v)}</span>
+            </div>`;
+  }).join('') || '<div class="msel-empty">无匹配项</div>';
+  $$a('.msel-opt', st.list).forEach(o => {
+    o.onclick = ev => {
+      ev.stopPropagation();
+      const v = o.dataset.v;
+      if (st.target.has(v)) st.target.delete(v); else st.target.add(v);
+      renderMselSel(st); renderMsel(st);
+      if (TABLE) TABLE.draw();
+    };
+  });
+}
+
 function resetFilters() {
-  F.stores.clear(); F.pkgs.clear(); F.tag = ''; F.fahuo = ''; F.anom = '';
+  F.stores.clear(); F.pkgs.clear(); F.spus.clear(); F.skus.clear();
+  F.tag = ''; F.fahuo = ''; F.anom = '';
   $$a('#f-store .chip').forEach(c => c.classList.remove('on'));
   $$a('#f-pkg .chip').forEach(c => c.classList.remove('on'));
   $$('#f-tag').value = ''; $$('#f-fahuo').value = ''; $$('#f-anom').value = '';
+  // 重建 SPU / 唯一SKU 多选（清空已选 + 复位搜索框）
+  buildMultiSelect('#f-spu', uniq(COL['SPU']), F.spus);
+  buildMultiSelect('#f-sku', uniq(COL['唯一SKU']), F.skus);
   if (TABLE) TABLE.draw();
 }
 
