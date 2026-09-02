@@ -52,6 +52,84 @@ function showLogin() {
   if (inp) { inp.focus(); }
 }
 
+/* ---------- 明细导出 ---------- */
+/** 把行数组导出为 CSV（前端生成，带 BOM 防 Excel 中文乱码；含全部 25 列） */
+function exportCsv(rows, name) {
+  if (!rows || !rows.length) { alert('没有可导出的数据'); return; }
+  const q = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [HEADER.map(q).join(',')];
+  for (const r of rows) lines.push(r.map(q).join(','));
+  // \ufeff = BOM，Excel 打开 CSV 中文不乱码
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}
+
+/** 导出「当前筛选结果」（跟随 SPU/唯一SKU/店铺/包裹类型/下拉 等全部筛选条件） */
+function exportFiltered() {
+  if (!TABLE) { alert('表格尚未就绪'); return; }
+  // search:'applied' = 应用了自定义过滤后的行（含筛选 + 表格内搜索）
+  const rows = TABLE.rows({ search: 'applied' }).data().toArray();
+  const total = ROWS.length;
+  exportCsv(rows, 'SKU平台信息_清洗明细_筛选后' + rows.length + '行');
+  const tip = $$('#dl-tip');
+  if (tip) {
+    tip.textContent = `已导出 ${rows.length} 行筛选结果（全部 ${total} 行）`;
+    setTimeout(() => { tip.textContent = ''; }, 5000);
+  }
+}
+
+/* ---------- 计算进度遮罩 ---------- */
+let PG_TIMER = null;
+
+function showProgress(title) {
+  const m = $$('#prog-mask');
+  if (!m) return;
+  $$('#pg-title').textContent = title || '正在计算…';
+  $$('#pg-fill').style.width = '0%';
+  $$('#pg-stage').textContent = '准备中…';
+  $$('#pg-meta').textContent = '';
+  m.classList.remove('hide');
+  if (PG_TIMER) clearInterval(PG_TIMER);
+  PG_TIMER = setInterval(pollProgress, 500);   // 每 0.5s 轮询后端真实进度
+}
+
+function hideProgress() {
+  const m = $$('#prog-mask');
+  if (m) m.classList.add('hide');
+  if (PG_TIMER) { clearInterval(PG_TIMER); PG_TIMER = null; }
+}
+
+function setProgress(pct, stage, elapsed) {
+  const fill = $$('#pg-fill'), st = $$('#pg-stage'), mt = $$('#pg-meta');
+  if (fill) fill.style.width = (pct || 0) + '%';
+  if (st) st.textContent = stage || '';
+  if (mt) {
+    const parts = [];
+    if (pct != null) parts.push((pct || 0) + '%');
+    if (elapsed != null) parts.push('已用时 ' + elapsed + ' 秒');
+    mt.textContent = parts.join('　·　');
+  }
+}
+
+async function pollProgress() {
+  try {
+    const { ok, d } = await apiCall('/api/progress').then(safeJson);
+    if (!ok || !d || !d.progress) return;
+    const p = d.progress;
+    setProgress(p.pct, p.stage, p.elapsed);
+    if (!p.running && PG_TIMER) { clearInterval(PG_TIMER); PG_TIMER = null; }
+  } catch (e) { /* 轮询失败不打断流程 */ }
+}
+
 /* 带 token 的下载：fetch 拿 blob → URL.createObjectURL 触发下载。
    浏览器原生导航(window.location.href)不会携带 X-Auth-Token，会被鉴权拦截 401。 */
 async function authedDownload(url) {
@@ -104,7 +182,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $$('#btn-new').onclick = () => { refreshStatus().then(showUploadPanel); };
   $$('#btn-reset').onclick = resetFilters;
   $$('#btn-ref-change').onclick = () => { refreshStatus().then(showUploadPanel); };
-  $$('#btn-rebuild').onclick = rebuild;
+  $$('#btn-rebuild').onclick = () => rebuild($$('#refbar-text'));
+  // 明细导出：全部 / 按当前筛选结果
+  $$('#btn-dl-all').onclick = () => exportCsv(ROWS, 'SKU平台信息_清洗明细_全部');
+  $$('#btn-dl-filtered').onclick = exportFiltered;
   // 登录框回车提交
   const lp = $$('#login-pwd');
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -265,18 +346,23 @@ function uploadRef(file) {
 
 function rebuild(msgEl) {
   const msg = msgEl || $$('#ref-msg');
-  if (msg) { msg.className = 'msg'; msg.textContent = '重算中…'; }
+  if (msg) { msg.className = 'msg'; msg.style.color = ''; msg.textContent = ''; }
+  showProgress('正在按当前数据源重算…');
   apiCall('/api/rebuild', { method: 'POST' })
     .then(safeJson)
     .then(({ ok, d }) => {
       if (!ok || !d.ok) {
+        hideProgress();
         if (msg) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '重算失败'); }
         return;
       }
-      if (msg) msg.textContent = '';
-      refreshStatus().then(st => { if (st.ready) loadState(); });
+      // 重算不算上传新表格 → 数据更新时间保持不变
+      loadState(msg, '重算完成，数据更新时间保持不变');
     })
-    .catch(err => { if (msg) { msg.className = 'msg err'; msg.textContent = '✗ 重算失败：' + ((err && err.message) || err); } });
+    .catch(err => {
+      hideProgress();
+      if (msg) { msg.className = 'msg err'; msg.textContent = '✗ 重算失败：' + ((err && err.message) || err); }
+    });
 }
 
 /* ---------- 领星清单 / walmart 报表上传 ---------- */
@@ -327,32 +413,71 @@ function upload(file) {
   const msg = $$('#upload-msg');
   msg.className = 'msg err';
   msg.style.color = '';
-  msg.textContent = '处理中…';
+  msg.textContent = '';
   const fd = new FormData();
   fd.append('file', file);
+  showProgress('正在清洗计算…');
   apiCall('/api/upload', { method: 'POST', body: fd })
     .then(safeJson)
     .then(({ ok, d }) => {
-      if (!ok || !d.ok) { msg.textContent = '✗ ' + (d.msg || '处理失败'); return; }
-      msg.textContent = '';
-      refreshStatus().then(st => { if (st.ready) loadState(); });
+      if (!ok || !d.ok) {
+        hideProgress();
+        msg.textContent = '✗ ' + (d.msg || '处理失败');
+        return;
+      }
+      // 计算完成 → 载入看板（载入本身也走进度遮罩，避免"点了没反应"）
+      const isNew = d.is_new_file;
+      loadState(msg, isNew ? '新表格，数据已更新' : '与上次上传的表格内容相同，数据更新时间保持不变');
     })
-    .catch(err => { msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
+    .catch(err => {
+      hideProgress();
+      msg.textContent = '✗ 上传失败：' + ((err && err.message) || err);
+    });
 }
 
-function loadState() {
+/** 载入看板数据（17MB JSON，较慢，用进度遮罩给出反馈）
+ *  msgEl: 可选，用于显示完成/失败提示的元素
+ *  doneNote: 可选，完成时追加的说明文字 */
+function loadState(msgEl, doneNote) {
+  showProgress('正在载入看板…');
+  setProgress(60, '载入明细数据…');
   apiCall('/api/state')
     .then(safeJson)
     .then(({ ok, d }) => {
-      if (!ok || !d || !d.ready) { showUploadPanel(); return; }
+      if (!ok || !d || !d.ready) {
+        hideProgress();
+        if (msgEl) {
+          msgEl.className = 'msg err';
+          msgEl.textContent = '✗ 数据载入失败，请重试或刷新页面';
+        }
+        showUploadPanel();
+        return;
+      }
+      setProgress(85, '渲染看板…');
       HEADER = d.header; ROWS = d.rows; STATS = d.stats;
       ANNOTS = d.annotations || {};   // 行级冲突检测：id_key -> {status,note,version}
       MISSING_ROWS = (d.stats && d.stats.missing_platform_rows) || [];
       REF_STALE = !!d.ref_stale;
       COL = {}; HEADER.forEach((h, i) => COL[h] = i);
       renderDashboard(d);
+      setProgress(100, '完成');
+      setTimeout(hideProgress, 350);
+      if (msgEl) {
+        msgEl.className = 'msg';
+        msgEl.style.color = '#16a34a';
+        msgEl.innerHTML = '✓ 计算完成，共 ' + (d.stats && d.stats.total || 0) + ' 行' +
+          (doneNote ? '（' + escHtml(doneNote) + '）' : '');
+      }
     })
-    .catch(err => { console.error('loadState', err); showUploadPanel(); });
+    .catch(err => {
+      hideProgress();
+      console.error('loadState', err);
+      if (msgEl) {
+        msgEl.className = 'msg err';
+        msgEl.textContent = '✗ 数据载入失败：' + ((err && err.message) || err);
+      }
+      showUploadPanel();
+    });
 }
 
 /* ---------- 视图切换 ---------- */
@@ -377,7 +502,22 @@ function renderPersistHint() {
           `共 ${st.stats && st.stats.total || 0} 行。上传新数据会<b>直接覆盖</b>。` +
           `<a href="javascript:;" id="lnk-back">返回看板</a>`;
         const lk = $$('#lnk-back');
-        if (lk) lk.onclick = () => { refreshStatus().then(s => { if (s.ready) loadState(); }); };
+        if (lk) lk.onclick = () => {
+          showProgress('正在载入看板…');
+          setProgress(40, '读取已保存数据…');
+          refreshStatus()
+            .then(s => {
+              if (s && s.ready) { loadState(el); }
+              else {
+                hideProgress();
+                el.innerHTML = '暂无可载入的数据，请先上传原始报表。';
+              }
+            })
+            .catch(err => {
+              hideProgress();
+              el.innerHTML = '载入失败：' + escHtml((err && err.message) || String(err));
+            });
+        };
         el.classList.remove('hide');
       } else {
         el.innerHTML = '暂无已保存数据，请先上传原始报表。';

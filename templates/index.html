@@ -183,11 +183,28 @@
       </div>
     </div>
 
+    <div class="dlbar">
+      <span class="dlbar-tip" id="dl-tip"></span>
+      <span class="grow"></span>
+      <button class="btn sm" id="btn-dl-filtered">导出当前明细 CSV（按筛选结果）</button>
+      <button class="btn ghost sm" id="btn-dl-all">导出全部明细 CSV</button>
+    </div>
+
     <div class="table-wrap">
       <table id="tbl" class="display nowrap" style="width:100%"></table>
     </div>
   </section>
 
+</div>
+
+<!-- 计算进度遮罩（上传 / 重算 / 载入看板时显示） -->
+<div id="prog-mask" class="hide modal-mask">
+  <div class="modal prog-box">
+    <p class="pg-title" id="pg-title">正在计算…</p>
+    <div class="pg-bar"><div class="pg-fill" id="pg-fill"></div></div>
+    <p class="pg-stage" id="pg-stage">准备中…</p>
+    <p class="pg-meta" id="pg-meta"></p>
+  </div>
 </div>
 
 <!-- 访问口令弹窗 -->

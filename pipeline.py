@@ -362,7 +362,21 @@ def _pkg_type(g, idx):
     return ''
 
 
-def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
+def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
+            progress=None):
+    """阶段二：增字段 + 转单扩展。
+
+    progress: 可选回调 progress(pct_0_100, stage)，由 run_pipeline 映射到总体进度。
+    """
+
+    def _p(pct, stage):
+        if progress:
+            try:
+                progress(pct, stage)
+            except Exception:
+                pass
+
+    _p(0, '解析转单表…')
     idx = {name: i for i, name in enumerate(header)}
     COL_MEM, COL_STORE, COL_14K, COL_QTY = (
         '成员货品', '店铺', '14K货号', '成员货品数量')
@@ -370,10 +384,12 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
         raise ValueError('原始表格缺少「ID」列，无法按 ID+店铺+14K货号 分组判定包裹类型')
 
     # ---- 转单 union-find（读转单表全部 sheet） ----
+    _p(2, '解析转单表…')
     per_sheet, all_rows = load_transfer_sheets(xlsx_path)
     groups, mem2rep = _union_find(all_rows)
 
     # ---- 可选数据源：领星清单 / walmart 后台报表（获取 ASIN + listing后台状态） ----
+    _p(12, '加载领星 / walmart 数据源…')
     lingxing_map, lx_summary = None, None
     walmart_map, wm_summary = None, None
     if lingxing_path:
@@ -400,6 +416,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
     def pkg_key(row):
         return (row[idx['ID']].strip(), row[idx[COL_STORE]].strip(), row[idx[COL_14K]].strip())
 
+    _p(22, '判定包裹类型…')
     by_key = defaultdict(list)
     for row in rows:
         by_key[pkg_key(row)].append(row)
@@ -445,6 +462,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
 
     # ---- 赋值 唯一SKU + SPU + SPU带尺寸 + 包裹类型 + 发货SKU + ASIN + listing后台状态 ----
     # 唯一SKU：转单组内 = 组最佳模板的成员货品；非转单组 = 自己的成员货品
+    _p(35, '生成唯一SKU / SPU…')
     n_asin = 0
     for i, row in enumerate(rows):
         mem = row[idx[COL_MEM]]
@@ -469,6 +487,8 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
     IDX_LISTING = len(idx) + 6        # listing后台状态 列索引（追加列偏移）
     result = list(rows)               # 先保留全部原始行（发货SKU=是）
     n_added = 0
+
+    _p(55, '转单扩展（同品多 SKU 补齐）…')
 
     # ② 对每个有最优模板的组，用该模板复制「组内除自身外」的所有 SKU
     for rep, (_prio, i) in best_rep.items():
@@ -616,12 +636,30 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None):
 
 
 # ========================== 对外入口 ==========================
-def run_pipeline(raw_csv_path, xlsx_path, lingxing_path=None, walmart_path=None):
-    """原始 CSV + 转单.xlsx + 可选(领星清单, walmart报表) -> (header, rows, stats)"""
+def run_pipeline(raw_csv_path, xlsx_path, lingxing_path=None, walmart_path=None,
+                 progress=None):
+    """原始 CSV + 转单.xlsx + 可选(领星清单, walmart报表) -> (header, rows, stats)
+
+    progress: 可选回调 progress(pct, stage)，用于前端进度条。
+              阶段：读取原始表 5% → 阶段一清洗打标 40% → 阶段二扩展赋值 80% → 完成 100%
+    """
+    def _p(pct, stage):
+        if progress:
+            try:
+                progress(pct, stage)
+            except Exception:
+                pass
+
+    _p(5, '读取原始报表…')
     header, rows = _stage1(raw_csv_path)
+
+    _p(40, '清洗 + 重复维护打标…')
     header, rows, stats = _stage2(header, rows, xlsx_path,
                                   lingxing_path=lingxing_path,
-                                  walmart_path=walmart_path)
+                                  walmart_path=walmart_path,
+                                  progress=lambda p, s: _p(40 + int(p * 0.45), s))
+
+    _p(95, '生成统计…')
     return header, rows, stats
 
 

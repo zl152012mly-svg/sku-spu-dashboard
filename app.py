@@ -23,9 +23,62 @@ import zipfile
 import threading
 import time
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import (Flask, request, jsonify, render_template,
                    send_file, send_from_directory)
+
+# ============================ 北京时间 + 计算进度 ============================
+# 服务器（Render）时区为 UTC，所有对外展示时间统一用北京时间 UTC+8
+BJ_TZ = timezone(timedelta(hours=8))
+
+
+def now_bj(fmt='%Y-%m-%d %H:%M:%S'):
+    """返回当前「北京时间」字符串（服务器可能是 UTC，不能用 datetime.now()）。"""
+    return datetime.now(BJ_TZ).strftime(fmt)
+
+
+# 计算进度（供前端轮询 /api/progress 显示进度条）
+# 结构：{running, pct, stage, started_at, finished_at, error, ok}
+PROGRESS = {'running': False, 'pct': 0, 'stage': '', 'started_at': None,
+            'finished_at': None, 'error': None, 'ok': None}
+_PROGRESS_LOCK = threading.Lock()
+
+
+def progress_set(pct, stage):
+    """更新进度（0–100）。"""
+    with _PROGRESS_LOCK:
+        PROGRESS['pct'] = max(0, min(100, int(pct)))
+        PROGRESS['stage'] = stage
+        PROGRESS['running'] = True
+
+
+def progress_start(stage='准备中…'):
+    with _PROGRESS_LOCK:
+        PROGRESS.update({'running': True, 'pct': 0, 'stage': stage,
+                         'started_at': now_bj(), 'finished_at': None,
+                         'error': None, 'ok': None})
+
+
+def progress_end(ok, error=None):
+    with _PROGRESS_LOCK:
+        PROGRESS.update({'running': False, 'pct': 100 if ok else PROGRESS['pct'],
+                         'stage': '完成' if ok else ('失败：' + str(error or '')),
+                         'finished_at': now_bj(), 'ok': ok, 'error': str(error) if error else None})
+
+
+def file_sha256(path, chunk=1 << 20):
+    """算文件 sha256（用于判断「是否上传了新表格」）。"""
+    h = hashlib.sha256()
+    try:
+        with open(path, 'rb') as f:
+            while True:
+                b = f.read(chunk)
+                if not b:
+                    break
+                h.update(b)
+        return h.hexdigest()
+    except Exception:
+        return None
 
 from pipeline import run_pipeline, summarize_transfer, load_lingxing, load_walmart
 import storage  # 可插拔存储层：JSON 本地 / Supabase 云，含行级冲突检测
@@ -317,21 +370,31 @@ def _ds_info():
     }
 
 
-def _run_and_store(raw_path, raw_name):
-    """跑流水线并写入 STATE / 缓存。返回 (ok, payload_or_msg, http_code)"""
+def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
+    """跑流水线并写入 STATE / 缓存。返回 (ok, payload_or_msg, http_code)
+
+    keep_uploaded_at=True 时不更新「数据更新时间」（重算/上传了相同文件的情况，
+    业务口径：只有上传【新的】原始表格，数据更新时间才变）。
+    """
     ref_path, meta = current_ref()
     if not ref_path:
+        progress_end(False, '尚未上传转单表')
         return False, '尚未上传转单表，请先上传「转单.xlsx」', 400
     lx_path, wm_path = _current_ds()
+    progress_start('读取原始报表…')
     try:
         header, rows, stats = run_pipeline(raw_path, ref_path,
                                            lingxing_path=lx_path,
-                                           walmart_path=wm_path)
+                                           walmart_path=wm_path,
+                                           progress=progress_set)
     except ValueError as e:
+        progress_end(False, e)
         return False, str(e), 400
     except Exception as e:
+        progress_end(False, e)
         return False, '处理失败：' + str(e), 500
 
+    progress_set(97, '写入看板数据…')
     lxm = _read_meta_file(LINGXING_META)
     wmm = _read_meta_file(WALMART_META)
     with _LOCK:
@@ -339,7 +402,9 @@ def _run_and_store(raw_path, raw_name):
         STATE['rows'] = rows
         STATE['stats'] = stats
         STATE['filename'] = raw_name
-        STATE['uploaded_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # 业务口径：只有上传【新的】原始表格才更新「数据更新时间」（北京时间）
+        if not keep_uploaded_at or not STATE.get('uploaded_at'):
+            STATE['uploaded_at'] = now_bj()
         STATE['ref_filename'] = meta.get('filename')
         STATE['ref_uploaded_at'] = meta.get('uploaded_at')
         STATE['lx_filename'] = (lxm or {}).get('filename')
@@ -361,8 +426,9 @@ def _run_and_store(raw_path, raw_name):
             })
         except Exception:
             pass
-        # 把云端/本地已存的异常确认，回填到本次 rows 的异常确认两列
+        # 把云端/本地已存的异常确认，回填本次 rows 的异常确认两列
         _apply_annotations()
+    progress_end(True)
     return True, {'ok': True, 'stats': stats, 'header': header,
                   'filename': STATE['filename'],
                   'uploaded_at': STATE['uploaded_at'],
@@ -430,7 +496,7 @@ def _ensure_cloud_ds():
     try:
         data = storage.ds_file_download(storage.OBJ_REF)
         if data:
-            stored = '转单_cloud_%s.xlsx' % datetime.now().strftime('%Y%m%d%H%M%S')
+            stored = '转单_cloud_%s.xlsx' % now_bj('%Y%m%d%H%M%S')
             p = os.path.join(REF_DIR, stored)
             _atomic_write_bytes(p, data)
             try:
@@ -439,7 +505,7 @@ def _ensure_cloud_ds():
                 summary = None
             if summary:
                 _write_ref_meta({'stored': stored, 'filename': '转单.xlsx',
-                                 'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                 'uploaded_at': now_bj(),
                                  'summary': summary})
                 ok_ref = True
     except Exception:
@@ -453,7 +519,7 @@ def _ensure_cloud_ds():
             try:
                 _, summary = load_lingxing(LATEST_LINGXING)
                 _write_meta_file(LINGXING_META, {'filename': 'Listing（云端同步）',
-                                                 'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                 'uploaded_at': now_bj(),
                                                  'summary': summary})
             except Exception:
                 pass
@@ -467,7 +533,7 @@ def _ensure_cloud_ds():
             try:
                 _, summary = load_walmart(LATEST_WALMART)
                 _write_meta_file(WALMART_META, {'filename': 'ItemReport（云端同步）',
-                                                'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                'uploaded_at': now_bj(),
                                                 'summary': summary})
             except Exception:
                 pass
@@ -513,6 +579,23 @@ def _boot_rebuild():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/api/progress')
+def api_progress():
+    """计算进度（前端轮询显示进度条）。返回 {running, pct, stage, elapsed, ...}"""
+    with _PROGRESS_LOCK:
+        snap = dict(PROGRESS)
+    # 已耗时（秒）
+    elapsed = None
+    if snap.get('started_at'):
+        try:
+            t0 = datetime.strptime(snap['started_at'], '%Y-%m-%d %H:%M:%S')
+            elapsed = round((datetime.now(BJ_TZ) - t0.replace(tzinfo=BJ_TZ)).total_seconds(), 1)
+        except Exception:
+            elapsed = None
+    snap['elapsed'] = elapsed
+    return jsonify({'ok': True, 'progress': snap})
 
 
 @app.route('/api/status')
@@ -567,7 +650,7 @@ def api_reference_upload():
     if not f.filename.lower().endswith(('.xlsx', '.xlsm')):
         return jsonify({'ok': False, 'msg': '转单表需为 .xlsx 文件'}), 400
 
-    ts = datetime.now().strftime('%Y%m%d%H%M%S')
+    ts = now_bj('%Y%m%d%H%M%S')
     stored = '转单_%s.xlsx' % ts
     path = os.path.join(REF_DIR, stored)
     f.save(path)
@@ -583,7 +666,7 @@ def api_reference_upload():
         return jsonify({'ok': False, 'msg': '转单表解析失败：' + str(e)}), 400
 
     meta = {'stored': stored, 'filename': f.filename,
-            'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'uploaded_at': now_bj(),
             'summary': summary}
     _write_ref_meta(meta)
     # 校验通过后同步到云 Storage（供冷启动取最新转单表）
@@ -626,7 +709,7 @@ def api_upload_lingxing():
                                             '（检查「店铺」是否在映射表内）'}), 400
 
     meta = {'filename': f.filename,
-            'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'uploaded_at': now_bj(),
             'summary': summary}
     _write_meta_file(LINGXING_META, meta)
     # 校验通过后同步到云 Storage
@@ -687,7 +770,7 @@ def api_upload_walmart():
         return jsonify({'ok': False, 'msg': 'walmart 报表未解析到任何 SKU 记录'}), 400
 
     meta = {'filename': stored_name,
-            'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'uploaded_at': now_bj(),
             'summary': summary}
     _write_meta_file(WALMART_META, meta)
     # 校验通过后同步到云 Storage
@@ -714,12 +797,31 @@ def api_upload():
 
     # 直接落盘到 latest_raw.csv（覆盖），避免产生临时文件触发 Windows 回收站限制
     _atomic_save_fileobj(LATEST_RAW, f)
-    ok, payload, code = _run_and_store(LATEST_RAW, f.filename)
+
+    # ---- 业务口径：只有上传【新的】原始表格，「数据更新时间」才变 ----
+    # 用 sha256 比对：与上次留档一致则视为同一份表格，保持原 uploaded_at（北京时间）
+    RAW_META = os.path.join(DATA_DIR, 'raw_meta.json')
+    prev_meta = _read_meta_file(RAW_META)
+    new_hash = file_sha256(LATEST_RAW)
+    is_new_file = True
+    if prev_meta and prev_meta.get('hash') and new_hash:
+        is_new_file = (prev_meta['hash'] != new_hash)
+
+    ok, payload, code = _run_and_store(LATEST_RAW, f.filename,
+                                       keep_uploaded_at=not is_new_file)
     if ok:
+        # 只有新表格才刷新 uploaded_at；重复上传同一份则沿用旧时间
+        uploaded_at = STATE['uploaded_at'] if is_new_file else (
+            prev_meta.get('uploaded_at') if prev_meta else STATE['uploaded_at'])
+        if not is_new_file:
+            STATE['uploaded_at'] = uploaded_at
+        payload = dict(payload)
+        payload['uploaded_at'] = uploaded_at
+        payload['is_new_file'] = is_new_file
         try:
-            with open(os.path.join(DATA_DIR, 'raw_meta.json'), 'w', encoding='utf-8') as m:
-                json.dump({'filename': f.filename,
-                           'uploaded_at': STATE['uploaded_at']}, m, ensure_ascii=False)
+            _write_meta_file(RAW_META, {'filename': f.filename,
+                                        'uploaded_at': uploaded_at,
+                                        'hash': new_hash})
         except OSError:
             pass
         # 校验成功后才同步到云 Storage（供冷启动取最新原始表）
@@ -740,15 +842,16 @@ def api_rebuild():
         return jsonify({'ok': False, 'msg': '没有留档的原始表，请上传原始报表'}), 400
     name = STATE['filename']
     mp = os.path.join(DATA_DIR, 'raw_meta.json')
-    if os.path.exists(mp):
-        try:
-            with open(mp, encoding='utf-8') as m:
-                name = json.load(m).get('filename') or name
-        except Exception:
-            pass
-    ok, payload, code = _run_and_store(LATEST_RAW, name or 'latest_raw.csv')
+    prev_meta = _read_meta_file(mp)
+    if prev_meta:
+        name = prev_meta.get('filename') or name
+    # 重算不算「上传新表格」：保持原「数据更新时间」（北京时间）
+    ok, payload, code = _run_and_store(LATEST_RAW, name or 'latest_raw.csv',
+                                       keep_uploaded_at=True)
     if not ok:
         return jsonify({'ok': False, 'msg': payload}), code
+    payload = dict(payload)
+    payload['is_new_file'] = False
     return jsonify(payload)
 
 
