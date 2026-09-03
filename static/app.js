@@ -671,7 +671,7 @@ function renderMissingPanel() {
   $$('#missing-count').textContent = `${mp.union || rows.length || 0} 条`;
   $$('#missing-panel').classList.toggle('hide', rows.length === 0);
 
-  if (MISSING_TABLE) { MISSING_TABLE.destroy(); $$('#tbl-missing').empty(); }
+  if (MISSING_TABLE) { MISSING_TABLE.destroy(); $('#tbl-missing').empty(); }
 
   MISSING_TABLE = $('#tbl-missing').DataTable({
     data: rows,
@@ -890,7 +890,7 @@ function resetFilters() {
 
 /* ---------- 表格 ---------- */
 function initTable() {
-  if (TABLE) { TABLE.destroy(); $$('#tbl').empty(); }
+  if (TABLE) { TABLE.destroy(); $('#tbl').empty(); }
 
   const cols = HEADER.map((h, i) => {
     if (i === COL['异常确认状态']) return { data: i, title: h, render: renderAst };
