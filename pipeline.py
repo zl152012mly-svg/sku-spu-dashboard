@@ -7,10 +7,13 @@ SKU&SPU 清洗流水线（v9 口径，可复用模块）
 
 输出列顺序（系统面板/下载报表展示顺序）：
   ID、上架SKU、ASIN、库存SKU、成员货品数量、listing后台状态（领星+后台）、店铺、
-  唯一SKU、SPU、SPU带尺寸、包裹类型、发货SKU、是否同步平台库存、美国生命周期状态、非活动、leadtime、
+  唯一SKU、SPU、SPU带尺寸、包裹类型、品类、代运营、发货SKU、是否同步平台库存、美国生命周期状态、非活动、leadtime、
   是否重复维护、异常确认状态、异常确认备注、缺失平台信息异常、
-  内部 ID、德国/日本/英国生命周期状态、类型、代运营
-  注：缺失平台信息异常 = 领星/walmart 数据源有、平台信息表无 的 SKU，追加为末行并标「是」。
+  内部 ID、德国/日本/英国生命周期状态、类型
+  注：
+    - 品类 = 用「唯一SKU」去「所有库存货品管理员检查表」匹配「品类_3」取值（可选，未上传则为空）。
+    - 代运营 已前移至「发货SKU」之前（原在末尾）。
+    - 缺失平台信息异常 = 领星/walmart 数据源有、平台信息表无 的 SKU，追加为末行并标「是」。
 """
 import csv
 import re
@@ -324,6 +327,52 @@ def load_walmart(path):
     return m, {'rows': len(rows), 'matched': len(m)}
 
 
+def load_admin_check(path):
+    """所有库存货品管理员检查表：唯一SKU -> 品类_3。
+
+    支持 .xlsx / .csv。要求列：
+      匹配键列：唯一SKU（亦接受 库存SKU / 成员货品 / SKU）
+      取值列：  品类_3（亦接受 品类3 / 品类_3）
+    返回 (match_map, summary)：match_map = {唯一SKU(去空格): 品类_3}，summary = {rows, matched}。
+    同唯一SKU 多行取第一条。
+    """
+    if path.lower().endswith('.csv'):
+        with open(path, encoding='utf-8-sig', newline='') as f:
+            rows = [row for row in csv.reader(f)]
+    else:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        wb.close()
+    if not rows:
+        raise ValueError('管理员检查表为空')
+    hdr = [str(x).strip() if x is not None else '' for x in rows[0]]
+
+    key_candidates = ['唯一SKU', '唯一sku', '库存SKU', '成员货品', 'SKU']
+    key_idx = next((hdr.index(c) for c in key_candidates if c in hdr), None)
+    if key_idx is None:
+        raise ValueError('管理员检查表缺少匹配列「唯一SKU」（亦支持 库存SKU / 成员货品 / SKU）')
+
+    target_candidates = ['品类_3', '品类3', '品类_3']
+    tgt_idx = next((hdr.index(c) for c in target_candidates if c in hdr), None)
+    if tgt_idx is None:
+        raise ValueError('管理员检查表缺少「品类_3」列（亦支持「品类3」）')
+
+    m, n = {}, 0
+    for r in rows[1:]:
+        if not any(str(x).strip() for x in r):
+            continue
+        k = str(r[key_idx]).strip() if key_idx < len(r) else ''
+        if not k:
+            continue
+        v = str(r[tgt_idx]).strip() if tgt_idx < len(r) else ''
+        if k not in m:
+            m[k] = v
+        n += 1
+    return m, {'rows': n, 'matched': len(m)}
+
+
 def _pkg_type(g, idx):
     MEM = idx['成员货品']
     QTY = idx['成员货品数量']
@@ -363,7 +412,7 @@ def _pkg_type(g, idx):
 
 
 def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
-            progress=None):
+            admin_check_path=None, progress=None):
     """阶段二：增字段 + 转单扩展。
 
     progress: 可选回调 progress(pct_0_100, stage)，由 run_pipeline 映射到总体进度。
@@ -396,6 +445,12 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
         lingxing_map, lx_summary = load_lingxing(lingxing_path)
     if walmart_path:
         walmart_map, wm_summary = load_walmart(walmart_path)
+
+    # ---- 可选数据源：所有库存货品管理员检查表（唯一SKU -> 品类_3） ----
+    _p(18, '加载管理员检查表（品类）…')
+    admin_map, admin_summary = None, None
+    if admin_check_path:
+        admin_map, admin_summary = load_admin_check(admin_check_path)
 
     def lookup_asin(row):
         """按 店铺+14K货号 匹配 ASIN 与 listing后台状态。未命中返回 ('', '')。"""
@@ -460,7 +515,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
         for sku in groups[rep]:
             mem2best_member[sku] = tmpl_mem
 
-    # ---- 赋值 唯一SKU + SPU + SPU带尺寸 + 包裹类型 + 发货SKU + ASIN + listing后台状态 ----
+    # ---- 赋值 唯一SKU + SPU + SPU带尺寸 + 包裹类型 + 品类 + 发货SKU + ASIN + listing后台状态 ----
     # 唯一SKU：转单组内 = 组最佳模板的成员货品；非转单组 = 自己的成员货品
     _p(35, '生成唯一SKU / SPU…')
     n_asin = 0
@@ -473,6 +528,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
         row.append(spu)                                      # SPU
         row.append(_spu_size(uniq_sku, spu))                 # SPU带尺寸
         row.append('' if blank else pkg_cache[pkg_key(row)]) # 包裹类型（空白记录留空，跳过判定）
+        row.append(admin_map.get(uniq_sku, '') if admin_map else '')  # 品类（按唯一SKU 匹配管理员检查表；未上传则为空）
         row.append('' if blank else '是')                    # 发货SKU（空白记录留空，跳过判定）
         asin, listing, _pkg = row_meta[i]                    # 复用提前算好的 ASIN/listing
         row.append(asin)                                     # ASIN
@@ -481,10 +537,10 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
             n_asin += 1
 
     # ---- 扩展记录（转单）----
-    # row 追加顺序：唯一SKU(idx+0)、SPU(idx+1)、SPU带尺寸(idx+2)、包裹类型(idx+3)、发货SKU(idx+4)、ASIN(idx+5)、listing(idx+6)
-    IDX_FAHUO = len(idx) + 4          # 发货SKU 列索引（扩展记录需改成「否」）
-    IDX_ASIN = len(idx) + 5           # ASIN 列索引（追加列偏移）
-    IDX_LISTING = len(idx) + 6        # listing后台状态 列索引（追加列偏移）
+    # row 追加顺序：唯一SKU(idx+0)、SPU(idx+1)、SPU带尺寸(idx+2)、包裹类型(idx+3)、品类(idx+4)、发货SKU(idx+5)、ASIN(idx+6)、listing(idx+7)
+    IDX_FAHUO = len(idx) + 5          # 发货SKU 列索引（扩展记录需改成「否」）
+    IDX_ASIN = len(idx) + 6           # ASIN 列索引（追加列偏移）
+    IDX_LISTING = len(idx) + 7        # listing后台状态 列索引（追加列偏移）
     result = list(rows)               # 先保留全部原始行（发货SKU=是）
     n_added = 0
 
@@ -519,7 +575,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
     COL_ASIN = 'ASIN'
     COL_LISTING = 'listing后台状态（领星+后台）'
     fidx = {name: i for i, name in enumerate(
-        header + ['唯一SKU', 'SPU', 'SPU带尺寸', '包裹类型', '发货SKU', COL_ASIN, COL_LISTING,
+        header + ['唯一SKU', 'SPU', 'SPU带尺寸', '包裹类型', '品类', '发货SKU', COL_ASIN, COL_LISTING,
                   '异常确认状态', '异常确认备注'])}
 
     # ---- 新增：异常确认状态 / 异常确认备注（仅异常行默认待确认；空白记录全程留空） ----
@@ -564,13 +620,15 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
     result.sort(key=final_key)
 
     # ---- 列重排：系统面板/下载报表展示顺序在前，其余列在后 ----
+    # 2026-09-03 调整：① 新增「品类」列，位于「包裹类型」之后；② 「代运营」前移至「发货SKU」之前（默认显示）。
     ORDER = [
         'ID', '14K货号', 'ASIN', '成员货品', '成员货品数量',
-        'listing后台状态（领星+后台）', '店铺', '唯一SKU', 'SPU', 'SPU带尺寸', '包裹类型', '发货SKU',
+        'listing后台状态（领星+后台）', '店铺', '唯一SKU', 'SPU', 'SPU带尺寸',
+        '包裹类型', '品类', '代运营', '发货SKU',
         '是否同步平台库存', '美国生命周期状态', '非活动', 'leadtime',
         '是否重复维护', '异常确认状态', '异常确认备注',
         '内部 ID', '德国生命周期状态', '日本生命周期状态', '英国生命周期状态',
-        '类型', '代运营'
+        '类型'
     ]
     RENAME = {'14K货号': '上架SKU', '成员货品': '库存SKU'}
     new_header = [RENAME.get(n, n) for n in ORDER]
@@ -629,6 +687,11 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
             'sku_count': len(mem2rep),
             'group_count': len(groups),
         },
+        'admin': {                          # 管理员检查表（品类）口径
+            'used': bool(admin_map),
+            'summary': admin_summary,
+            'covered': sum(1 for r in result if r[fidx['品类']] != ''),
+        },
         'lingxing': lx_summary,             # 本次使用的领星清单口径（None=未上传）
         'walmart': wm_summary,              # 本次使用的 walmart 报表口径（None=未上传）
     }
@@ -637,8 +700,8 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
 
 # ========================== 对外入口 ==========================
 def run_pipeline(raw_csv_path, xlsx_path, lingxing_path=None, walmart_path=None,
-                 progress=None):
-    """原始 CSV + 转单.xlsx + 可选(领星清单, walmart报表) -> (header, rows, stats)
+                 admin_check_path=None, progress=None):
+    """原始 CSV + 转单.xlsx + 可选(领星清单, walmart报表, 管理员检查表) -> (header, rows, stats)
 
     progress: 可选回调 progress(pct, stage)，用于前端进度条。
               阶段：读取原始表 5% → 阶段一清洗打标 40% → 阶段二扩展赋值 80% → 完成 100%
@@ -657,6 +720,7 @@ def run_pipeline(raw_csv_path, xlsx_path, lingxing_path=None, walmart_path=None,
     header, rows, stats = _stage2(header, rows, xlsx_path,
                                   lingxing_path=lingxing_path,
                                   walmart_path=walmart_path,
+                                  admin_check_path=admin_check_path,
                                   progress=lambda p, s: _p(40 + int(p * 0.45), s))
 
     _p(95, '生成统计…')

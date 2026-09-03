@@ -92,8 +92,11 @@ REF_META = os.path.join(DATA_DIR, 'reference_meta.json')
 LATEST_RAW = os.path.join(UPLOAD_DIR, 'latest_raw.csv')     # 留档，供重算
 LATEST_LINGXING = os.path.join(UPLOAD_DIR, 'latest_lingxing.xlsx')   # 领星清单留档
 LATEST_WALMART = os.path.join(UPLOAD_DIR, 'latest_walmart.csv')      # walmart 报表留档
+LATEST_ADMIN_XLSX = os.path.join(UPLOAD_DIR, 'latest_admin.xlsx')    # 管理员检查表留档（xlsx）
+LATEST_ADMIN_CSV = os.path.join(UPLOAD_DIR, 'latest_admin.csv')        # 管理员检查表留档（csv）
 LINGXING_META = os.path.join(DATA_DIR, 'lingxing_meta.json')
 WALMART_META = os.path.join(DATA_DIR, 'walmart_meta.json')
+ADMIN_META = os.path.join(DATA_DIR, 'admin_meta.json')
 for d in (REF_DIR, UPLOAD_DIR, DATA_DIR):
     os.makedirs(d, exist_ok=True)
 
@@ -160,7 +163,8 @@ STATE = {'header': None, 'rows': None, 'stats': None,
          'filename': None, 'uploaded_at': None,
          'ref_filename': None, 'ref_uploaded_at': None,
          'lx_filename': None, 'lx_uploaded_at': None,
-         'wm_filename': None, 'wm_uploaded_at': None}
+         'wm_filename': None, 'wm_uploaded_at': None,
+         'admin_filename': None, 'admin_uploaded_at': None}
 _LOCK = threading.Lock()
 
 
@@ -313,7 +317,8 @@ def _save_state(retry=3):
                ('header', 'rows', 'stats', 'filename', 'uploaded_at',
                 'ref_filename', 'ref_uploaded_at',
                 'lx_filename', 'lx_uploaded_at',
-                'wm_filename', 'wm_uploaded_at')}
+                'wm_filename', 'wm_uploaded_at',
+                'admin_filename', 'admin_uploaded_at')}
     last_err = None
     for attempt in range(retry):
         try:
@@ -338,7 +343,8 @@ def _load_state():
         for k in ('header', 'rows', 'stats', 'filename', 'uploaded_at',
                   'ref_filename', 'ref_uploaded_at',
                   'lx_filename', 'lx_uploaded_at',
-                  'wm_filename', 'wm_uploaded_at'):
+                  'wm_filename', 'wm_uploaded_at',
+                  'admin_filename', 'admin_uploaded_at'):
             STATE[k] = d.get(k)
         return True
     except Exception:
@@ -350,16 +356,26 @@ _load_state()
 
 
 # ------------------------------------------------------------------ 数据源（领星/walmart）管理
+def _current_admin_path():
+    """返回当前生效的管理员检查表留档路径（xlsx/csv 按实际上传格式）。无则返回 None。"""
+    for p in (LATEST_ADMIN_XLSX, LATEST_ADMIN_CSV):
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def _current_ds():
     """返回本次重算应使用的数据源路径（存在才用）。"""
     lx = LATEST_LINGXING if os.path.exists(LATEST_LINGXING) else None
     wm = LATEST_WALMART if os.path.exists(LATEST_WALMART) else None
-    return lx, wm
+    admin = _current_admin_path()
+    return lx, wm, admin
 
 
 def _ds_info():
     lxm = _read_meta_file(LINGXING_META)
     wmm = _read_meta_file(WALMART_META)
+    adm = _read_meta_file(ADMIN_META)
     return {
         'lingxing': ({'filename': lxm.get('filename'),
                       'uploaded_at': lxm.get('uploaded_at'),
@@ -367,6 +383,9 @@ def _ds_info():
         'walmart': ({'filename': wmm.get('filename'),
                      'uploaded_at': wmm.get('uploaded_at'),
                      'summary': wmm.get('summary')} if wmm else None),
+        'admin': ({'filename': adm.get('filename'),
+                   'uploaded_at': adm.get('uploaded_at'),
+                   'summary': adm.get('summary')} if adm else None),
     }
 
 
@@ -380,12 +399,13 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     if not ref_path:
         progress_end(False, '尚未上传转单表')
         return False, '尚未上传转单表，请先上传「转单.xlsx」', 400
-    lx_path, wm_path = _current_ds()
+    lx_path, wm_path, admin_path = _current_ds()
     progress_start('读取原始报表…')
     try:
         header, rows, stats = run_pipeline(raw_path, ref_path,
                                            lingxing_path=lx_path,
                                            walmart_path=wm_path,
+                                           admin_check_path=admin_path,
                                            progress=progress_set)
     except ValueError as e:
         progress_end(False, e)
@@ -397,6 +417,7 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     progress_set(97, '写入看板数据…')
     lxm = _read_meta_file(LINGXING_META)
     wmm = _read_meta_file(WALMART_META)
+    adm = _read_meta_file(ADMIN_META)
     with _LOCK:
         STATE['header'] = header
         STATE['rows'] = rows
@@ -411,6 +432,8 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
         STATE['lx_uploaded_at'] = (lxm or {}).get('uploaded_at')
         STATE['wm_filename'] = (wmm or {}).get('filename')
         STATE['wm_uploaded_at'] = (wmm or {}).get('uploaded_at')
+        STATE['admin_filename'] = (adm or {}).get('filename')
+        STATE['admin_uploaded_at'] = (adm or {}).get('uploaded_at')
         _save_state()
         # 数据源版本元信息同步到存储层（JSON / Supabase），保证多人看到同一套口径
         try:
@@ -423,6 +446,8 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
                 'lx_uploaded_at': (lxm or {}).get('uploaded_at'),
                 'wm_filename': (wmm or {}).get('filename'),
                 'wm_uploaded_at': (wmm or {}).get('uploaded_at'),
+                'admin_filename': (adm or {}).get('filename'),
+                'admin_uploaded_at': (adm or {}).get('uploaded_at'),
             })
         except Exception:
             pass
@@ -433,7 +458,9 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
                   'filename': STATE['filename'],
                   'uploaded_at': STATE['uploaded_at'],
                   'ref_filename': STATE['ref_filename'],
-                  'ref_uploaded_at': STATE['ref_uploaded_at']}, 200
+                  'ref_uploaded_at': STATE['ref_uploaded_at'],
+                  'admin_filename': STATE['admin_filename'],
+                  'admin_uploaded_at': STATE['admin_uploaded_at']}, 200
 
 
 def _row_id_key(row):
@@ -539,6 +566,34 @@ def _ensure_cloud_ds():
                 pass
     except Exception:
         pass
+    # 管理员检查表（品类）：云端覆盖本地留档 + 重建 meta
+    try:
+        data = storage.ds_file_download(storage.OBJ_ADMIN)
+        if data:
+            # 云端对象无扩展名信息，先尝试按 xlsx 解析，失败再按 csv
+            _atomic_write_bytes(LATEST_ADMIN_XLSX, data)
+            try:
+                from pipeline import load_admin_check
+                _, summary = load_admin_check(LATEST_ADMIN_XLSX)
+                _write_meta_file(ADMIN_META, {'filename': '管理员检查表（云端同步）',
+                                             'uploaded_at': now_bj(),
+                                             'summary': summary})
+            except Exception:
+                # 不是 xlsx：当作 csv 处理
+                try:
+                    os.remove(LATEST_ADMIN_XLSX)
+                except OSError:
+                    pass
+                _atomic_write_bytes(LATEST_ADMIN_CSV, data)
+                try:
+                    _, summary = load_admin_check(LATEST_ADMIN_CSV)
+                    _write_meta_file(ADMIN_META, {'filename': '管理员检查表（云端同步）',
+                                                 'uploaded_at': now_bj(),
+                                                 'summary': summary})
+                except Exception:
+                    pass
+    except Exception:
+        pass
     return ok_raw, ok_ref
 
 
@@ -604,6 +659,7 @@ def api_status():
     ds = _ds_info()
     lxm = ds['lingxing']
     wmm = ds['walmart']
+    adm = ds['admin']
     return jsonify({
         'ready': STATE['rows'] is not None,
         'filename': STATE['filename'],
@@ -620,14 +676,19 @@ def api_status():
                           and STATE['ref_uploaded_at'] != meta['uploaded_at']),
         'lingxing': lxm,
         'walmart': wmm,
+        'admin': adm,
         'lx_used': {'filename': STATE['lx_filename'],
                     'uploaded_at': STATE['lx_uploaded_at']},
         'wm_used': {'filename': STATE['wm_filename'],
                     'uploaded_at': STATE['wm_uploaded_at']},
+        'admin_used': {'filename': STATE['admin_filename'],
+                       'uploaded_at': STATE['admin_uploaded_at']},
         'lx_stale': bool(lxm and STATE['rows'] is not None
                          and STATE['lx_uploaded_at'] != lxm['uploaded_at']),
         'wm_stale': bool(wmm and STATE['rows'] is not None
                          and STATE['wm_uploaded_at'] != wmm['uploaded_at']),
+        'admin_stale': bool(adm and STATE['rows'] is not None
+                            and STATE['admin_uploaded_at'] != adm['uploaded_at']),
     })
 
 
@@ -784,6 +845,60 @@ def api_upload_walmart():
                     'needs_rebuild': STATE['rows'] is not None})
 
 
+@app.route('/api/upload/admin', methods=['POST'])
+def api_upload_admin():
+    """上传/更新「所有库存货品管理员检查表」（.xlsx 或 .csv）。
+    需含列 唯一SKU（匹配键）与 品类_3（取值）。校验后留档，供重算回填「品类」列。"""
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未收到文件'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'ok': False, 'msg': '文件名为空'}), 400
+    name = f.filename.lower()
+    if not (name.endswith('.xlsx') or name.endswith('.xlsm') or name.endswith('.csv')):
+        return jsonify({'ok': False, 'msg': '管理员检查表需为 .xlsx 或 .csv 文件'}), 400
+
+    raw = f.read()
+    admin_path = LATEST_ADMIN_CSV if name.endswith('.csv') else LATEST_ADMIN_XLSX
+    # 若之前存过另一种格式，先清掉，避免 _current_admin_path 误判
+    try:
+        os.remove(LATEST_ADMIN_XLSX if name.endswith('.csv') else LATEST_ADMIN_CSV)
+    except OSError:
+        pass
+    _atomic_write_bytes(admin_path, raw)        # 按原格式（xlsx/csv）字节保存
+    stored_name = f.filename
+
+    try:
+        from pipeline import load_admin_check
+        match_map, summary = load_admin_check(admin_path)
+    except Exception as e:
+        try:
+            os.remove(admin_path)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'msg': '管理员检查表解析失败：' + str(e)}), 400
+    if not match_map:
+        try:
+            os.remove(admin_path)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'msg': '管理员检查表未匹配到任何唯一SKU（检查是否有「唯一SKU」列）'}), 400
+
+    meta = {'filename': stored_name,
+            'uploaded_at': now_bj(),
+            'summary': summary}
+    _write_meta_file(ADMIN_META, meta)
+    # 校验通过后同步到云 Storage
+    try:
+        with open(admin_path, 'rb') as _af:
+            storage.ds_file_upload(storage.OBJ_ADMIN, _af.read())
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'admin': meta,
+                    'ready': STATE['rows'] is not None,
+                    'needs_rebuild': STATE['rows'] is not None})
+
+
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
     """上传原始报表 CSV -> 清洗 -> 看板。"""
@@ -874,6 +989,8 @@ def api_state():
         'lx_uploaded_at': STATE['lx_uploaded_at'],
         'wm_filename': STATE['wm_filename'],
         'wm_uploaded_at': STATE['wm_uploaded_at'],
+        'admin_filename': STATE['admin_filename'],
+        'admin_uploaded_at': STATE['admin_uploaded_at'],
         'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
     }
     # 异常确认记录（含 version），供前端行级冲突检测初始化

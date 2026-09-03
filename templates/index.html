@@ -67,9 +67,22 @@
         </div>
       </div>
 
-      <!-- 步骤 4：原始报表 -->
+      <!-- 步骤 4：所有库存货品管理员检查表（可选数据源：品类） -->
+      <div class="step" id="step-admin">
+        <div class="step-hd"><span class="no">4</span><h2>所有库存货品管理员检查表（可选：品类）</h2></div>
+        <div class="ref-box">
+          <div id="admin-info" class="ref-info">未上传管理员检查表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-admin">上传 / 更新管理员检查表</button>
+          </div>
+          <div class="hint">支持 .xlsx 或 .csv；需含列 <b>唯一SKU</b>（匹配键，按唯一SKU 取「品类」）与 <b>品类_3</b>（取值，亦接受「品类3」）。上传后按唯一SKU 匹配回填「品类」列（位于包裹类型之后）；不更新时沿用上一版。</div>
+          <div id="admin-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 5：原始报表 -->
       <div class="step" id="step-raw">
-        <div class="step-hd"><span class="no">4</span><h2>原始「SKU平台信息套件成员货品体现」表格</h2></div>
+        <div class="step-hd"><span class="no">5</span><h2>原始「SKU平台信息套件成员货品体现」表格</h2></div>
         <div class="drop" id="drop-raw">
           <p class="big">拖入 CSV，或点击选择文件</p>
           <p style="margin-top:12px">
@@ -84,6 +97,7 @@
     <input type="file" id="ref-input" accept=".xlsx,.xlsm">
     <input type="file" id="lx-input" accept=".xlsx,.xlsm">
     <input type="file" id="wm-input" accept=".csv,.zip">
+    <input type="file" id="admin-input" accept=".xlsx,.xlsm,.csv">
   </section>
 
   <!-- 看板 -->

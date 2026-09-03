@@ -96,6 +96,7 @@ OBJ_RAW = 'raw/latest_raw.csv'            # 原始报表 CSV
 OBJ_REF = 'ref/latest_transfer.xlsx'      # 转单表 xlsx
 OBJ_LX = 'lx/latest_lingxing.xlsx'        # 领星清单 xlsx
 OBJ_WM = 'wm/latest_walmart.csv'          # walmart 报表 csv
+OBJ_ADMIN = 'admin/latest_admin'          # 管理员检查表（品类）：xlsx/csv 通用 key（无扩展名）
 
 
 def _ensure_bucket(c):

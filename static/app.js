@@ -5,7 +5,8 @@ let HEADER = [], ROWS = [], STATS = null, MISSING_ROWS = [];
 let ANNOTS = {};              // id_key -> {status,note,version}，来自 /api/state.annotations
 let REF = null, REF_STALE = false, HAS_RAW = false;   // 转单表状态
 let LX = null, WM = null;                              // 可选数据源：领星清单 / walmart 报表
-let LX_STALE = false, WM_STALE = false;                // 数据源是否比当前看板新
+let ADMIN = null;                                     // 可选数据源：管理员检查表（品类）
+let LX_STALE = false, WM_STALE = false, ADMIN_STALE = false;  // 数据源是否比当前看板新
 let COL = {};                 // 列名 -> 索引
 let TABLE = null, MISSING_TABLE = null;
 let PKG_CHART = null, FAHUO_CHART = null;
@@ -245,9 +246,9 @@ function refreshStatus() {
     .then(({ ok, d }) => {
       if (!ok || !d) return {};
       REF = d.reference; REF_STALE = !!d.ref_stale; HAS_RAW = !!d.has_raw;
-      LX = d.lingxing || null; WM = d.walmart || null;
-      LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale;
-      renderRefInfo(); renderLxInfo(); renderWmInfo();
+      LX = d.lingxing || null; WM = d.walmart || null; ADMIN = d.admin || null;
+      LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale; ADMIN_STALE = !!d.admin_stale;
+      renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo();
       return d;
     }).catch(() => ({}));
 }
@@ -298,6 +299,19 @@ function renderWmInfo() {
     `有效记录 ${s.rows || 0} 行　｜　可匹配 SKU ${s.matched || 0} 个`;
 }
 
+function renderAdminInfo() {
+  const box = $$('#admin-info');
+  if (!box) return;
+  if (!ADMIN) {
+    box.innerHTML = '<span class="warn">未上传管理员检查表</span>　—— 「品类」列将为空（不影响其他功能）。';
+    return;
+  }
+  const s = ADMIN.summary || {};
+  box.innerHTML =
+    `<span class="ok">当前生效</span>：<b>${escHtml(ADMIN.filename)}</b>　上传于 ${escHtml(ADMIN.uploaded_at)}<br>` +
+    `有效记录 ${s.rows || 0} 行　｜　可匹配唯一SKU ${s.matched || 0} 个`;
+}
+
 function bindUploadUI() {
   const zone = $$('#drop-raw'), input = $$('#file-input');
   $$('#btn-pick').onclick = () => input.click();
@@ -321,6 +335,10 @@ function bindUploadUI() {
   const winput = $$('#wm-input');
   $$('#btn-pick-wm').onclick = () => winput.click();
   winput.onchange = e => { if (e.target.files[0]) uploadWm(e.target.files[0]); e.target.value = ''; };
+  // 管理员检查表（品类）上传
+  const ainput = $$('#admin-input');
+  $$('#btn-pick-admin').onclick = () => ainput.click();
+  ainput.onchange = e => { if (e.target.files[0]) uploadAdmin(e.target.files[0]); e.target.value = ''; };
 }
 
 function uploadRef(file) {
@@ -403,6 +421,28 @@ function uploadWm(file) {
         `${s.rows || 0} 行 / ${s.matched || 0} 个 SKU 可匹配` +
         (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-wm">立即重算</a>。' : '　—— 可继续上传原始报表。');
       const lk = $$('#lnk-rebuild-wm');
+      if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
+    })
+    .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
+}
+
+/* ---------- 管理员检查表（品类）上传 ---------- */
+function uploadAdmin(file) {
+  const msg = $$('#admin-msg');
+  msg.className = 'msg'; msg.textContent = '解析中…';
+  const fd = new FormData(); fd.append('file', file);
+  apiCall('/api/upload/admin', { method: 'POST', body: fd })
+    .then(safeJson)
+    .then(({ ok, d }) => {
+      if (!ok || !d.ok) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '上传失败'); return; }
+      ADMIN = d.admin || ADMIN;
+      renderAdminInfo();
+      msg.className = 'msg';
+      const s = (ADMIN && ADMIN.summary) || {};
+      msg.innerHTML = `<span style="color:#16a34a">✓ 管理员检查表已更新</span>：` +
+        `${s.matched || 0} 个唯一SKU 可匹配` +
+        (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-admin">立即重算</a>。' : '　—— 可继续上传原始报表。');
+      const lk = $$('#lnk-rebuild-admin');
       if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
     })
     .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
@@ -543,19 +583,21 @@ function renderDashboard(d) {
   const t = (STATS && STATS.transfer) || {};
   const lxs = (STATS && STATS.lingxing) || null;
   const wms = (STATS && STATS.walmart) || null;
+  const adm = (STATS && STATS.admin) || null;
   const mp = (STATS && STATS.missing_platform) || {};
   const lxTxt = lxs ? `领星 <b>${escHtml(d.lx_filename || '—')}</b>（${lxs.matched || 0} 组可匹配` +
     (mp.lingxing ? `｜缺平台信息 ${mp.lingxing}` : '') + `）` : '领星 未使用';
   const wmTxt = wms ? `walmart <b>${escHtml(d.wm_filename || '—')}</b>（${wms.matched || 0} SKU 可匹配` +
     (mp.walmart ? `｜缺平台信息 ${mp.walmart}` : '') + `）` : 'walmart 未使用';
+  const admTxt = adm && adm.used ? `管理员检查表 <b>${escHtml(d.admin_filename || '—')}</b>（品类覆盖 ${adm.covered || 0} 行）` : '管理员检查表 未使用';
   $$('#refbar-text').innerHTML =
     `转单表：<b>${escHtml(d.ref_filename || '—')}</b>（上传于 ${escHtml(d.ref_uploaded_at || '—')}）` +
     `　｜　转单行 ${t.total_rows || 0}　涉及 SKU ${t.sku_count || 0}　转单组 ${t.group_count || 0}` +
     `　｜　本次扩展 ${STATS.expanded_groups} 组 / +${STATS.expanded} 行<br>` +
-    `数据源：${lxTxt}　｜　${wmTxt}`;
+    `数据源：${lxTxt}　｜　${wmTxt}　｜　${admTxt}`;
   $$('#btn-rebuild').disabled = !(d.ref_filename !== null);
   $$('#ref-stale').classList.toggle('hide', !REF_STALE);
-  $$('#ds-stale').classList.toggle('hide', !(LX_STALE || WM_STALE));
+  $$('#ds-stale').classList.toggle('hide', !(LX_STALE || WM_STALE || ADMIN_STALE));
 
   renderCards();
   renderCharts();
@@ -877,7 +919,7 @@ function initTable() {
     lengthMenu: [25, 50, 100, 200, 500],
     order: [],
     columnDefs: [
-      { targets: [COL['内部 ID'], COL['德国生命周期状态'], COL['日本生命周期状态'], COL['英国生命周期状态'], COL['类型'], COL['代运营']], visible: false }
+      { targets: [COL['内部 ID'], COL['德国生命周期状态'], COL['日本生命周期状态'], COL['英国生命周期状态'], COL['类型']], visible: false }
     ],
     language: {
       search: '全局搜索：', lengthMenu: '每页 _MENU_ 条',
