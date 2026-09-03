@@ -309,7 +309,7 @@ function renderAdminInfo() {
   const s = ADMIN.summary || {};
   box.innerHTML =
     `<span class="ok">当前生效</span>：<b>${escHtml(ADMIN.filename)}</b>　上传于 ${escHtml(ADMIN.uploaded_at)}<br>` +
-    `有效记录 ${s.rows || 0} 行　｜　可匹配唯一SKU ${s.matched || 0} 个`;
+    `有效记录 ${s.rows || 0} 行　｜　可匹配 SKU ${s.matched || 0} 个`;
 }
 
 function bindUploadUI() {
@@ -440,7 +440,7 @@ function uploadAdmin(file) {
       msg.className = 'msg';
       const s = (ADMIN && ADMIN.summary) || {};
       msg.innerHTML = `<span style="color:#16a34a">✓ 管理员检查表已更新</span>：` +
-        `${s.matched || 0} 个唯一SKU 可匹配` +
+        `${s.matched || 0} 个 SKU 可匹配` +
         (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-admin">立即重算</a>。' : '　—— 可继续上传原始报表。');
       const lk = $$('#lnk-rebuild-admin');
       if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };

@@ -328,13 +328,13 @@ def load_walmart(path):
 
 
 def load_admin_check(path):
-    """所有库存货品管理员检查表：唯一SKU -> 品类_3。
+    """所有库存货品管理员检查表：匹配键 -> 品类_3。
 
     支持 .xlsx / .csv。要求列：
-      匹配键列：唯一SKU（亦接受 库存SKU / 成员货品 / SKU）
+      匹配键列：唯一SKU（亦接受 名称 / 库存SKU / 成员货品 / SKU）
       取值列：  品类_3（亦接受 品类3 / 品类_3）
-    返回 (match_map, summary)：match_map = {唯一SKU(去空格): 品类_3}，summary = {rows, matched}。
-    同唯一SKU 多行取第一条。
+    返回 (match_map, summary)：match_map = {匹配键(去空格): 品类_3}，summary = {rows, matched}。
+    同匹配键 多行取第一条。
     """
     if path.lower().endswith('.csv'):
         with open(path, encoding='utf-8-sig', newline='') as f:
@@ -349,10 +349,10 @@ def load_admin_check(path):
         raise ValueError('管理员检查表为空')
     hdr = [str(x).strip() if x is not None else '' for x in rows[0]]
 
-    key_candidates = ['唯一SKU', '唯一sku', '库存SKU', '成员货品', 'SKU']
+    key_candidates = ['唯一SKU', '唯一sku', '名称', '库存SKU', '成员货品', 'SKU']
     key_idx = next((hdr.index(c) for c in key_candidates if c in hdr), None)
     if key_idx is None:
-        raise ValueError('管理员检查表缺少匹配列「唯一SKU」（亦支持 库存SKU / 成员货品 / SKU）')
+        raise ValueError('管理员检查表缺少匹配列「唯一SKU」（亦支持 名称 / 库存SKU / 成员货品 / SKU）')
 
     target_candidates = ['品类_3', '品类3', '品类_3']
     tgt_idx = next((hdr.index(c) for c in target_candidates if c in hdr), None)

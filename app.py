@@ -848,7 +848,7 @@ def api_upload_walmart():
 @app.route('/api/upload/admin', methods=['POST'])
 def api_upload_admin():
     """上传/更新「所有库存货品管理员检查表」（.xlsx 或 .csv）。
-    需含列 唯一SKU（匹配键）与 品类_3（取值）。校验后留档，供重算回填「品类」列。"""
+    需含列 唯一SKU / 名称（匹配键）与 品类_3（取值）。校验后留档，供重算回填「品类」列。"""
     if 'file' not in request.files:
         return jsonify({'ok': False, 'msg': '未收到文件'}), 400
     f = request.files['file']
@@ -882,7 +882,7 @@ def api_upload_admin():
             os.remove(admin_path)
         except OSError:
             pass
-        return jsonify({'ok': False, 'msg': '管理员检查表未匹配到任何唯一SKU（检查是否有「唯一SKU」列）'}), 400
+        return jsonify({'ok': False, 'msg': '管理员检查表未匹配到任何 SKU（检查是否有「唯一SKU」或「名称」列）'}), 400
 
     meta = {'filename': stored_name,
             'uploaded_at': now_bj(),
