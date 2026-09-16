@@ -494,26 +494,28 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
             -1 if pkg == '单件' else 0,                        # ③单件 优先
         )
 
-    # ① 先为每个转单组挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
+    # ① 先为每个「店铺 × 转单组」挑一条「最优模板行」（候选 = 该组成员在原始数据里出现的行）
     #    优先级：有 ASIN -> 在售(在售/PUBLISHED) -> 单件
-    #    best_rep[rep] = (优先级元组, 行号 i)；同一组只保留一条最优，供复制组内其他 SKU
+    #    best_rep[(store, rep)] = (优先级元组, 行号 i)；同一店铺同组内只保留一条最优，供该店铺单独复制组内其他 SKU
+    #    —— 同款 SKU 在 A、B 两店都存在时，两店各自独立扩展（不再只扩展其中一个店）。
     best_rep = {}
     for i, row in enumerate(rows):
         X = row[idx[COL_MEM]]
         if X in mem2rep:
+            store = row[idx[COL_STORE]].strip()
             rep = mem2rep[X]
             asin, listing, pkg = row_meta[i]
             prio = _tmpl_prio_meta(asin, listing, pkg)
-            cur = best_rep.get(rep)
+            cur = best_rep.get((store, rep))
             if cur is None or prio < cur[0]:
-                best_rep[rep] = (prio, i)
+                best_rep[(store, rep)] = (prio, i)
 
-    # 成员货品 -> 该组「最佳模板」的成员货品（同组原始行+扩展行都用这个值=唯一SKU）
+    # 成员货品 -> 该「店铺×组」最佳模板的成员货品（同店铺同组原始行+扩展行都用这个值=唯一SKU）
     mem2best_member = {}
-    for rep, (_, i) in best_rep.items():
+    for (store, rep), (_, i) in best_rep.items():
         tmpl_mem = rows[i][idx[COL_MEM]]
         for sku in groups[rep]:
-            mem2best_member[sku] = tmpl_mem
+            mem2best_member[(store, sku)] = tmpl_mem
 
     # ---- 赋值 唯一SKU + SPU + SPU带尺寸 + 包裹类型 + 品类 + 发货SKU + ASIN + listing后台状态 ----
     # 唯一SKU：转单组内 = 组最佳模板的成员货品；非转单组 = 自己的成员货品
@@ -521,7 +523,8 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
     n_asin = 0
     for i, row in enumerate(rows):
         mem = row[idx[COL_MEM]]
-        uniq_sku = mem2best_member.get(mem, mem)            # 同组同唯一SKU
+        store = row[idx[COL_STORE]].strip()
+        uniq_sku = mem2best_member.get((store, mem), mem)    # 同店铺内同组同唯一SKU；跨店铺各自独立
         spu = _spu(uniq_sku)
         blank = _is_blank_record(row, idx)                    # 空白记录：14K货号空 + 非活动=否
         row.append(uniq_sku)                                 # 唯一SKU
@@ -546,8 +549,9 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
 
     _p(55, '转单扩展（同品多 SKU 补齐）…')
 
-    # ② 对每个有最优模板的组，用该模板复制「组内除自身外」的所有 SKU
-    for rep, (_prio, i) in best_rep.items():
+    # ② 对每个「店铺×组」有最优模板的，用该店铺模板复制「组内除自身外」的所有 SKU
+    #    —— 同款 SKU 在 A、B 两店都有时，两店各自独立生成变体行（发货SKU=否），互不影响。
+    for (store, rep), (_prio, i) in best_rep.items():
         tmpl = rows[i]
         tmpl_X = tmpl[idx[COL_MEM]]
         for sku in groups[rep]:
@@ -556,7 +560,7 @@ def _stage2(header, rows, xlsx_path, lingxing_path=None, walmart_path=None,
             copy = list(tmpl)
             copy[idx[COL_MEM]] = sku
             copy[IDX_FAHUO] = '否'   # 发货SKU：转单扩展记录=否（勿用 copy[-1]，会误改 listing）
-            # 唯一SKU/包裹类型/ASIN/listing状态 随 copy 继承（= 最优模板）
+            # 唯一SKU/包裹类型/ASIN/listing状态 随 copy 继承（= 该店铺最优模板）
             result.append(copy)
             n_added += 1
 
