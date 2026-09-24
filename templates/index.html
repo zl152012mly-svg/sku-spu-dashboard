@@ -84,11 +84,13 @@
       <!-- 步骤 5：原始报表 -->
       <div class="step" id="step-raw">
         <div class="step-hd"><span class="no">5</span><h2>原始「SKU平台信息套件成员货品体现」表格</h2></div>
-        <div class="drop" id="drop-raw">
-          <p class="big">拖入 CSV，或点击选择文件</p>
-          <p style="margin-top:12px">
-            <button class="btn" id="btn-pick">选择文件并生成看板</button>
-          </p>
+        <div class="ref-box">
+          <div id="raw-info" class="ref-info">未上传原始报表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick">上传 / 更新原始表</button>
+            <button class="btn" id="btn-rebuild-raw" disabled>重新计算并生成看板</button>
+          </div>
+          <div class="hint">支持 .csv；上传后仅更新所有用户共用的当前原始表。确认转单表、领星及其他数据源后，再点击「重新计算并生成看板」。</div>
         </div>
         <div id="upload-msg" class="msg err"></div>
       </div>

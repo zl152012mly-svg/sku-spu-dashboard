@@ -97,6 +97,7 @@ LATEST_ADMIN_CSV = os.path.join(UPLOAD_DIR, 'latest_admin.csv')        # 管理�
 LINGXING_META = os.path.join(DATA_DIR, 'lingxing_meta.json')
 WALMART_META = os.path.join(DATA_DIR, 'walmart_meta.json')
 ADMIN_META = os.path.join(DATA_DIR, 'admin_meta.json')
+RAW_META = os.path.join(DATA_DIR, 'raw_meta.json')
 for d in (REF_DIR, UPLOAD_DIR, DATA_DIR):
     os.makedirs(d, exist_ok=True)
 
@@ -389,6 +390,63 @@ def _ds_info():
     }
 
 
+def _raw_info():
+    """当前生效原始表的共享展示信息。"""
+    meta = _read_meta_file(RAW_META)
+    if meta:
+        return {'filename': meta.get('filename'),
+                'uploaded_at': meta.get('uploaded_at'),
+                'summary': meta.get('summary') or {}}
+    if not os.path.exists(LATEST_RAW):
+        return None
+    return {'filename': STATE.get('filename') or 'latest_raw.csv',
+            'uploaded_at': STATE.get('uploaded_at'),
+            'summary': {'rows': (STATE.get('stats') or {}).get('original', 0)}}
+
+
+def _summarize_raw(path):
+    """轻量校验原始 CSV，上传源文件时不触发完整清洗。"""
+    from pipeline import REQUIRED_COLS
+    with open(path, encoding='utf-8-sig', newline='') as f:
+        reader = csv.reader(f)
+        try:
+            header = next(reader)
+        except StopIteration:
+            raise ValueError('原始表格为空')
+        missing = [c for c in REQUIRED_COLS if c not in header]
+        if missing:
+            raise ValueError('原始表格缺少必要列：' + '、'.join(missing))
+        rows = sum(1 for row in reader if any(str(c).strip() for c in row))
+    return {'rows': rows, 'columns': len(header)}
+
+
+def _sync_source_meta():
+    """把当前生效的数据源版本写入共享元信息，供所有用户和冷启动恢复展示。"""
+    _, ref = current_ref()
+    ds = _ds_info()
+    meta = storage.ds_get() or {}
+    meta.update({
+        'raw': _raw_info(),
+        'reference': ({'filename': ref.get('filename'),
+                       'uploaded_at': ref.get('uploaded_at'),
+                       'summary': ref.get('summary')} if ref else None),
+        'lingxing': ds['lingxing'],
+        'walmart': ds['walmart'],
+        'admin': ds['admin'],
+        'filename': STATE.get('filename'),
+        'uploaded_at': STATE.get('uploaded_at'),
+        'ref_filename': STATE.get('ref_filename'),
+        'ref_uploaded_at': STATE.get('ref_uploaded_at'),
+        'lx_filename': STATE.get('lx_filename'),
+        'lx_uploaded_at': STATE.get('lx_uploaded_at'),
+        'wm_filename': STATE.get('wm_filename'),
+        'wm_uploaded_at': STATE.get('wm_uploaded_at'),
+        'admin_filename': STATE.get('admin_filename'),
+        'admin_uploaded_at': STATE.get('admin_uploaded_at'),
+    })
+    storage.ds_update(meta)
+
+
 def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     """跑流水线并写入 STATE / 缓存。返回 (ok, payload_or_msg, http_code)
 
@@ -437,18 +495,7 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
         _save_state()
         # 数据源版本元信息同步到存储层（JSON / Supabase），保证多人看到同一套口径
         try:
-            storage.ds_update({
-                'filename': STATE['filename'],
-                'uploaded_at': STATE['uploaded_at'],
-                'ref_filename': meta.get('filename'),
-                'ref_uploaded_at': meta.get('uploaded_at'),
-                'lx_filename': (lxm or {}).get('filename'),
-                'lx_uploaded_at': (lxm or {}).get('uploaded_at'),
-                'wm_filename': (wmm or {}).get('filename'),
-                'wm_uploaded_at': (wmm or {}).get('uploaded_at'),
-                'admin_filename': (adm or {}).get('filename'),
-                'admin_uploaded_at': (adm or {}).get('uploaded_at'),
-            })
+            _sync_source_meta()
         except Exception:
             pass
         # 把云端/本地已存的异常确认，回填本次 rows 的异常确认两列
@@ -511,11 +558,23 @@ def _ensure_cloud_ds():
     if not storage._use_supabase():
         return False, False
     ok_raw = ok_ref = False
+    try:
+        cloud_meta = storage.ds_get() or {}
+    except Exception:
+        cloud_meta = {}
     # 原始报表
     try:
         data = storage.ds_file_download(storage.OBJ_RAW)
         if data:
             _atomic_write_bytes(LATEST_RAW, data)
+            raw_meta = dict(cloud_meta.get('raw') or {})
+            raw_meta.setdefault('filename', cloud_meta.get('filename') or 'latest_raw.csv')
+            raw_meta.setdefault('uploaded_at', cloud_meta.get('uploaded_at') or now_bj())
+            try:
+                raw_meta.setdefault('summary', _summarize_raw(LATEST_RAW))
+            except Exception:
+                raw_meta.setdefault('summary', {})
+            _write_meta_file(RAW_META, raw_meta)
             ok_raw = True
     except Exception:
         pass
@@ -667,6 +726,7 @@ def api_status():
         'stats': STATE['stats'],
         'header': STATE['header'],
         'has_raw': os.path.exists(LATEST_RAW),
+        'raw': _raw_info(),
         'reference': ({'filename': meta['filename'],
                        'uploaded_at': meta['uploaded_at'],
                        'summary': meta.get('summary')} if meta else None),
@@ -736,6 +796,10 @@ def api_reference_upload():
             storage.ds_file_upload(storage.OBJ_REF, _rf.read())
     except Exception:
         pass
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
     return jsonify({'ok': True, 'reference': meta,
                     'has_raw': os.path.exists(LATEST_RAW),
                     'ready': STATE['rows'] is not None})
@@ -777,6 +841,10 @@ def api_upload_lingxing():
     try:
         with open(LATEST_LINGXING, 'rb') as _lf:
             storage.ds_file_upload(storage.OBJ_LX, _lf.read())
+    except Exception:
+        pass
+    try:
+        _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'lingxing': meta,
@@ -840,6 +908,10 @@ def api_upload_walmart():
             storage.ds_file_upload(storage.OBJ_WM, _wf.read())
     except Exception:
         pass
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
     return jsonify({'ok': True, 'walmart': meta,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
@@ -894,6 +966,10 @@ def api_upload_admin():
             storage.ds_file_upload(storage.OBJ_ADMIN, _af.read())
     except Exception:
         pass
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
     return jsonify({'ok': True, 'admin': meta,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
@@ -901,53 +977,50 @@ def api_upload_admin():
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
-    """上传原始报表 CSV -> 清洗 -> 看板。"""
+    """上传原始报表 CSV，更新共享数据源；计算由 /api/rebuild 单独触发。"""
     if 'file' not in request.files:
         return jsonify({'ok': False, 'msg': '未收到文件'}), 400
     f = request.files['file']
     if not f.filename:
         return jsonify({'ok': False, 'msg': '文件名为空'}), 400
-    if not current_ref()[0]:
-        return jsonify({'ok': False, 'msg': '尚未上传转单表，请先在上方上传「转单.xlsx」'}), 400
+    # 先写临时文件并做表头校验，校验失败时保留上一份生效原始表。
+    raw_bytes = f.read()
+    tmp_path = LATEST_RAW + '.upload.tmp'
+    try:
+        _atomic_write_bytes(tmp_path, raw_bytes)
+        summary = _summarize_raw(tmp_path)
+    except Exception as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'msg': '原始表格解析失败：' + str(e)}), 400
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
 
-    # 直接落盘到 latest_raw.csv（覆盖），避免产生临时文件触发 Windows 回收站限制
-    _atomic_save_fileobj(LATEST_RAW, f)
-
-    # ---- 业务口径：只有上传【新的】原始表格，「数据更新时间」才变 ----
-    # 用 sha256 比对：与上次留档一致则视为同一份表格，保持原 uploaded_at（北京时间）
-    RAW_META = os.path.join(DATA_DIR, 'raw_meta.json')
+    # 用 sha256 比对同一份文件；仅新文件刷新「上传于」时间。
     prev_meta = _read_meta_file(RAW_META)
-    new_hash = file_sha256(LATEST_RAW)
+    new_hash = hashlib.sha256(raw_bytes).hexdigest()
     is_new_file = True
     if prev_meta and prev_meta.get('hash') and new_hash:
         is_new_file = (prev_meta['hash'] != new_hash)
-
-    ok, payload, code = _run_and_store(LATEST_RAW, f.filename,
-                                       keep_uploaded_at=not is_new_file)
-    if ok:
-        # 只有新表格才刷新 uploaded_at；重复上传同一份则沿用旧时间
-        uploaded_at = STATE['uploaded_at'] if is_new_file else (
-            prev_meta.get('uploaded_at') if prev_meta else STATE['uploaded_at'])
-        if not is_new_file:
-            STATE['uploaded_at'] = uploaded_at
-        payload = dict(payload)
-        payload['uploaded_at'] = uploaded_at
-        payload['is_new_file'] = is_new_file
-        try:
-            _write_meta_file(RAW_META, {'filename': f.filename,
-                                        'uploaded_at': uploaded_at,
-                                        'hash': new_hash})
-        except OSError:
-            pass
-        # 校验成功后才同步到云 Storage（供冷启动取最新原始表）
-        try:
-            with open(LATEST_RAW, 'rb') as _rf:
-                storage.ds_file_upload(storage.OBJ_RAW, _rf.read())
-        except Exception:
-            pass
-    if not ok:
-        return jsonify({'ok': False, 'msg': payload}), code
-    return jsonify(payload)
+    uploaded_at = now_bj() if is_new_file else (prev_meta or {}).get('uploaded_at')
+    _atomic_write_bytes(LATEST_RAW, raw_bytes)
+    meta = {'filename': f.filename, 'uploaded_at': uploaded_at,
+            'hash': new_hash, 'summary': summary}
+    _write_meta_file(RAW_META, meta)
+    try:
+        storage.ds_file_upload(storage.OBJ_RAW, raw_bytes)
+    except Exception:
+        pass
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'raw': _raw_info(), 'is_new_file': is_new_file,
+                    'ready': STATE['rows'] is not None, 'needs_rebuild': True})
 
 
 @app.route('/api/rebuild', methods=['POST'])
@@ -956,8 +1029,7 @@ def api_rebuild():
     if not os.path.exists(LATEST_RAW):
         return jsonify({'ok': False, 'msg': '没有留档的原始表，请上传原始报表'}), 400
     name = STATE['filename']
-    mp = os.path.join(DATA_DIR, 'raw_meta.json')
-    prev_meta = _read_meta_file(mp)
+    prev_meta = _read_meta_file(RAW_META)
     if prev_meta:
         name = prev_meta.get('filename') or name
     # 重算不算「上传新表格」：保持原「数据更新时间」（北京时间）

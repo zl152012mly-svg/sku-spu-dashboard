@@ -3,7 +3,7 @@
 
 let HEADER = [], ROWS = [], STATS = null, MISSING_ROWS = [];
 let ANNOTS = {};              // id_key -> {status,note,version}，来自 /api/state.annotations
-let REF = null, REF_STALE = false, HAS_RAW = false;   // 转单表状态
+let REF = null, RAW = null, REF_STALE = false, HAS_RAW = false;   // 转单表 / 原始表状态
 let LX = null, WM = null;                              // 可选数据源：领星清单 / walmart 报表
 let ADMIN = null;                                     // 可选数据源：管理员检查表（品类）
 let LX_STALE = false, WM_STALE = false, ADMIN_STALE = false;  // 数据源是否比当前看板新
@@ -283,10 +283,10 @@ function refreshStatus() {
     .then(safeJson)
     .then(({ ok, d }) => {
       if (!ok || !d) return {};
-      REF = d.reference; REF_STALE = !!d.ref_stale; HAS_RAW = !!d.has_raw;
+      REF = d.reference; RAW = d.raw || null; REF_STALE = !!d.ref_stale; HAS_RAW = !!d.has_raw;
       LX = d.lingxing || null; WM = d.walmart || null; ADMIN = d.admin || null;
       LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale; ADMIN_STALE = !!d.admin_stale;
-      renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo();
+      renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo(); renderRawInfo();
       return d;
     }).catch(() => ({}));
 }
@@ -350,17 +350,27 @@ function renderAdminInfo() {
     `有效记录 ${s.rows || 0} 行　｜　可匹配 SKU ${s.matched || 0} 个`;
 }
 
+function renderRawInfo() {
+  const box = $$('#raw-info');
+  const rebuildBtn = $$('#btn-rebuild-raw');
+  if (!box) return;
+  if (!RAW) {
+    box.innerHTML = '<span class="warn">未上传原始报表</span>　—— 上传后会同步为所有用户当前生效的原始数据源。';
+    if (rebuildBtn) rebuildBtn.disabled = true;
+    return;
+  }
+  const s = RAW.summary || {};
+  box.innerHTML =
+    `<span class="ok">当前生效</span>：<b>${escHtml(RAW.filename || 'latest_raw.csv')}</b>　上传于 ${escHtml(RAW.uploaded_at || '—')}<br>` +
+    `原始记录 ${s.rows || 0} 行　｜　字段 ${s.columns || '—'} 列`;
+  if (rebuildBtn) rebuildBtn.disabled = false;
+}
+
 function bindUploadUI() {
-  const zone = $$('#drop-raw'), input = $$('#file-input');
+  const input = $$('#file-input');
   $$('#btn-pick').onclick = () => input.click();
-  zone.onclick = e => { if (e.target.id !== 'btn-pick') input.click(); };
   input.onchange = e => { if (e.target.files[0]) upload(e.target.files[0]); e.target.value = ''; };
-  zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag'); };
-  zone.ondragleave = () => zone.classList.remove('drag');
-  zone.ondrop = e => {
-    e.preventDefault(); zone.classList.remove('drag');
-    if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]);
-  };
+  $$('#btn-rebuild-raw').onclick = () => rebuild($$('#upload-msg'));
   // 转单表上传
   const rinput = $$('#ref-input');
   $$('#btn-pick-ref').onclick = () => rinput.click();
@@ -494,7 +504,7 @@ function upload(file) {
   msg.textContent = '';
   const fd = new FormData();
   fd.append('file', file);
-  showProgress('正在清洗计算…');
+  showProgress('正在保存原始表…');
   apiCall('/api/upload', { method: 'POST', body: fd })
     .then(safeJson)
     .then(({ ok, d }) => {
@@ -503,9 +513,15 @@ function upload(file) {
         msg.textContent = '✗ ' + (d.msg || '处理失败');
         return;
       }
-      // 计算完成 → 载入看板（载入本身也走进度遮罩，避免"点了没反应"）
-      const isNew = d.is_new_file;
-      loadState(msg, isNew ? '新表格，数据已更新' : '与上次上传的表格内容相同，数据更新时间保持不变');
+      hideProgress();
+      RAW = d.raw || RAW;
+      HAS_RAW = true;
+      renderRawInfo();
+      msg.className = 'msg';
+      msg.style.color = '#16a34a';
+      msg.textContent = d.is_new_file
+        ? '✓ 原始表已更新并同步。请点击「重新计算并生成看板」使其生效。'
+        : '✓ 原始表内容未变化，当前版本保持不变。可点击「重新计算并生成看板」。';
     })
     .catch(err => {
       hideProgress();
@@ -565,6 +581,7 @@ function showUploadPanel() {
   $$('#btn-download').disabled = true;
   $$('#status-bar').textContent = '';
   renderRefInfo();
+  renderRawInfo();
   renderPersistHint();
 }
 
