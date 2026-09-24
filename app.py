@@ -721,6 +721,7 @@ def api_status():
     adm = ds['admin']
     return jsonify({
         'ready': STATE['rows'] is not None,
+        'shared_storage': storage._use_supabase(),
         'filename': STATE['filename'],
         'uploaded_at': STATE['uploaded_at'],
         'stats': STATE['stats'],
@@ -1020,7 +1021,8 @@ def api_upload():
     except Exception:
         pass
     return jsonify({'ok': True, 'raw': _raw_info(), 'is_new_file': is_new_file,
-                    'ready': STATE['rows'] is not None, 'needs_rebuild': True})
+                    'ready': STATE['rows'] is not None, 'needs_rebuild': True,
+                    'shared_storage': storage._use_supabase()})
 
 
 @app.route('/api/rebuild', methods=['POST'])

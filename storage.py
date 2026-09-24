@@ -113,16 +113,26 @@ def _ensure_bucket(c):
 
 
 def ds_file_upload(key, data):
-    """上传单个数据源文件二进制到云 Storage。key 为 OBJ_* 之一。失败不抛出（尽量不影响主流程）。"""
+    """上传并覆盖单个数据源文件。每个对象键始终保存当前生效版本。"""
     if not _use_supabase():
         return False
     try:
         c = _client()
         b = _ensure_bucket(c)
-        b.upload(key, data, file_options={'content-type': 'application/octet-stream'})
+        b.upload(key, data, file_options={
+            'content-type': 'application/octet-stream',
+            'upsert': 'true',
+        })
         return True
     except Exception:
-        return False
+        # 兼容不接受 upsert 参数的旧版客户端：对象已存在时改用 update 覆盖。
+        try:
+            c = _client()
+            b = _ensure_bucket(c)
+            b.update(key, data, file_options={'content-type': 'application/octet-stream'})
+            return True
+        except Exception:
+            return False
 
 
 def ds_file_download(key):

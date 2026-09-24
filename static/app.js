@@ -3,7 +3,7 @@
 
 let HEADER = [], ROWS = [], STATS = null, MISSING_ROWS = [];
 let ANNOTS = {};              // id_key -> {status,note,version}，来自 /api/state.annotations
-let REF = null, RAW = null, REF_STALE = false, HAS_RAW = false;   // 转单表 / 原始表状态
+let REF = null, RAW = null, REF_STALE = false, HAS_RAW = false, SHARED_STORAGE = false;   // 数据源状态
 let LX = null, WM = null;                              // 可选数据源：领星清单 / walmart 报表
 let ADMIN = null;                                     // 可选数据源：管理员检查表（品类）
 let LX_STALE = false, WM_STALE = false, ADMIN_STALE = false;  // 数据源是否比当前看板新
@@ -284,6 +284,7 @@ function refreshStatus() {
     .then(({ ok, d }) => {
       if (!ok || !d) return {};
       REF = d.reference; RAW = d.raw || null; REF_STALE = !!d.ref_stale; HAS_RAW = !!d.has_raw;
+      SHARED_STORAGE = !!d.shared_storage;
       LX = d.lingxing || null; WM = d.walmart || null; ADMIN = d.admin || null;
       LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale; ADMIN_STALE = !!d.admin_stale;
       renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo(); renderRawInfo();
@@ -519,9 +520,11 @@ function upload(file) {
       renderRawInfo();
       msg.className = 'msg';
       msg.style.color = '#16a34a';
-      msg.textContent = d.is_new_file
-        ? '✓ 原始表已更新并同步。请点击「重新计算并生成看板」使其生效。'
-        : '✓ 原始表内容未变化，当前版本保持不变。可点击「重新计算并生成看板」。';
+      msg.textContent = !d.shared_storage
+        ? '⚠ 原始表已更新到当前服务，但共享云存储未启用；请配置后重新上传，才能在重启后保留。'
+        : (d.is_new_file
+          ? '✓ 原始表已更新并同步。请点击「重新计算并生成看板」使其生效。'
+          : '✓ 原始表内容未变化，当前版本保持不变。可点击「重新计算并生成看板」。');
     })
     .catch(err => {
       hideProgress();
@@ -593,7 +596,9 @@ function renderPersistHint() {
     .then(({ ok, d: st }) => {
       if (!ok || !st) { el.textContent = '状态获取失败，请刷新页面。'; el.classList.remove('hide'); return; }
       if (st.ready) {
-        el.innerHTML = `已有最近一次数据：<b>${escHtml(st.filename || '—')}</b>，生成于 ${escHtml(st.uploaded_at || '—')}，` +
+        const cloudWarning = st.shared_storage ? '' :
+          '<span class="warn">共享云存储未启用：上传文件在服务重启后无法恢复。</span><br>';
+        el.innerHTML = cloudWarning + `已有最近一次数据：<b>${escHtml(st.filename || '—')}</b>，生成于 ${escHtml(st.uploaded_at || '—')}，` +
           `共 ${st.stats && st.stats.total || 0} 行。上传新数据会<b>直接覆盖</b>。` +
           `<a href="javascript:;" id="lnk-back">返回看板</a>`;
         const lk = $$('#lnk-back');
