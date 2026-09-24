@@ -23,6 +23,7 @@ header.top .sub{color:var(--muted);font-size:12px;margin-top:2px}
 .btn.ghost:hover{background:#eef3ff}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 #status-bar{font-size:12px;color:var(--muted)}
+#download-status{font-size:12px;color:var(--primary);min-width:180px}
 
 /* 上传区（两步） */
 #upload-zone{background:transparent}

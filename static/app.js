@@ -134,22 +134,60 @@ async function pollProgress() {
 /* 带 token 的下载：fetch 拿 blob → URL.createObjectURL 触发下载。
    浏览器原生导航(window.location.href)不会携带 X-Auth-Token，会被鉴权拦截 401。 */
 async function authedDownload(url) {
-  const tok = localStorage.getItem(AUTH_KEY);
-  const r = await fetch(url, { headers: { 'X-Auth-Token': tok || '' } });
-  if (r.status === 401) { showLogin(); return; }
-  if (!r.ok) { alert('下载失败：' + r.status); return; }
-  const blob = await r.blob();
-  const cd = r.headers.get('Content-Disposition') || '';
-  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
-  let name = 'download';
-  if (m) { try { name = decodeURIComponent(m[1]); } catch (e) { name = m[1]; } }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(a.href);
+  const button = url === '/api/download' ? $$('#btn-download') : null;
+  const status = $$('#download-status');
+  const started = Date.now();
+  let timer = null;
+  if (button && button.disabled) return;
+  if (button) { button.disabled = true; button.textContent = '正在准备下载…'; }
+  if (status) status.textContent = '请求已发送，等待服务器生成文件…';
+  timer = setInterval(() => {
+    if (status) status.textContent = `服务器处理中，已等待 ${Math.floor((Date.now() - started) / 1000)} 秒…`;
+  }, 1000);
+  try {
+    const tok = localStorage.getItem(AUTH_KEY);
+    const r = await fetch(url, { headers: { 'X-Auth-Token': tok || '' } });
+    if (r.status === 401) { showLogin(); throw new Error('登录状态已失效，请重新输入访问口令'); }
+    if (!r.ok) {
+      let message = `HTTP ${r.status}`;
+      try { const d = await r.json(); if (d.msg) message = d.msg; } catch (_) {}
+      throw new Error(message);
+    }
+    clearInterval(timer); timer = null;
+    const total = Number(r.headers.get('Content-Length')) || 0;
+    if (status) status.textContent = total ? '服务器已生成文件，正在接收 0%…' : '服务器已生成文件，正在接收…';
+    const reader = r.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); received += value.byteLength;
+      if (status) status.textContent = total
+        ? `正在接收文件 ${Math.min(100, Math.floor(received * 100 / total))}%…`
+        : `正在接收文件（${(received / 1048576).toFixed(1)} MB）…`;
+    }
+    const blob = new Blob(chunks, { type: r.headers.get('Content-Type') || 'text/csv;charset=utf-8' });
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+    let name = 'download';
+    if (m) { try { name = decodeURIComponent(m[1]); } catch (e) { name = m[1]; } }
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    if (status) status.textContent = '文件已生成，浏览器已开始下载。';
+  } catch (e) {
+    if (status) status.textContent = '下载失败：' + (e.message || e);
+    else alert('下载失败：' + (e.message || e));
+  } finally {
+    if (timer) clearInterval(timer);
+    if (button) { button.disabled = false; button.textContent = '下载清洗结果 CSV'; }
+  }
 }
 
 async function doLogin() {
