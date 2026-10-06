@@ -21,7 +21,16 @@ async function safeJson(r) {
   const text = await r.text();
   try { return { ok: r.ok && (r.status >= 200 && r.status < 300), d: JSON.parse(text), text: '' }; }
   catch (e) {
-    const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const head = text.slice(0, 4000);
+    // Cloudflare 人机验证/拦截页（Render 唤醒期常见）：给可操作提示，不倾倒页面原文
+    if (/Just a moment|challenge-platform|cdn-cgi\/challenge|Attention Required|cf-browser-verification/i.test(head)) {
+      return { ok: false, d: { msg: '云端正在唤醒或人机验证中（Cloudflare 拦截），本次操作未生效；请等 10~30 秒后重试，若反复出现请刷新页面。' }, text: 'cloudflare-challenge' };
+    }
+    const snippet = text
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, 160);
     return { ok: false, d: { msg: snippet || `服务器返回非 JSON（HTTP ${r.status}）` }, text: snippet };
   }
 }
@@ -152,6 +161,10 @@ async function authedDownload(url) {
       let message = `HTTP ${r.status}`;
       try { const d = await r.json(); if (d.msg) message = d.msg; } catch (_) {}
       throw new Error(message);
+    }
+    // 内容类型护栏：云端返回网页（唤醒/人机验证）而非文件时，明确报错而不是把 HTML 存成文件
+    if (/text\/html/i.test(r.headers.get('Content-Type') || '')) {
+      throw new Error('云端返回了网页而非文件（可能正在唤醒或人机验证），请等 10~30 秒后重试下载');
     }
     clearInterval(timer); timer = null;
     const total = Number(r.headers.get('Content-Length')) || 0;
