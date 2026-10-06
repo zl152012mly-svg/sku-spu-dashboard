@@ -29,6 +29,8 @@ import os
 import json
 import time
 import threading
+import gzip
+import base64
 
 _SUPABASE_URL = os.environ.get('SUPABASE_URL', '').strip()
 _SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '').strip()
@@ -85,6 +87,7 @@ def _json_save_annot():
 
 # ==================== Supabase 模式 ====================
 _TABLE_ANNOT = 'sku_annotations'   # 异常确认表
+_TABLE_DS_META = 'sku_ds_meta'      # 数据源版本元信息 + 文件本体（按 id 分多行）
 _COL = ('id_key', 'status', 'note', 'version', 'updated_at')
 
 # --- 数据源文件对象存储（Storage bucket）---
@@ -112,50 +115,55 @@ def _ensure_bucket(c):
     return c.storage.from_(_BUCKET)
 
 
+# 数据源文件本体：改为存到 Supabase 数据库表（复用 sku_ds_meta，每个文件单独一行
+# id='__file__:<对象键>'，meta.data = gzip+base64 字节），不再依赖 Storage bucket。
+# 原因：生产环境 Storage bucket 不可用时上传会静默失败；而 Render 磁盘是临时的，
+# 冷启动会从云端恢复，Storage 不可用 → 每次冷启动回滚到镜像基线（61585/863/None）。
+# 数据库表（与 sku_ds_meta / sku_annotations 同一机制）可可靠持久化，跨冷启动恢复。
+def _file_row_id(key):
+    return '__file__:' + key
+
+
 def ds_file_upload(key, data):
-    """上传并覆盖单个数据源文件。每个对象键始终保存当前生效版本。"""
+    """上传并覆盖单个数据源文件。gzip 压缩 + base64 后存入数据库，跨冷启动持久化。"""
     if not _use_supabase():
         return False
     try:
+        payload = base64.b64encode(gzip.compress(data)).decode('ascii')
         c = _client()
-        b = _ensure_bucket(c)
-        b.upload(key, data, file_options={
-            'content-type': 'application/octet-stream',
-            'upsert': 'true',
-        })
+        c.table(_TABLE_DS_META).upsert(
+            {'id': _file_row_id(key), 'meta': {'data': payload}},
+            on_conflict='id').execute()
         return True
     except Exception:
-        # 兼容不接受 upsert 参数的旧版客户端：对象已存在时改用 update 覆盖。
-        try:
-            c = _client()
-            b = _ensure_bucket(c)
-            b.update(key, data, file_options={'content-type': 'application/octet-stream'})
-            return True
-        except Exception:
-            return False
+        return False
 
 
 def ds_file_download(key):
-    """从云 Storage 下载数据源二进制；不存在返回 None。"""
+    """从数据库取回数据源二进制；不存在返回 None。"""
     if not _use_supabase():
         return None
     try:
         c = _client()
-        b = _ensure_bucket(c)
-        res = b.download(key)
-        return res if res else None
+        res = c.table(_TABLE_DS_META).select('meta').eq('id', _file_row_id(key)).execute()
+        if res.data:
+            m = (res.data[0] or {}).get('meta') or {}
+            b64 = m.get('data') if isinstance(m, dict) else None
+            if b64:
+                return gzip.decompress(base64.b64decode(b64))
+        return None
     except Exception:
         return None
 
 
 def ds_file_exists(key):
-    """云 Storage 是否已存在某数据源对象。"""
+    """数据库是否已存在某数据源对象。"""
     if not _use_supabase():
         return False
     try:
         c = _client()
-        b = _ensure_bucket(c)
-        return bool(b.exists(key))
+        res = c.table(_TABLE_DS_META).select('id').eq('id', _file_row_id(key)).execute()
+        return bool(res.data)
     except Exception:
         return False
 
