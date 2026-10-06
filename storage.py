@@ -115,44 +115,86 @@ def _ensure_bucket(c):
     return c.storage.from_(_BUCKET)
 
 
-# 数据源文件本体：改为存到 Supabase 数据库表（复用 sku_ds_meta，每个文件单独一行
-# id='__file__:<对象键>'，meta.data = gzip+base64 字节），不再依赖 Storage bucket。
-# 原因：生产环境 Storage bucket 不可用时上传会静默失败；而 Render 磁盘是临时的，
-# 冷启动会从云端恢复，Storage 不可用 → 每次冷启动回滚到镜像基线（61585/863/None）。
-# 数据库表（与 sku_ds_meta / sku_annotations 同一机制）可可靠持久化，跨冷启动恢复。
+# 数据源文件本体：gzip+base64 后【分块】写入数据库表 sku_ds_meta：
+#   元数据行  id='__file__:<对象键>'        meta={'v':2,'size':N,'n':块数}
+#   数据块行  id='__file__:<对象键>:p<序号>' meta={'d':'<base64片段(<=CHUNK_B64 字符)>'}
+# 分块原因：整文件单行（admin gzip 后 base64 约 6-8MB）经 Supabase REST upsert
+# 实测静默失败（疑似请求体大小限制），分块后单行仅几百 KB，稳定可靠。
+# 兼容：下载时若元数据行仍是旧格式（meta.data 单行整文件），按旧格式取回。
+_CHUNK_B64 = 400000    # 每块 base64 字符数（约合 300KB 二进制）
+_LAST_DS_ERR = ''      # 最近一次数据源 DB 读/写失败原因（/api/status 暴露，便于排障）
+
+
 def _file_row_id(key):
     return '__file__:' + key
 
 
+def last_error():
+    """返回最近一次数据源云端读/写失败原因（无失败为 ''）。"""
+    return _LAST_DS_ERR
+
+
 def ds_file_upload(key, data):
-    """上传并覆盖单个数据源文件。gzip 压缩 + base64 后存入数据库，跨冷启动持久化。"""
+    """上传并覆盖单个数据源文件：gzip+base64 分块写入数据库，跨冷启动持久化。
+    返回 True/False；失败原因见 last_error()。"""
+    global _LAST_DS_ERR
     if not _use_supabase():
         return False
     try:
         payload = base64.b64encode(gzip.compress(data)).decode('ascii')
+        chunks = [payload[i:i + _CHUNK_B64] for i in range(0, len(payload), _CHUNK_B64)] or ['']
         c = _client()
+        rid = _file_row_id(key)
+        # 先写数据块、最后写元数据行：下载端以元数据行为准，半途失败不会读到残缺文件
+        for i, ch in enumerate(chunks):
+            c.table(_TABLE_DS_META).upsert(
+                {'id': '%s:p%d' % (rid, i), 'meta': {'d': ch}},
+                on_conflict='id').execute()
         c.table(_TABLE_DS_META).upsert(
-            {'id': _file_row_id(key), 'meta': {'data': payload}},
+            {'id': rid, 'meta': {'v': 2, 'size': len(data), 'n': len(chunks)}},
             on_conflict='id').execute()
+        _LAST_DS_ERR = ''
         return True
-    except Exception:
+    except Exception as e:
+        _LAST_DS_ERR = 'upload %s: %r' % (key, e)
         return False
 
 
 def ds_file_download(key):
-    """从数据库取回数据源二进制；不存在返回 None。"""
+    """从数据库取回数据源二进制（支持 v2 分块 / v1 单行两种格式）；不存在返回 None。"""
+    global _LAST_DS_ERR
     if not _use_supabase():
         return None
     try:
         c = _client()
         res = c.table(_TABLE_DS_META).select('meta').eq('id', _file_row_id(key)).execute()
-        if res.data:
-            m = (res.data[0] or {}).get('meta') or {}
-            b64 = m.get('data') if isinstance(m, dict) else None
-            if b64:
-                return gzip.decompress(base64.b64decode(b64))
+        if not res.data:
+            return None
+        m = (res.data[0] or {}).get('meta') or {}
+        if not isinstance(m, dict):
+            return None
+        if m.get('v') == 2:                      # v2 分块格式
+            n = int(m.get('n') or 0)
+            if n <= 0:
+                return None
+            ids = ['%s:p%d' % (_file_row_id(key), i) for i in range(n)]
+            got = {}
+            for i in range(0, n, 50):            # 分批 in 查询
+                r2 = c.table(_TABLE_DS_META).select('id,meta').in_('id', ids[i:i + 50]).execute()
+                for row in (r2.data or []):
+                    got[row.get('id')] = ((row.get('meta') or {}).get('d') or '')
+            missing = [pid for pid in ids if pid not in got]
+            if missing:
+                _LAST_DS_ERR = 'download %s: %d/%d parts missing' % (key, len(missing), n)
+                return None
+            b64 = ''.join(got[pid] for pid in ids)
+            return gzip.decompress(base64.b64decode(b64))
+        b64 = m.get('data')                      # v1 旧版单行格式
+        if b64:
+            return gzip.decompress(base64.b64decode(b64))
         return None
-    except Exception:
+    except Exception as e:
+        _LAST_DS_ERR = 'download %s: %r' % (key, e)
         return None
 
 

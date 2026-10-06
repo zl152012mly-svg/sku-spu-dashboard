@@ -447,6 +447,23 @@ def _sync_source_meta():
     storage.ds_update(meta)
 
 
+def _cloud_sync(key, data):
+    """把数据源二进制同步到云端数据库（跨冷启动持久化）。
+
+    返回 '' 表示成功；否则返回失败原因字符串（供接口回传给前端排障）。
+    不再静默吞掉写入失败——这正是此前「网页上传显示成功，但 Render 冷启动后
+    数据消失」的接口层根因：整文件单行写到 Supabase 会静默失败。
+    """
+    try:
+        if not storage._use_supabase():
+            return '未启用云端存储（STORAGE_MODE≠supabase）'
+        if storage.ds_file_upload(key, data):
+            return ''
+        return storage.last_error() or '云端写入返回 False（原因未知）'
+    except Exception as e:
+        return '云端写入异常：%r' % e
+
+
 def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     """跑流水线并写入 STATE / 缓存。返回 (ok, payload_or_msg, http_code)
 
@@ -750,6 +767,7 @@ def api_status():
                          and STATE['wm_uploaded_at'] != wmm['uploaded_at']),
         'admin_stale': bool(adm and STATE['rows'] is not None
                             and STATE['admin_uploaded_at'] != adm['uploaded_at']),
+        'cloud_error': storage.last_error(),
     })
 
 
@@ -791,18 +809,16 @@ def api_reference_upload():
             'uploaded_at': now_bj(),
             'summary': summary}
     _write_ref_meta(meta)
-    # 校验通过后同步到云 Storage（供冷启动取最新转单表）
-    try:
-        with open(path, 'rb') as _rf:
-            storage.ds_file_upload(storage.OBJ_REF, _rf.read())
-    except Exception:
-        pass
+    # 校验通过后同步到云 Storage（供冷启动取最新转单表）；失败回传原因便于排障
+    with open(path, 'rb') as _rf:
+        cloud_err = _cloud_sync(storage.OBJ_REF, _rf.read())
     try:
         _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'reference': meta,
                     'has_raw': os.path.exists(LATEST_RAW),
+                    'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None})
 
 
@@ -838,17 +854,15 @@ def api_upload_lingxing():
             'uploaded_at': now_bj(),
             'summary': summary}
     _write_meta_file(LINGXING_META, meta)
-    # 校验通过后同步到云 Storage
-    try:
-        with open(LATEST_LINGXING, 'rb') as _lf:
-            storage.ds_file_upload(storage.OBJ_LX, _lf.read())
-    except Exception:
-        pass
+    # 校验通过后同步到云 Storage；失败回传原因便于排障
+    with open(LATEST_LINGXING, 'rb') as _lf:
+        cloud_err = _cloud_sync(storage.OBJ_LX, _lf.read())
     try:
         _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'lingxing': meta,
+                    'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
 
@@ -903,17 +917,15 @@ def api_upload_walmart():
             'uploaded_at': now_bj(),
             'summary': summary}
     _write_meta_file(WALMART_META, meta)
-    # 校验通过后同步到云 Storage
-    try:
-        with open(LATEST_WALMART, 'rb') as _wf:
-            storage.ds_file_upload(storage.OBJ_WM, _wf.read())
-    except Exception:
-        pass
+    # 校验通过后同步到云 Storage；失败回传原因便于排障
+    with open(LATEST_WALMART, 'rb') as _wf:
+        cloud_err = _cloud_sync(storage.OBJ_WM, _wf.read())
     try:
         _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'walmart': meta,
+                    'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
 
@@ -961,17 +973,15 @@ def api_upload_admin():
             'uploaded_at': now_bj(),
             'summary': summary}
     _write_meta_file(ADMIN_META, meta)
-    # 校验通过后同步到云 Storage
-    try:
-        with open(admin_path, 'rb') as _af:
-            storage.ds_file_upload(storage.OBJ_ADMIN, _af.read())
-    except Exception:
-        pass
+    # 校验通过后同步到云 Storage；失败回传原因便于排障
+    with open(admin_path, 'rb') as _af:
+        cloud_err = _cloud_sync(storage.OBJ_ADMIN, _af.read())
     try:
         _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'admin': meta,
+                    'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None,
                     'needs_rebuild': STATE['rows'] is not None})
 
@@ -1012,15 +1022,14 @@ def api_upload():
     meta = {'filename': f.filename, 'uploaded_at': uploaded_at,
             'hash': new_hash, 'summary': summary}
     _write_meta_file(RAW_META, meta)
-    try:
-        storage.ds_file_upload(storage.OBJ_RAW, raw_bytes)
-    except Exception:
-        pass
+    # 同步到云 Storage（跨冷启动持久化）；失败回传原因便于排障
+    cloud_err = _cloud_sync(storage.OBJ_RAW, raw_bytes)
     try:
         _sync_source_meta()
     except Exception:
         pass
     return jsonify({'ok': True, 'raw': _raw_info(), 'is_new_file': is_new_file,
+                    'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None, 'needs_rebuild': True,
                     'shared_storage': storage._use_supabase()})
 
