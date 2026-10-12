@@ -4,13 +4,14 @@
 let HEADER = [], ROWS = [], STATS = null, MISSING_ROWS = [];
 let ANNOTS = {};              // id_key -> {status,note,version}，来自 /api/state.annotations
 let REF = null, RAW = null, REF_STALE = false, HAS_RAW = false, SHARED_STORAGE = false;   // 数据源状态
-let LX = null, WM = null;                              // 可选数据源：领星清单 / walmart 报表
+let LX = null, WM = null, TEMU = null, OPS = null;     // 可选数据源：领星清单 / walmart 报表 / Temu 报表 / 产品运营表
 let ADMIN = null;                                     // 可选数据源：管理员检查表（品类）
 let LX_STALE = false, WM_STALE = false, ADMIN_STALE = false;  // 数据源是否比当前看板新
+let TEMU_STALE = false, OPS_STALE = false;                    // Temu 报表 / 产品运营表是否比当前看板新
 let COL = {};                 // 列名 -> 索引
 let TABLE = null, MISSING_TABLE = null;
 let PKG_CHART = null, FAHUO_CHART = null;
-const F = { stores: new Set(), pkgs: new Set(), spus: new Set(), skus: new Set(), tag: '', fahuo: '', anom: '' };
+const F = { stores: new Set(), pkgs: new Set(), spus: new Set(), skus: new Set(), ops: new Set(), opgroups: new Set(), tag: '', fahuo: '', anom: '' };
 let noteTimer = null;
 
 const $$ = (s, r = document) => r.querySelector(s);
@@ -252,6 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (F.pkgs.size && !F.pkgs.has(rowArr[COL['包裹类型']])) return false;
     if (F.spus.size && !F.spus.has(rowArr[COL['SPU']])) return false;
     if (F.skus.size && !F.skus.has(rowArr[COL['唯一SKU']])) return false;
+    if (F.ops.size && !F.ops.has(rowArr[COL['运营']])) return false;
+    if (F.opgroups.size && !F.opgroups.has(rowArr[COL['运营组']])) return false;
     if (F.tag && rowArr[COL['是否重复维护']] !== F.tag) return false;
     if (F.fahuo && rowArr[COL['发货SKU']] !== F.fahuo) return false;
     if (F.anom && rowArr[COL['异常确认状态']] !== F.anom) return false;
@@ -298,9 +301,12 @@ function refreshStatus() {
       if (!ok || !d) return {};
       REF = d.reference; RAW = d.raw || null; REF_STALE = !!d.ref_stale; HAS_RAW = !!d.has_raw;
       SHARED_STORAGE = !!d.shared_storage;
-      LX = d.lingxing || null; WM = d.walmart || null; ADMIN = d.admin || null;
-      LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale; ADMIN_STALE = !!d.admin_stale;
-      renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo(); renderRawInfo();
+      LX = d.lingxing || null; WM = d.walmart || null; ADMIN = d.admin || null; TEMU = d.temu || null;
+      OPS = d.ops || null;
+      LX_STALE = !!d.lx_stale; WM_STALE = !!d.wm_stale; ADMIN_STALE = !!d.admin_stale; TEMU_STALE = !!d.temu_stale;
+      OPS_STALE = !!d.ops_stale;
+      renderRefInfo(); renderLxInfo(); renderWmInfo(); renderAdminInfo(); renderTemuInfo();
+      renderOpsInfo(); renderRawInfo();
       return d;
     }).catch(() => ({}));
 }
@@ -364,6 +370,34 @@ function renderAdminInfo() {
     `有效记录 ${s.rows || 0} 行　｜　可匹配 SKU ${s.matched || 0} 个`;
 }
 
+function renderTemuInfo() {
+  const box = $$('#temu-info');
+  if (!box) return;
+  const a = TEMU && TEMU.a, b = TEMU && TEMU.b;
+  if (!a && !b) {
+    box.innerHTML = '<span class="warn">未上传 Temu 报表</span>　—— Temu 店铺的「运营 / 运营组 / SPU / listing后台状态」留空（不影响其他功能）。';
+    return;
+  }
+  const line = (tag, e) => e
+    ? `<b>${tag}</b>　<span class="ok">已留档</span>　${escHtml(e.filename)}　上传于 ${escHtml(e.uploaded_at)}　｜　解析 ${(e.summary && e.summary.rows) || 0} 行<br>`
+    : `<b>${tag}</b>　<span class="warn">未上传</span><br>`;
+  box.innerHTML = line('A 类（含店铺列）', a) + line('B 类（COZY）', b);
+}
+
+function renderOpsInfo() {
+  const box = $$('#ops-info');
+  if (!box) return;
+  if (!OPS) {
+    box.innerHTML = '<span class="warn">未上传产品运营表</span>　—— Amazon 店铺的「运营 / 运营组」按 SPU 查询不到时会填「未查询到」（Walmart·Temu 不受影响）。';
+    return;
+  }
+  const s = OPS.summary || {};
+  const sheets = (s.sheets || []).map(escHtml).join('、') || '—';
+  box.innerHTML =
+    `<span class="ok">当前生效</span>：<b>${escHtml(OPS.filename)}</b>　上传于 ${escHtml(OPS.uploaded_at)}<br>` +
+    `可查询 sheet：${sheets}　｜　SPU 别名键 ${s.rows || 0} 条`;
+}
+
 function renderRawInfo() {
   const box = $$('#raw-info');
   const rebuildBtn = $$('#btn-rebuild-raw');
@@ -401,6 +435,14 @@ function bindUploadUI() {
   const ainput = $$('#admin-input');
   $$('#btn-pick-admin').onclick = () => ainput.click();
   ainput.onchange = e => { if (e.target.files[0]) uploadAdmin(e.target.files[0]); e.target.value = ''; };
+  // Temu 报表（第 6 步独立上传源）上传
+  const temuinput = $$('#temu-input');
+  $$('#btn-pick-temu').onclick = () => temuinput.click();
+  temuinput.onchange = e => { if (e.target.files.length) uploadTemu(e.target.files); e.target.value = ''; };
+  // 产品运营表（第 7 步）
+  const oinput = $$('#ops-input');
+  $$('#btn-pick-ops').onclick = () => oinput.click();
+  oinput.onchange = e => { if (e.target.files[0]) uploadOps(e.target.files[0]); e.target.value = ''; };
 }
 
 function uploadRef(file) {
@@ -505,6 +547,51 @@ function uploadAdmin(file) {
         `${s.matched || 0} 个 SKU 可匹配` +
         (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-admin">立即重算</a>。' : '　—— 可继续上传原始报表。');
       const lk = $$('#lnk-rebuild-admin');
+      if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
+    })
+    .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
+}
+
+/* ---------- Temu 报表（第 6 步独立上传源）上传：支持一次 1~2 个文件，A/B 自动分槽 ---------- */
+function uploadTemu(files) {
+  const msg = $$('#temu-msg');
+  msg.className = 'msg'; msg.textContent = '解析中…';
+  const fd = new FormData();
+  for (const f of files) fd.append('file', f);
+  apiCall('/api/upload/temu', { method: 'POST', body: fd })
+    .then(safeJson)
+    .then(({ ok, d }) => {
+      if (!ok || !d.ok) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '上传失败'); return; }
+      TEMU = d.temu || TEMU;
+      renderTemuInfo();
+      msg.className = 'msg';
+      const ups = d.uploaded || [];
+      const det = ups.map(u => `${escHtml(u.filename)}（${(u.types || []).join('/')} 类，${u.rows || 0} 行）`).join('　＋　');
+      msg.innerHTML = `<span style="color:#16a34a">✓ Temu 报表已更新</span>：${det}` +
+        (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-temu">立即重算</a>。' : '　—— 可继续上传原始报表。');
+      const lk = $$('#lnk-rebuild-temu');
+      if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
+    })
+    .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
+}
+
+/* ---------- 产品运营表（第 7 步，Amazon 运营/运营组 查询源）上传 ---------- */
+function uploadOps(file) {
+  const msg = $$('#ops-msg');
+  msg.className = 'msg'; msg.textContent = '解析中…';
+  const fd = new FormData(); fd.append('file', file);
+  apiCall('/api/upload/ops', { method: 'POST', body: fd })
+    .then(safeJson)
+    .then(({ ok, d }) => {
+      if (!ok || !d.ok) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '上传失败'); return; }
+      OPS = d.ops || OPS;
+      renderOpsInfo();
+      msg.className = 'msg';
+      const s = (OPS && OPS.summary) || {};
+      msg.innerHTML = `<span style="color:#16a34a">✓ 产品运营表已更新</span>：` +
+        `sheet ${(s.sheets || []).join('、') || '—'}　SPU 别名 ${s.rows || 0} 条` +
+        (d.ready ? '　—— 当前看板按新数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-ops">立即重算</a>。' : '　—— 可继续上传原始报表。');
+      const lk = $$('#lnk-rebuild-ops');
       if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
     })
     .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
@@ -663,14 +750,20 @@ function renderDashboard(d) {
   const wmTxt = wms ? `walmart <b>${escHtml(d.wm_filename || '—')}</b>（${wms.matched || 0} SKU 可匹配` +
     (mp.walmart ? `｜缺平台信息 ${mp.walmart}` : '') + `）` : 'walmart 未使用';
   const admTxt = adm && adm.used ? `管理员检查表 <b>${escHtml(d.admin_filename || '—')}</b>（品类覆盖 ${adm.covered || 0} 行）` : '管理员检查表 未使用';
+  const temuParts = [];
+  if (TEMU && TEMU.a) temuParts.push(`A=<b>${escHtml(TEMU.a.filename)}</b>（${(TEMU.a.summary && TEMU.a.summary.rows) || 0} 行）`);
+  if (TEMU && TEMU.b) temuParts.push(`B=<b>${escHtml(TEMU.b.filename)}</b>（${(TEMU.b.summary && TEMU.b.summary.rows) || 0} 行）`);
+  const temuTxt = temuParts.length ? `Temu 报表 ${temuParts.join(' ＋ ')}` : 'Temu 报表 未使用';
+  const opsTxt = OPS ? `产品运营表 <b>${escHtml(OPS.filename || '—')}</b>` : '产品运营表 未使用';
   $$('#refbar-text').innerHTML =
     `转单表：<b>${escHtml(d.ref_filename || '—')}</b>（上传于 ${escHtml(d.ref_uploaded_at || '—')}）` +
     `　｜　转单行 ${t.total_rows || 0}　涉及 SKU ${t.sku_count || 0}　转单组 ${t.group_count || 0}` +
     `　｜　本次扩展 ${STATS.expanded_groups} 组 / +${STATS.expanded} 行<br>` +
-    `数据源：${lxTxt}　｜　${wmTxt}　｜　${admTxt}`;
+    `数据源：${lxTxt}　｜　${wmTxt}　｜　${admTxt}　｜　${temuTxt}　｜　${opsTxt}`;
   $$('#btn-rebuild').disabled = !(d.ref_filename !== null);
   $$('#ref-stale').classList.toggle('hide', !REF_STALE);
-  $$('#ds-stale').classList.toggle('hide', !(LX_STALE || WM_STALE || ADMIN_STALE));
+  $$('#ds-stale').classList.toggle('hide',
+    !(LX_STALE || WM_STALE || ADMIN_STALE || TEMU_STALE || OPS_STALE));
 
   renderCards();
   renderCharts();
@@ -804,6 +897,26 @@ function buildFilters() {
     const v = ch.dataset.v;
     if (F.pkgs.has(v)) { F.pkgs.delete(v); ch.classList.remove('on'); }
     else { F.pkgs.add(v); ch.classList.add('on'); }
+    if (TABLE) TABLE.draw();
+  });
+  // 运营（多选）
+  const ops = uniq(COL['运营']);
+  $$('#f-op').innerHTML = ops.map(s =>
+    `<span class="chip" data-v="${escAttr(s)}">${escHtml(s)}</span>`).join('');
+  $$a('#f-op .chip').forEach(ch => ch.onclick = () => {
+    const v = ch.dataset.v;
+    if (F.ops.has(v)) { F.ops.delete(v); ch.classList.remove('on'); }
+    else { F.ops.add(v); ch.classList.add('on'); }
+    if (TABLE) TABLE.draw();
+  });
+  // 运营组（多选）
+  const opgroups = uniq(COL['运营组']);
+  $$('#f-opgroup').innerHTML = opgroups.map(s =>
+    `<span class="chip" data-v="${escAttr(s)}">${escHtml(s)}</span>`).join('');
+  $$a('#f-opgroup .chip').forEach(ch => ch.onclick = () => {
+    const v = ch.dataset.v;
+    if (F.opgroups.has(v)) { F.opgroups.delete(v); ch.classList.remove('on'); }
+    else { F.opgroups.add(v); ch.classList.add('on'); }
     if (TABLE) TABLE.draw();
   });
   // SPU / 唯一SKU 搜索式多选（取值上千上万，不能用 chip 平铺）
@@ -950,10 +1063,12 @@ function renderMsel(st) {
 }
 
 function resetFilters() {
-  F.stores.clear(); F.pkgs.clear(); F.spus.clear(); F.skus.clear();
+  F.stores.clear(); F.pkgs.clear(); F.spus.clear(); F.skus.clear(); F.ops.clear(); F.opgroups.clear();
   F.tag = ''; F.fahuo = ''; F.anom = '';
   $$a('#f-store .chip').forEach(c => c.classList.remove('on'));
   $$a('#f-pkg .chip').forEach(c => c.classList.remove('on'));
+  $$a('#f-op .chip').forEach(c => c.classList.remove('on'));
+  $$a('#f-opgroup .chip').forEach(c => c.classList.remove('on'));
   $$('#f-tag').value = ''; $$('#f-fahuo').value = ''; $$('#f-anom').value = '';
   // 重建 SPU / 唯一SKU 多选（清空已选 + 复位搜索框）
   buildMultiSelect('#f-spu', uniq(COL['SPU']), F.spus);

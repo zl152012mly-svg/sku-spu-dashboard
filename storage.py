@@ -16,7 +16,7 @@ storage.py —— 可插拔存储层（异常确认状态/备注 + 数据源版�
   storage.annot_get() -> {id_key: {status,note,version}}
   storage.ds_update(meta) / storage.ds_get()
   storage.ds_file_upload(key, data) / ds_file_download(key) / ds_file_exists(key)
-      数据源文件本体上云/取云（key 为 OBJ_RAW/OBJ_REF/OBJ_LX/OBJ_WM 之一）
+      数据源文件本体上云/取云（key 为 OBJ_RAW/OBJ_REF/OBJ_LX/OBJ_WM/OBJ_TEMU 之一）
 
 环境变量：
   SUPABASE_URL    如 https://<proj>.supabase.co
@@ -100,6 +100,10 @@ OBJ_REF = 'ref/latest_transfer.xlsx'      # 转单表 xlsx
 OBJ_LX = 'lx/latest_lingxing.xlsx'        # 领星清单 xlsx
 OBJ_WM = 'wm/latest_walmart.csv'          # walmart 报表 csv
 OBJ_ADMIN = 'admin/latest_admin'          # 管理员检查表（品类）：xlsx/csv 通用 key（无扩展名）
+OBJ_TEMU = 'temu/latest_temu'             # Temu 报表旧单对象（仅迁移识别用，新上传不再写入）
+OBJ_TEMU_A = 'temu/latest_temu_a'         # Temu A 类报表（含「店铺」列）xlsx 通用 key（无扩展名）
+OBJ_TEMU_B = 'temu/latest_temu_b'         # Temu B 类报表（固定 COZY 店）xlsx 通用 key（无扩展名）
+OBJ_OPS = 'ops/latest_ops'                # 产品运营表（第 7 步，Amazon 运营/运营组查询）xlsx 通用 key
 
 
 def _ensure_bucket(c):

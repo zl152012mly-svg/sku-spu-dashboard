@@ -95,12 +95,40 @@
         <div id="upload-msg" class="msg err"></div>
       </div>
 
+      <!-- 步骤 6：Temu 报表（可选数据源，第 6 步独立上传源） -->
+      <div class="step" id="step-temu">
+        <div class="step-hd"><span class="no">6</span><h2>Temu 报表（可选：Temu 店铺 运营 / 运营组 / SPU / listing）</h2></div>
+        <div class="ref-box">
+          <div id="temu-info" class="ref-info">未上传 Temu 报表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-temu">上传 / 更新 Temu 报表</button>
+          </div>
+          <div class="hint">支持 .xlsx，可<b>一次选择 1~2 个文件</b>（A 类/B 类按各 sheet 表头自动判定、分别留档；同类型后传覆盖前传，也可只传其一）。A 类（含「店铺」列）店铺自动映射到平台店名；B 类固定店铺 US-Temu-COZY CORNER（运营=吴琇仙）。运营：除 COZY 外均为陆飞翔；运营组统一=综合组-TEMU。合并口径：按成员货品「富化已有行 + 仅追加全新行」，不产生重复。两份都传齐后点「重新计算并生成看板」生效。</div>
+          <div id="temu-msg" class="msg"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 7：产品运营表（可选数据源，Amazon 运营/运营组查询） -->
+      <div class="step" id="step-ops">
+        <div class="step-hd"><span class="no">7</span><h2>产品运营表（可选：Amazon 店铺 运营 / 运营组 查询）</h2></div>
+        <div class="ref-box">
+          <div id="ops-info" class="ref-info">未上传产品运营表</div>
+          <div class="ref-actions">
+            <button class="btn ghost" id="btn-pick-ops">上传 / 更新产品运营表</button>
+          </div>
+          <div class="hint">支持 .xlsx（可含多 sheet，如「综合组-AMZ」「AMZ组」；各 sheet 需含 SPU 列，别名列 新SPU1/新SPU2… 自动纳入，并含 运营/运营组 列）。<br>取值口径：<b>Walmart</b> 统一 吴琇仙 / 综合组-WLM；<b>Temu</b> 按店（COZY=吴琇仙，其余=陆飞翔）/ 综合组-TEMU；<b>JYT·XYT</b> 固定 MIA黄 / 品牌组；<b>Urban</b> 查「综合组-AMZ」sheet；<b>HLLdeco·Home Nest</b> 查「AMZ组」sheet——均按 SPU 查找，查不到填「未查询到」；运营形如「杨志怡&amp;MIA黄」取 &amp; 前段。</div>
+          <div id="ops-msg" class="msg"></div>
+        </div>
+      </div>
+
     </div>
     <input type="file" id="file-input" accept=".csv,text/csv">
     <input type="file" id="ref-input" accept=".xlsx,.xlsm">
     <input type="file" id="lx-input" accept=".xlsx,.xlsm">
     <input type="file" id="wm-input" accept=".csv,.zip">
     <input type="file" id="admin-input" accept=".xlsx,.xlsm,.csv">
+    <input type="file" id="temu-input" accept=".xlsx,.xlsm" multiple>
+    <input type="file" id="ops-input" accept=".xlsx,.xlsm">
   </section>
 
   <!-- 看板 -->
@@ -170,6 +198,14 @@
           <label>包裹类型（多选）</label>
           <div class="chips" id="f-pkg"></div>
         </div>
+        <div class="fgroup" style="flex:1;min-width:240px">
+          <label>运营（多选）</label>
+          <div class="chips" id="f-op"></div>
+        </div>
+        <div class="fgroup" style="flex:1;min-width:240px">
+          <label>运营组（多选）</label>
+          <div class="chips" id="f-opgroup"></div>
+        </div>
         <div class="fgroup" style="flex:1.2;min-width:260px">
           <label>SPU（多选，可搜索）</label>
           <div class="msel" id="f-spu"></div>
@@ -238,6 +274,6 @@
 <script src="/static/libs/jquery.min.js"></script>
 <script src="/static/libs/datatables.min.js"></script>
 <script src="/static/libs/echarts.min.js"></script>
-<script src="/static/app.js?v=20260924-shared-storage-4"></script>
+<script src="/static/app.js?v=20261012-temu3"></script>
 </body>
 </html>

@@ -80,7 +80,7 @@ def file_sha256(path, chunk=1 << 20):
     except Exception:
         return None
 
-from pipeline import run_pipeline, summarize_transfer, load_lingxing, load_walmart
+from pipeline import run_pipeline, summarize_transfer, load_lingxing, load_walmart, load_temu
 import storage  # 可插拔存储层：JSON 本地 / Supabase 云，含行级冲突检测
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -98,6 +98,13 @@ LINGXING_META = os.path.join(DATA_DIR, 'lingxing_meta.json')
 WALMART_META = os.path.join(DATA_DIR, 'walmart_meta.json')
 ADMIN_META = os.path.join(DATA_DIR, 'admin_meta.json')
 RAW_META = os.path.join(DATA_DIR, 'raw_meta.json')
+# Temu 报表（第 6 步独立上传源，Option ②）：留档 + 元信息
+OPS_META = os.path.join(DATA_DIR, 'ops_meta.json')              # 产品运营表（第 7 步）元信息
+LATEST_OPS = os.path.join(UPLOAD_DIR, 'latest_ops.xlsx')        # 产品运营表留档（Amazon 运营查询）
+TEMU_META = os.path.join(DATA_DIR, 'temu_meta.json')          # 新格式 {'a': entry|None, 'b': entry|None}
+LATEST_TEMU_A = os.path.join(UPLOAD_DIR, 'latest_temu_a.xlsx')  # Temu A 类（含「店铺」列）留档
+LATEST_TEMU_B = os.path.join(UPLOAD_DIR, 'latest_temu_b.xlsx')  # Temu B 类（固定 COZY 店）留档
+LATEST_TEMU = os.path.join(UPLOAD_DIR, 'latest_temu.xlsx')      # 旧单文件留档（仅迁移识别用）
 for d in (REF_DIR, UPLOAD_DIR, DATA_DIR):
     os.makedirs(d, exist_ok=True)
 
@@ -165,7 +172,10 @@ STATE = {'header': None, 'rows': None, 'stats': None,
          'ref_filename': None, 'ref_uploaded_at': None,
          'lx_filename': None, 'lx_uploaded_at': None,
          'wm_filename': None, 'wm_uploaded_at': None,
-         'admin_filename': None, 'admin_uploaded_at': None}
+         'admin_filename': None, 'admin_uploaded_at': None,
+         'temu_a_filename': None, 'temu_a_uploaded_at': None,
+         'temu_b_filename': None, 'temu_b_uploaded_at': None,
+         'ops_filename': None, 'ops_uploaded_at': None}
 _LOCK = threading.Lock()
 
 
@@ -319,7 +329,10 @@ def _save_state(retry=3):
                 'ref_filename', 'ref_uploaded_at',
                 'lx_filename', 'lx_uploaded_at',
                 'wm_filename', 'wm_uploaded_at',
-                'admin_filename', 'admin_uploaded_at')}
+                'admin_filename', 'admin_uploaded_at',
+                'temu_a_filename', 'temu_a_uploaded_at',
+                'temu_b_filename', 'temu_b_uploaded_at',
+                'ops_filename', 'ops_uploaded_at')}
     last_err = None
     for attempt in range(retry):
         try:
@@ -345,7 +358,10 @@ def _load_state():
                   'ref_filename', 'ref_uploaded_at',
                   'lx_filename', 'lx_uploaded_at',
                   'wm_filename', 'wm_uploaded_at',
-                  'admin_filename', 'admin_uploaded_at'):
+                  'admin_filename', 'admin_uploaded_at',
+                  'temu_a_filename', 'temu_a_uploaded_at',
+                  'temu_b_filename', 'temu_b_uploaded_at',
+                  'ops_filename', 'ops_uploaded_at'):
             STATE[k] = d.get(k)
         return True
     except Exception:
@@ -370,13 +386,70 @@ def _current_ds():
     lx = LATEST_LINGXING if os.path.exists(LATEST_LINGXING) else None
     wm = LATEST_WALMART if os.path.exists(LATEST_WALMART) else None
     admin = _current_admin_path()
-    return lx, wm, admin
+    temu = [p for p in (LATEST_TEMU_A, LATEST_TEMU_B) if os.path.exists(p)]
+    ops = LATEST_OPS if os.path.exists(LATEST_OPS) else None
+    return lx, wm, admin, temu, ops
+
+
+def _temu_meta_entry(m):
+    """meta 条目 -> 展示结构（None 安全）。"""
+    if not m:
+        return None
+    return {'filename': m.get('filename'),
+            'uploaded_at': m.get('uploaded_at'),
+            'summary': m.get('summary')}
+
+
+def _ensure_temu_meta():
+    """Temu meta 归一为 {'a': entry|None, 'b': entry|None}（A/B 双槽，2026-10-12 多文件上传改造）。
+
+    兼容旧单文件格式（temu_meta.json 为 flat 结构 + uploads/latest_temu.xlsx）：
+    首次访问时按 temu_file_types 自动归类迁移到对应槽并同步云端新对象键；
+    此后旧文件 latest_temu.xlsx 不再参与重算。"""
+    m = _read_meta_file(TEMU_META)
+    if m and ('a' in m or 'b' in m):
+        return {'a': _temu_meta_entry(m.get('a')), 'b': _temu_meta_entry(m.get('b'))}
+    # ---- 旧单文件格式 -> 迁移 ----
+    new = {'a': None, 'b': None}
+    if os.path.exists(LATEST_TEMU):
+        try:
+            from pipeline import temu_file_types
+            types = temu_file_types(LATEST_TEMU)
+        except Exception:
+            types = set()
+        entry = (_temu_meta_entry(m)
+                 or {'filename': 'Temu 报表（迁移）', 'uploaded_at': now_bj(), 'summary': {}})
+        if entry.get('summary') is None:
+            entry['summary'] = {}
+        try:
+            with open(LATEST_TEMU, 'rb') as _tf:
+                raw = _tf.read()
+        except OSError:
+            raw = None
+        if raw:
+            if 'A' in types:
+                _atomic_write_bytes(LATEST_TEMU_A, raw)
+                new['a'] = entry
+                _cloud_sync(storage.OBJ_TEMU_A, raw)
+            if 'B' in types:
+                _atomic_write_bytes(LATEST_TEMU_B, raw)
+                new['b'] = entry
+                _cloud_sync(storage.OBJ_TEMU_B, raw)
+    # 先落新格式 meta（避免 _sync_source_meta -> _ds_info -> 本函数 递归再迁移），再同步共享元信息
+    _write_meta_file(TEMU_META, new)
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
+    return new
 
 
 def _ds_info():
     lxm = _read_meta_file(LINGXING_META)
     wmm = _read_meta_file(WALMART_META)
     adm = _read_meta_file(ADMIN_META)
+    ops = _read_meta_file(OPS_META)
+    temu = _ensure_temu_meta()
     return {
         'lingxing': ({'filename': lxm.get('filename'),
                       'uploaded_at': lxm.get('uploaded_at'),
@@ -387,6 +460,10 @@ def _ds_info():
         'admin': ({'filename': adm.get('filename'),
                    'uploaded_at': adm.get('uploaded_at'),
                    'summary': adm.get('summary')} if adm else None),
+        'temu': temu,
+        'ops': ({'filename': ops.get('filename'),
+                 'uploaded_at': ops.get('uploaded_at'),
+                 'summary': ops.get('summary')} if ops else None),
     }
 
 
@@ -443,6 +520,14 @@ def _sync_source_meta():
         'wm_uploaded_at': STATE.get('wm_uploaded_at'),
         'admin_filename': STATE.get('admin_filename'),
         'admin_uploaded_at': STATE.get('admin_uploaded_at'),
+        'temu': ds['temu'],
+        'temu_a_filename': STATE.get('temu_a_filename'),
+        'temu_a_uploaded_at': STATE.get('temu_a_uploaded_at'),
+        'temu_b_filename': STATE.get('temu_b_filename'),
+        'temu_b_uploaded_at': STATE.get('temu_b_uploaded_at'),
+        'ops': ds['ops'],
+        'ops_filename': STATE.get('ops_filename'),
+        'ops_uploaded_at': STATE.get('ops_uploaded_at'),
     })
     storage.ds_update(meta)
 
@@ -474,13 +559,15 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     if not ref_path:
         progress_end(False, '尚未上传转单表')
         return False, '尚未上传转单表，请先上传「转单.xlsx」', 400
-    lx_path, wm_path, admin_path = _current_ds()
+    lx_path, wm_path, admin_path, temu_paths, ops_path = _current_ds()
     progress_start('读取原始报表…')
     try:
         header, rows, stats = run_pipeline(raw_path, ref_path,
                                            lingxing_path=lx_path,
                                            walmart_path=wm_path,
                                            admin_check_path=admin_path,
+                                           temu_paths=temu_paths,
+                                           ops_path=ops_path,
                                            progress=progress_set)
     except ValueError as e:
         progress_end(False, e)
@@ -493,6 +580,8 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
     lxm = _read_meta_file(LINGXING_META)
     wmm = _read_meta_file(WALMART_META)
     adm = _read_meta_file(ADMIN_META)
+    opm = _read_meta_file(OPS_META)
+    tm = _ensure_temu_meta()
     with _LOCK:
         STATE['header'] = header
         STATE['rows'] = rows
@@ -509,6 +598,12 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
         STATE['wm_uploaded_at'] = (wmm or {}).get('uploaded_at')
         STATE['admin_filename'] = (adm or {}).get('filename')
         STATE['admin_uploaded_at'] = (adm or {}).get('uploaded_at')
+        STATE['temu_a_filename'] = ((tm.get('a') or {}).get('filename'))
+        STATE['temu_a_uploaded_at'] = ((tm.get('a') or {}).get('uploaded_at'))
+        STATE['temu_b_filename'] = ((tm.get('b') or {}).get('filename'))
+        STATE['temu_b_uploaded_at'] = ((tm.get('b') or {}).get('uploaded_at'))
+        STATE['ops_filename'] = (opm or {}).get('filename')
+        STATE['ops_uploaded_at'] = (opm or {}).get('uploaded_at')
         _save_state()
         # 数据源版本元信息同步到存储层（JSON / Supabase），保证多人看到同一套口径
         try:
@@ -524,7 +619,13 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
                   'ref_filename': STATE['ref_filename'],
                   'ref_uploaded_at': STATE['ref_uploaded_at'],
                   'admin_filename': STATE['admin_filename'],
-                  'admin_uploaded_at': STATE['admin_uploaded_at']}, 200
+                  'admin_uploaded_at': STATE['admin_uploaded_at'],
+                  'temu_a_filename': STATE['temu_a_filename'],
+                  'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
+                  'temu_b_filename': STATE['temu_b_filename'],
+                  'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
+                  'ops_filename': STATE['ops_filename'],
+                  'ops_uploaded_at': STATE['ops_uploaded_at']}, 200
 
 
 def _row_id_key(row):
@@ -670,6 +771,47 @@ def _ensure_cloud_ds():
                     pass
     except Exception:
         pass
+    # Temu 报表（第 6 步）：云端 A/B 双槽拉取 + 旧单对象经本地迁移自动归类
+    try:
+        tm = _ensure_temu_meta()   # 旧格式迁移（含旧云对象归类落槽 + 同步新键）
+        changed = False
+        for slot, obj_key, slot_path in (('a', storage.OBJ_TEMU_A, LATEST_TEMU_A),
+                                         ('b', storage.OBJ_TEMU_B, LATEST_TEMU_B)):
+            try:
+                data = storage.ds_file_download(obj_key)
+            except Exception:
+                data = None
+            if not data:
+                continue
+            _atomic_write_bytes(slot_path, data)
+            try:
+                _, summary = load_temu(slot_path)
+            except Exception:
+                continue
+            tm[slot] = {'filename': 'Temu %s 类报表（云端同步）' % slot.upper(),
+                        'uploaded_at': now_bj(),
+                        'summary': summary}
+            changed = True
+        if changed:
+            _write_meta_file(TEMU_META, tm)
+    except Exception:
+        pass
+    # 产品运营表（第 7 步）：云端覆盖本地留档 + 重建 meta
+    try:
+        data = storage.ds_file_download(storage.OBJ_OPS)
+        if data:
+            _atomic_write_bytes(LATEST_OPS, data)
+            try:
+                from pipeline import load_ops
+                ops_map = load_ops(LATEST_OPS)
+                _write_meta_file(OPS_META, {'filename': '产品运营表（云端同步）',
+                                            'uploaded_at': now_bj(),
+                                            'summary': {'sheets': sorted(ops_map.keys()),
+                                                        'rows': sum(len(v) for v in ops_map.values())}})
+            except Exception:
+                pass
+    except Exception:
+        pass
     return ok_raw, ok_ref
 
 
@@ -736,6 +878,7 @@ def api_status():
     lxm = ds['lingxing']
     wmm = ds['walmart']
     adm = ds['admin']
+    temu = ds['temu']
     return jsonify({
         'ready': STATE['rows'] is not None,
         'shared_storage': storage._use_supabase(),
@@ -755,18 +898,31 @@ def api_status():
         'lingxing': lxm,
         'walmart': wmm,
         'admin': adm,
+        'temu': temu,
         'lx_used': {'filename': STATE['lx_filename'],
                     'uploaded_at': STATE['lx_uploaded_at']},
         'wm_used': {'filename': STATE['wm_filename'],
                     'uploaded_at': STATE['wm_uploaded_at']},
         'admin_used': {'filename': STATE['admin_filename'],
                        'uploaded_at': STATE['admin_uploaded_at']},
+        'temu_used': {'a': {'filename': STATE['temu_a_filename'],
+                            'uploaded_at': STATE['temu_a_uploaded_at']},
+                      'b': {'filename': STATE['temu_b_filename'],
+                            'uploaded_at': STATE['temu_b_uploaded_at']}},
         'lx_stale': bool(lxm and STATE['rows'] is not None
                          and STATE['lx_uploaded_at'] != lxm['uploaded_at']),
         'wm_stale': bool(wmm and STATE['rows'] is not None
                          and STATE['wm_uploaded_at'] != wmm['uploaded_at']),
         'admin_stale': bool(adm and STATE['rows'] is not None
                             and STATE['admin_uploaded_at'] != adm['uploaded_at']),
+        'temu_stale': bool(STATE['rows'] is not None and
+                           ((temu.get('a') and STATE['temu_a_uploaded_at'] != temu['a']['uploaded_at']) or
+                            (temu.get('b') and STATE['temu_b_uploaded_at'] != temu['b']['uploaded_at']))),
+        'ops': ds['ops'],
+        'ops_used': {'filename': STATE['ops_filename'],
+                     'uploaded_at': STATE['ops_uploaded_at']},
+        'ops_stale': bool(ds['ops'] and STATE['rows'] is not None
+                          and STATE['ops_uploaded_at'] != ds['ops']['uploaded_at']),
         'cloud_error': storage.last_error(),
     })
 
@@ -986,6 +1142,128 @@ def api_upload_admin():
                     'needs_rebuild': STATE['rows'] is not None})
 
 
+@app.route('/api/upload/temu', methods=['POST'])
+def api_upload_temu():
+    """上传/更新「Temu 报表」（第 6 步独立上传源，Option ②）。
+
+    2026-10-12 多文件改造：支持一次选择 1~2 个文件，A/B 类按各 sheet 表头自动判定、
+    分别留档 latest_temu_a.xlsx / latest_temu_b.xlsx（同类型后传覆盖前传；
+    单文件同时含 A/B sheet 时两槽共用该文件）。全部文件解析校验通过才落盘
+    （任一失败整体不入库），供重算合并（成员货品键：富化已有 + 仅追加全新）。"""
+    files = [f for f in request.files.getlist('file') if f and f.filename]
+    if not files:
+        return jsonify({'ok': False, 'msg': '未收到文件'}), 400
+    for f in files:
+        name = f.filename.lower()
+        if not (name.endswith('.xlsx') or name.endswith('.xlsm')):
+            return jsonify({'ok': False, 'msg': 'Temu 报表需为 .xlsx 文件：%s' % f.filename}), 400
+
+    from pipeline import temu_file_types
+    tmp_path = os.path.join(UPLOAD_DIR, '_temu_uploading.xlsx')  # 解析中转（保持 .xlsx 后缀，openpyxl 按扩展名校验）
+    parsed = []                                 # {'filename','raw','types','rows'}
+    try:
+        for f in files:
+            raw = f.read()
+            _atomic_write_bytes(tmp_path, raw)
+            try:
+                types = temu_file_types(tmp_path) or {'B'}   # 判不出类型（异常表头）按 B 兜底
+                _, trows = load_temu(tmp_path)               # 坏结构/空数据在此抛错
+            except Exception as e:
+                return jsonify({'ok': False,
+                                'msg': 'Temu 报表解析失败（%s）：%s' % (f.filename, e)}), 400
+            if not trows:
+                return jsonify({'ok': False,
+                                'msg': 'Temu 报表未解析到任何数据行（%s，检查是否含「店铺」/「MSKU」或「SKU」列）' % f.filename}), 400
+            parsed.append({'filename': f.filename, 'raw': raw,
+                           'types': types, 'rows': len(trows)})
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    # ---- 全部解析通过 -> 按类型落槽 + meta + 云同步 ----
+    tm = _ensure_temu_meta()
+    slot_errs = []
+    for p in parsed:
+        entry = {'filename': p['filename'], 'uploaded_at': now_bj(),
+                 'summary': {'rows': p['rows'], 'sheets_parsed': True}}
+        for slot, tflag, slot_path, obj_key in (
+                ('a', 'A', LATEST_TEMU_A, storage.OBJ_TEMU_A),
+                ('b', 'B', LATEST_TEMU_B, storage.OBJ_TEMU_B)):
+            if tflag not in p['types']:
+                continue
+            _atomic_write_bytes(slot_path, p['raw'])
+            tm[slot] = entry
+            err = _cloud_sync(obj_key, p['raw'])
+            if err:
+                slot_errs.append('%s 类（%s）：%s' % (tflag, p['filename'], err))
+    _write_meta_file(TEMU_META, tm)
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'temu': tm,
+                    'uploaded': [{'filename': p['filename'],
+                                  'types': sorted(p['types']),
+                                  'rows': p['rows']} for p in parsed],
+                    'cloud_error': '；'.join(slot_errs),
+                    'ready': STATE['rows'] is not None,
+                    'needs_rebuild': STATE['rows'] is not None})
+
+
+@app.route('/api/upload/ops', methods=['POST'])
+def api_upload_ops():
+    """上传/更新「产品运营表」（第 7 步，Amazon 店铺运营/运营组查询源）。
+
+    支持 .xlsx，多 sheet（如「综合组-AMZ」「AMZ组」），各 sheet 需含 SPU 列
+    （别名列 新SPU1/新SPU2… 自动纳入），并含 运营 / 运营组 列。
+    校验后留档 latest_ops.xlsx，供重算时按店铺 + SPU 查运营归属。"""
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未收到文件'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'ok': False, 'msg': '文件名为空'}), 400
+    name = f.filename.lower()
+    if not (name.endswith('.xlsx') or name.endswith('.xlsm')):
+        return jsonify({'ok': False, 'msg': '产品运营表需为 .xlsx 文件'}), 400
+
+    raw = f.read()
+    tmp_path = os.path.join(UPLOAD_DIR, '_ops_uploading.xlsx')   # 保持 .xlsx 后缀（openpyxl 按扩展名校验）
+    _atomic_write_bytes(tmp_path, raw)
+    try:
+        from pipeline import load_ops
+        ops_map = load_ops(tmp_path)
+    except Exception as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'msg': '产品运营表解析失败：' + str(e)}), 400
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
+    if not ops_map:
+        return jsonify({'ok': False, 'msg': '产品运营表未解析到任何含「SPU」列的 sheet'}), 400
+
+    _atomic_write_bytes(LATEST_OPS, raw)
+    meta = {'filename': f.filename,
+            'uploaded_at': now_bj(),
+            'summary': {'sheets': sorted(ops_map.keys()),
+                        'rows': sum(len(v) for v in ops_map.values())}}
+    _write_meta_file(OPS_META, meta)
+    cloud_err = _cloud_sync(storage.OBJ_OPS, raw)
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'ops': meta,
+                    'cloud_error': cloud_err,
+                    'ready': STATE['rows'] is not None,
+                    'needs_rebuild': STATE['rows'] is not None})
+
+
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
     """上传原始报表 CSV，更新共享数据源；计算由 /api/rebuild 单独触发。"""
@@ -1059,6 +1337,7 @@ def api_state():
     if STATE['rows'] is None:
         return jsonify({'ready': False})
     _, meta = current_ref()
+    tm = _ensure_temu_meta()
     payload = {
         'ready': True,
         'header': STATE['header'],
@@ -1074,7 +1353,15 @@ def api_state():
         'wm_uploaded_at': STATE['wm_uploaded_at'],
         'admin_filename': STATE['admin_filename'],
         'admin_uploaded_at': STATE['admin_uploaded_at'],
+        'temu_a_filename': STATE['temu_a_filename'],
+        'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
+        'temu_b_filename': STATE['temu_b_filename'],
+        'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
+        'ops_filename': STATE['ops_filename'],
+        'ops_uploaded_at': STATE['ops_uploaded_at'],
         'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
+        'temu_stale': bool((tm.get('a') and STATE['temu_a_uploaded_at'] != tm['a']['uploaded_at']) or
+                           (tm.get('b') and STATE['temu_b_uploaded_at'] != tm['b']['uploaded_at'])),
     }
     # 异常确认记录（含 version），供前端行级冲突检测初始化
     try:
