@@ -140,28 +140,35 @@ def last_error():
 
 def ds_file_upload(key, data):
     """上传并覆盖单个数据源文件：gzip+base64 分块写入数据库，跨冷启动持久化。
-    返回 True/False；失败原因见 last_error()。"""
+    返回 True/False；失败原因见 last_error()。
+
+    2026-10-13 加重试：Supabase（经 Cloudflare）偶发瞬时 502/503，重试 3 次
+    （间隔 1s/2s/3s）可吸收绝大部分抖动；分块均为 upsert，整体重跑幂等无副作用。"""
     global _LAST_DS_ERR
     if not _use_supabase():
         return False
-    try:
-        payload = base64.b64encode(gzip.compress(data)).decode('ascii')
-        chunks = [payload[i:i + _CHUNK_B64] for i in range(0, len(payload), _CHUNK_B64)] or ['']
-        c = _client()
-        rid = _file_row_id(key)
-        # 先写数据块、最后写元数据行：下载端以元数据行为准，半途失败不会读到残缺文件
-        for i, ch in enumerate(chunks):
+    payload = base64.b64encode(gzip.compress(data)).decode('ascii')
+    chunks = [payload[i:i + _CHUNK_B64] for i in range(0, len(payload), _CHUNK_B64)] or ['']
+    rid = _file_row_id(key)
+    last_exc = None
+    for attempt in range(3):
+        try:
+            c = _client()
+            # 先写数据块、最后写元数据行：下载端以元数据行为准，半途失败不会读到残缺文件
+            for i, ch in enumerate(chunks):
+                c.table(_TABLE_DS_META).upsert(
+                    {'id': '%s:p%d' % (rid, i), 'meta': {'d': ch}},
+                    on_conflict='id').execute()
             c.table(_TABLE_DS_META).upsert(
-                {'id': '%s:p%d' % (rid, i), 'meta': {'d': ch}},
+                {'id': rid, 'meta': {'v': 2, 'size': len(data), 'n': len(chunks)}},
                 on_conflict='id').execute()
-        c.table(_TABLE_DS_META).upsert(
-            {'id': rid, 'meta': {'v': 2, 'size': len(data), 'n': len(chunks)}},
-            on_conflict='id').execute()
-        _LAST_DS_ERR = ''
-        return True
-    except Exception as e:
-        _LAST_DS_ERR = 'upload %s: %r' % (key, e)
-        return False
+            _LAST_DS_ERR = ''
+            return True
+        except Exception as e:
+            last_exc = e
+            time.sleep(1 + attempt)          # 1s / 2s / 3s
+    _LAST_DS_ERR = 'upload %s: %r' % (key, last_exc)
+    return False
 
 
 def ds_file_download(key):

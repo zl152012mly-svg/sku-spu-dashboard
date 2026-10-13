@@ -785,12 +785,14 @@ def _ensure_cloud_ds():
                 continue
             _atomic_write_bytes(slot_path, data)
             try:
-                _, summary = load_temu(slot_path)
+                _, trows = load_temu(slot_path)
             except Exception:
                 continue
+            # summary 只存计数（与上传接口同构）；此前误存整表行数组，
+            # 导致 /api/status 膨胀至 1MB+ 且前端「解析 N 行」显示 0
             tm[slot] = {'filename': 'Temu %s 类报表（云端同步）' % slot.upper(),
                         'uploaded_at': now_bj(),
-                        'summary': summary}
+                        'summary': {'rows': len(trows), 'sheets_parsed': True}}
             changed = True
         if changed:
             _write_meta_file(TEMU_META, tm)
