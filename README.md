@@ -2,6 +2,8 @@
 
 把本地 Flask 看板部署到 Render（免费），满足「电脑关机后同事/家里仍可打开」，且人工编辑字段走 Supabase 云端持久化。
 
+> **迁移到阿里云（ECS + OSS）**：见 [`ALIYUN_DEPLOY.md`](./ALIYUN_DEPLOY.md)。该方案把应用搬到国内 ECS 常驻、存储改用阿里云 OSS，解决海外 502 / 免费层冷启动 / Supabase 分块上传脆弱性。存储后端由 `STORAGE_MODE`（supabase / oss / json）切换，三种后端代码共存，无需改业务逻辑。
+
 ## 架构
 
 - **应用**：Render Docker Web Service（免费实例，一直在线；空闲 15 分钟休眠，首访需 30~50 秒唤醒）

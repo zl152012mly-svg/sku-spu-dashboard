@@ -287,14 +287,24 @@ def _bootstrap_ref():
     if _read_ref_meta():
         return
     legacy = os.path.join(REF_DIR, '转单.xlsx')
-    if os.path.exists(legacy):
+    if not os.path.exists(legacy):
+        # 兜底：Linux unzip 解压中文文件名可能变乱码，按名字找不到时
+        # 自动登记 reference/ 下任一 xlsx/xlsm（2026-10-22 ECS 部署实踩）
         try:
-            summary = summarize_transfer(legacy)
-        except Exception:
+            cands = sorted(n for n in os.listdir(REF_DIR)
+                           if n.lower().endswith(('.xlsx', '.xlsm')) and not n.startswith('~$'))
+        except OSError:
+            cands = []
+        if not cands:
             return
-        ts = datetime.fromtimestamp(os.path.getmtime(legacy)).strftime('%Y-%m-%d %H:%M:%S')
-        _write_ref_meta({'stored': '转单.xlsx', 'filename': '转单.xlsx',
-                         'uploaded_at': ts, 'summary': summary})
+        legacy = os.path.join(REF_DIR, cands[0])
+    try:
+        summary = summarize_transfer(legacy)
+    except Exception:
+        return
+    ts = datetime.fromtimestamp(os.path.getmtime(legacy)).strftime('%Y-%m-%d %H:%M:%S')
+    _write_ref_meta({'stored': os.path.basename(legacy), 'filename': '转单.xlsx',
+                     'uploaded_at': ts, 'summary': summary})
 
 
 def current_ref():
@@ -540,8 +550,8 @@ def _cloud_sync(key, data):
     数据消失」的接口层根因：整文件单行写到 Supabase 会静默失败。
     """
     try:
-        if not storage._use_supabase():
-            return '未启用云端存储（STORAGE_MODE≠supabase）'
+        if not storage.has_cloud():
+            return '未启用云端存储（STORAGE_MODE≠supabase/oss）'
         if storage.ds_file_upload(key, data):
             return ''
         return storage.last_error() or '云端写入返回 False（原因未知）'
@@ -673,7 +683,7 @@ def _ensure_cloud_ds():
     """冷启动时，若云端 Storage 已有更新版数据源，则拉取覆盖本地留档文件。
     这样 Render/HF 休眠重启后能用「网页上传的最新数据源」重建，而非仓库里提交的旧数据源。
     返回 (has_raw, has_ref) —— 是否能从云取到原始表 / 转单表。"""
-    if not storage._use_supabase():
+    if not storage.has_cloud():
         return False, False
     ok_raw = ok_ref = False
     try:
@@ -883,7 +893,7 @@ def api_status():
     temu = ds['temu']
     return jsonify({
         'ready': STATE['rows'] is not None,
-        'shared_storage': storage._use_supabase(),
+        'shared_storage': storage.has_cloud(),
         'filename': STATE['filename'],
         'uploaded_at': STATE['uploaded_at'],
         'stats': STATE['stats'],
@@ -1311,7 +1321,7 @@ def api_upload():
     return jsonify({'ok': True, 'raw': _raw_info(), 'is_new_file': is_new_file,
                     'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None, 'needs_rebuild': True,
-                    'shared_storage': storage._use_supabase()})
+                    'shared_storage': storage.has_cloud()})
 
 
 @app.route('/api/rebuild', methods=['POST'])

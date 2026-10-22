@@ -1,0 +1,21 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutObject",
+        "oss:GetObject",
+        "oss:DeleteObject",
+        "oss:ListObjects",
+        "oss:AbortMultipartUpload",
+        "oss:ListParts",
+        "oss:GetBucketInfo"
+      ],
+      "Resource": [
+        "acs:oss:*:*:sku-spu-data",
+        "acs:oss:*:*:sku-spu-data/*"
+      ]
+    }
+  ]
+}
