@@ -81,7 +81,7 @@ def file_sha256(path, chunk=1 << 20):
         return None
 
 from pipeline import run_pipeline, summarize_transfer, load_lingxing, load_walmart, load_temu
-import storage  # 可插拔存储层：JSON 本地 / Supabase 云，含行级冲突检测
+import common_store as storage  # 合并后统一存储层（SKU&SPU 命名空间委托 storage.py，新增新品盘点命名空间）
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 REF_DIR = os.path.join(BASE, 'reference')
