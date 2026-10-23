@@ -478,8 +478,10 @@ function rebuild(msgEl) {
         if (msg) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '重算失败'); }
         return;
       }
-      // 重算不算上传新表格 → 数据更新时间保持不变
-      loadState(msg, '重算完成，数据更新时间保持不变');
+      // 重算不算上传新表格 → 数据更新时间保持不变。
+      // 先 refreshStatus 拿最新的 *_stale（服务端重算后已清），再载入明细渲染，
+      // 否则黄色「需要重算」提示条会残留（/api/state 不含 lx/wm/admin/ops stale 字段）。
+      refreshStatus().then(() => loadState(msg, '重算完成，数据更新时间保持不变'));
     })
     .catch(err => {
       hideProgress();

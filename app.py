@@ -18,6 +18,7 @@ import os
 import io
 import json
 import csv
+import gzip
 import shutil
 import zipfile
 import threading
@@ -126,6 +127,42 @@ def handle_exception(e):
 
 
 # 登录 / 探测 / 登出 接口已迁移至 auth.py（auth.init_app(app) 注册 /api/login、/api/ping、/logout）
+
+
+# ---------- 响应压缩（跨公网访问提速：/api/state 明细 JSON 约 19MB，gzip 后约 3~4MB） ----------
+_GZIP_MIMES = ('application/json', 'application/javascript', 'text/javascript',
+               'text/css', 'text/html')
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 43200   # 静态库（jquery/datatables/echarts）浏览器缓存 12h；
+                                                  # app.js / style.css 走 ?v= 版本号刷新，改版必须同步升级版本号
+
+
+@app.after_request
+def _gzip_response(resp):
+    """对大响应做 gzip（JSON/JS/CSS/HTML）。xlsx/csv 下载不压（本就压缩/文本导出另有 BOM 处理）。"""
+    try:
+        if resp.status_code != 200:
+            return resp
+        if resp.headers.get('Content-Encoding'):
+            return resp
+        if (resp.mimetype or '') not in _GZIP_MIMES:
+            return resp
+        if 'gzip' not in (request.headers.get('Accept-Encoding') or '').lower():
+            return resp
+        if resp.direct_passthrough:
+            resp.direct_passthrough = False   # 静态文件(send_file)转缓冲后才能压缩
+        data = resp.get_data()
+        if len(data) < 1024:
+            return resp
+        gz = gzip.compress(data, compresslevel=5)
+        if len(gz) >= len(data):
+            return resp
+        resp.set_data(gz)
+        resp.headers['Content-Encoding'] = 'gzip'
+        resp.headers['Content-Length'] = str(len(gz))
+        resp.headers.add('Vary', 'Accept-Encoding')
+    except Exception:
+        pass
+    return resp
 
 
 # 当前处理结果（内存态，单用户本地工具够用）
