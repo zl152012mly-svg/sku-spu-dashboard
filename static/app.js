@@ -101,7 +101,9 @@ function exportFiltered() {
 /* ---------- 计算进度遮罩 ---------- */
 let PG_TIMER = null;
 
-function showProgress(title) {
+function showProgress(title, poll) {
+  // poll === false：纯前端载入（/api/state 下载）不轮询后端计算进度，
+  // 否则会显示后端 PROGRESS 里上次重算残留的「100% 完成」，看起来像卡死。
   const m = $$('#prog-mask');
   if (!m) return;
   $$('#pg-title').textContent = title || '正在计算…';
@@ -110,7 +112,7 @@ function showProgress(title) {
   $$('#pg-meta').textContent = '';
   m.classList.remove('hide');
   if (PG_TIMER) clearInterval(PG_TIMER);
-  PG_TIMER = setInterval(pollProgress, 500);   // 每 0.5s 轮询后端真实进度
+  PG_TIMER = (poll === false) ? null : setInterval(pollProgress, 500);  // 每 0.5s 轮询后端真实进度
 }
 
 function hideProgress() {
@@ -638,8 +640,8 @@ function upload(file) {
  *  msgEl: 可选，用于显示完成/失败提示的元素
  *  doneNote: 可选，完成时追加的说明文字 */
 function loadState(msgEl, doneNote) {
-  showProgress('正在载入看板…');
-  setProgress(60, '载入明细数据…');
+  showProgress('正在载入看板…', false);   // 不轮询后端进度（见 showProgress 注释）
+  setProgress(60, '正在下载明细数据…');
   apiCall('/api/state')
     .then(safeJson)
     .then(({ ok, d }) => {
@@ -705,7 +707,7 @@ function renderPersistHint() {
           `<a href="javascript:;" id="lnk-back">返回看板</a>`;
         const lk = $$('#lnk-back');
         if (lk) lk.onclick = () => {
-          showProgress('正在载入看板…');
+          showProgress('正在载入看板…', false);
           setProgress(40, '读取已保存数据…');
           refreshStatus()
             .then(s => {
