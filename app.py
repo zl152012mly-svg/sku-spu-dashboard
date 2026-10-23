@@ -1344,42 +1344,61 @@ def api_rebuild():
 
 @app.route('/api/state')
 def api_state():
-    """返回看板所需数据：表头 + 全量行 + 统计。"""
+    """返回看板所需数据：表头 + 全量行 + 统计。
+    带 ETag/304 协商缓存：数据未变（current.json 未重写 且 异常确认未改）时返回 304，
+    浏览器复用上次已下载的明细（弱带宽下重复打开看板秒开，不再重传 1.5MB）。"""
     if STATE['rows'] is None:
         return jsonify({'ready': False})
-    _, meta = current_ref()
-    tm = _ensure_temu_meta()
-    payload = {
-        'ready': True,
-        'header': STATE['header'],
-        'rows': STATE['rows'],
-        'stats': STATE['stats'],
-        'filename': STATE['filename'],
-        'uploaded_at': STATE['uploaded_at'],
-        'ref_filename': STATE['ref_filename'],
-        'ref_uploaded_at': STATE['ref_uploaded_at'],
-        'lx_filename': STATE['lx_filename'],
-        'lx_uploaded_at': STATE['lx_uploaded_at'],
-        'wm_filename': STATE['wm_filename'],
-        'wm_uploaded_at': STATE['wm_uploaded_at'],
-        'admin_filename': STATE['admin_filename'],
-        'admin_uploaded_at': STATE['admin_uploaded_at'],
-        'temu_a_filename': STATE['temu_a_filename'],
-        'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
-        'temu_b_filename': STATE['temu_b_filename'],
-        'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
-        'ops_filename': STATE['ops_filename'],
-        'ops_uploaded_at': STATE['ops_uploaded_at'],
-        'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
-        'temu_stale': bool((tm.get('a') and STATE['temu_a_uploaded_at'] != tm['a']['uploaded_at']) or
-                           (tm.get('b') and STATE['temu_b_uploaded_at'] != tm['b']['uploaded_at'])),
-    }
-    # 异常确认记录（含 version），供前端行级冲突检测初始化
+    # 异常确认记录（含 version），供前端行级冲突检测初始化 + 参与版本指纹
     try:
-        payload['annotations'] = storage.annot_get()
+        ann = storage.annot_get() or {}
     except Exception:
-        payload['annotations'] = {}
-    return jsonify(payload)
+        ann = {}
+    try:
+        st_ = os.stat(CURRENT_JSON)
+        cur_sig = '%.6f|%d' % (st_.st_mtime, st_.st_size)   # 任一次重算/上传都会重写 current.json
+    except OSError:
+        cur_sig = 'none'
+    ann_fp = hashlib.md5(json.dumps(ann, sort_keys=True,
+                                    ensure_ascii=False).encode('utf-8')).hexdigest()
+    etag = '"%s"' % hashlib.md5((cur_sig + '|' + ann_fp).encode('utf-8')).hexdigest()
+    inm = (request.headers.get('If-None-Match') or '').replace('W/', '').strip()
+    if inm == etag:
+        resp = app.response_class(status=304)
+    else:
+        _, meta = current_ref()
+        tm = _ensure_temu_meta()
+        payload = {
+            'ready': True,
+            'header': STATE['header'],
+            'rows': STATE['rows'],
+            'stats': STATE['stats'],
+            'filename': STATE['filename'],
+            'uploaded_at': STATE['uploaded_at'],
+            'ref_filename': STATE['ref_filename'],
+            'ref_uploaded_at': STATE['ref_uploaded_at'],
+            'lx_filename': STATE['lx_filename'],
+            'lx_uploaded_at': STATE['lx_uploaded_at'],
+            'wm_filename': STATE['wm_filename'],
+            'wm_uploaded_at': STATE['wm_uploaded_at'],
+            'admin_filename': STATE['admin_filename'],
+            'admin_uploaded_at': STATE['admin_uploaded_at'],
+            'temu_a_filename': STATE['temu_a_filename'],
+            'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
+            'temu_b_filename': STATE['temu_b_filename'],
+            'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
+            'ops_filename': STATE['ops_filename'],
+            'ops_uploaded_at': STATE['ops_uploaded_at'],
+            'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
+            'temu_stale': bool((tm.get('a') and STATE['temu_a_uploaded_at'] != tm['a']['uploaded_at']) or
+                               (tm.get('b') and STATE['temu_b_uploaded_at'] != tm['b']['uploaded_at'])),
+        }
+        # 异常确认记录（含 version），供前端行级冲突检测初始化
+        payload['annotations'] = ann
+        resp = jsonify(payload)
+    resp.headers['ETag'] = etag
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 @app.route('/api/missing_platform')
