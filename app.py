@@ -110,34 +110,9 @@ for d in (REF_DIR, UPLOAD_DIR, DATA_DIR):
 
 app = Flask(__name__)
 
-# ---------- 访问口令（轻级鉴权） ----------
-# 环境变量 ACCESS_PASSWORD 设置口令；未设置时默认 'lucie2026'（本地可改）。
-ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', '').strip() or 'lucie2026'
-# 简单 token = sha256(口令|salt)，前端通过 localStorage 存 token，请求头带 X-Auth-Token。
-_AUTH_SALT = 'sku-spu-2026'
-AUTH_TOKEN = hashlib.sha256((ACCESS_PASSWORD + _AUTH_SALT).encode('utf-8')).hexdigest()
-
-
-def _auth_ok():
-    """校验请求头 X-Auth-Token 是否等于正确 token。"""
-    tok = request.headers.get('X-Auth-Token', '')
-    return tok == AUTH_TOKEN
-
-
-@app.before_request
-def _require_auth():
-    """所有 /api/* 需先通过口令；/ 页面骨架放行（数据接口鉴权，前端据此弹口令框）。"""
-    if request.path.startswith('/static/'):
-        return None
-    # 白名单：登录/探测接口本身无需 token（它们是「未登录」时唯一能调的接口）
-    if request.path in ('/api/login', '/api/ping'):
-        return None
-    if _auth_ok():
-        return None
-    # 未通过：仅拦截 /api/*，返回 401 JSON（前端 showLogin 弹出口令框）
-    if request.path.startswith('/api/'):
-        return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
-    return None
+# ---------- 统一鉴权（auth.py：session+role，兼容既有 X-Auth-Token 流） ----------
+from auth import init_app, role_required, current_role
+init_app(app)
 
 
 @app.errorhandler(Exception)
@@ -150,20 +125,7 @@ def handle_exception(e):
                     'detail': _tb.format_exc()[-300:]}), (code if isinstance(code, int) else 500)
 
 
-# ---------- 登录 / 探测 ----------
-@app.route('/api/ping')
-def api_ping():
-    return jsonify({'ok': True, 'auth': _auth_ok()})
-
-
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    """校验访问口令，通过则返回 auth token。body: {password}"""
-    body = request.get_json(force=True, silent=True) or {}
-    pwd = str(body.get('password', ''))
-    if pwd == ACCESS_PASSWORD:
-        return jsonify({'ok': True, 'token': AUTH_TOKEN})
-    return jsonify({'ok': False, 'msg': '口令错误'}), 401
+# 登录 / 探测 / 登出 接口已迁移至 auth.py（auth.init_app(app) 注册 /api/login、/api/ping、/logout）
 
 
 # 当前处理结果（内存态，单用户本地工具够用）
