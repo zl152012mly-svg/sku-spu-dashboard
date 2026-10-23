@@ -102,6 +102,13 @@ def init_app(app):
         p = request.path
         if p.startswith('/static/'):
             return None
+        # 兼容「只带 X-Auth-Token 请求头、没有 session」的老客户端：
+        # 主站页面每次取数都带该头（所以看板能用），但点击链接跳转不会带请求头，
+        # 导致 /na/ 被判定为未登录而弹回主站（表现为「点了没反应」）。
+        # 这里在鉴权通过时顺手把角色写进 session，使后续页面跳转也带得上登录态。
+        if not session.get('role') and request.headers.get('X-Auth-Token', '') == AUTH_TOKEN:
+            session['role'] = 'admin'
+            session.permanent = True
         # 白名单：登录/探测/登出本身无需已登录态（它们是「未登录」时唯一能调的接口）
         if p in ('/api/login', '/api/ping', '/logout'):
             return None
