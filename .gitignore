@@ -11,3 +11,8 @@ server.log
 
 # ---------- 部署敏感信息（用 Render 环境变量注入，绝不提交）----------
 .env
+
+na_data/
+_*.py
+_*.txt
+output/

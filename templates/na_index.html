@@ -1,0 +1,2689 @@
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>北美市场事业部新品跟进</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #333; height: 100vh; overflow: hidden; }
+
+/* 左侧导航布局 */
+.app-layout { display: flex; height: 100vh; width: 100vw; }
+.sidebar { width: 230px; background: #1e293b; color: #fff; flex-shrink: 0; display: flex; flex-direction: column; box-shadow: 2px 0 8px rgba(0,0,0,0.08); }
+.sidebar-header { padding: 22px 20px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.sidebar-logo { font-size: 17px; font-weight: 700; letter-spacing: 0.5px; color: #fff; }
+.sidebar-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.sidebar-menu { flex: 1; padding: 14px 12px; overflow-y: auto; }
+.menu-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: #cbd5e1; opacity: 0.9; transition: all 0.2s; margin-bottom: 4px; }
+.menu-item:hover { background: rgba(255,255,255,0.08); color: #fff; opacity: 1; }
+.menu-item.active { background: #2563eb; color: #fff; opacity: 1; }
+.menu-icon { font-size: 18px; width: 24px; text-align: center; }
+.sidebar-footer { padding: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+.sidebar-footer .btn-sm { display: block; width: 100%; text-align: center; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.1); color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; transition: all 0.2s; }
+.sidebar-footer .btn-sm:hover { background: rgba(255,255,255,0.2); }
+
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.top-header { height: 60px; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.header-title { font-size: 18px; font-weight: 700; color: #1e293b; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.btn-action { padding: 6px 14px; border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; transition: all 0.2s; display: inline-flex; align-items: center; }
+.btn-action:hover { background: #f3f4f6; border-color: #9ca3af; }
+.btn-action.primary { background: #1a237e; border-color: #1a237e; color: #fff; }
+.btn-action.primary:hover { background: #283593; }
+.btn-action.warning { background: #fff7ed; border-color: #fbbf24; color: #92400e; }
+.btn-action.warning:hover { background: #ffedd5; }
+
+/* 内容区 */
+.content-body { flex: 1; overflow: hidden; padding: 24px 24px 14px; background: #f0f2f5; display: flex; flex-direction: column; }
+
+/* 报告滚动区: 只装表格, 横向+纵向滚这一个. .summary-bar + .filters 在外面固定 */
+.report-scroll { flex: 1; min-height: 0; overflow: auto; position: relative; }
+/* 隐藏原生横向滚动条(用底部固定滚动条代替) */
+.report-scroll::-webkit-scrollbar:horizontal { height: 0; display: none; }
+.view { display: none; }
+.view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+#reportContent { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+#view-upload.active { overflow: auto; }
+
+/* 上传页面 */
+.page-header { margin-bottom: 20px; }
+.page-header h2 { font-size: 20px; color: #1a237e; margin-bottom: 4px; }
+.page-header p { font-size: 13px; color: #888; }
+.actions-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+.btn-primary { background: #1a237e; color: white; }
+.btn-primary:hover { background: #283593; }
+.btn-success { background: #28a745; color: white; }
+.btn-success:hover { background: #218838; }
+.btn-secondary { background: #e0e0e0; color: #333; }
+.btn-secondary:hover { background: #d0d0d0; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); transition: box-shadow 0.2s; }
+.card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-title { font-size: 16px; font-weight: 700; color: #1a237e; }
+.card-desc { font-size: 12px; color: #888; margin-bottom: 12px; line-height: 1.5; }
+.file-info { background: #f5f5f5; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
+.file-info .label { color: #888; }
+.file-info .value { color: #333; font-weight: 600; }
+.status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.status-ok { background: #e8f5e9; color: #2e7d32; }
+.status-missing { background: #ffebee; color: #c62828; }
+.upload-area { border: 2px dashed #ccc; border-radius: 8px; padding: 16px; text-align: center; transition: all 0.2s; cursor: pointer; }
+.upload-area:hover { border-color: #3949ab; background: #f5f7ff; }
+.upload-area.dragover { border-color: #3949ab; background: #e8eaf6; }
+.upload-area input { display: none; }
+.upload-area .icon { font-size: 28px; color: #bbb; margin-bottom: 6px; }
+.upload-area .text { font-size: 13px; color: #666; }
+.shared-box { border: 1px solid #b7dfb9; background: #f2fbf3; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.shared-box.warn { border-color: #f0c36d; background: #fffaf0; }
+.shared-box .shared-hd { font-size: 13px; font-weight: 700; color: #1b7f34; margin-bottom: 4px; }
+.shared-box.warn .shared-hd { color: #a06a00; }
+.shared-box .shared-body { font-size: 11px; color: #555; line-height: 1.6; }
+.shared-box .shared-actions { margin-top: 6px; }
+.btn.tiny { padding: 4px 10px; font-size: 11px; border-radius: 5px; border: 1px solid #c3cddb; background: #fff; cursor: pointer; }
+.btn.tiny:hover { background: #f0f2f5; }
+
+/* 模态框 */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-overlay.show { display: flex; }
+.modal { background: white; border-radius: 12px; padding: 24px 30px; max-width: 650px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal h2 { font-size: 18px; margin-bottom: 16px; color: #1a237e; }
+.log-box { background: #1e1e1e; color: #e0e0e0; border-radius: 8px; padding: 12px; font-family: 'Consolas', monospace; font-size: 12px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-bottom: 16px; }
+.result-item { margin-bottom: 12px; padding: 10px; border-radius: 6px; }
+.result-success { background: #e8f5e9; border-left: 4px solid #28a745; }
+.result-fail { background: #ffebee; border-left: 4px solid #dc3545; }
+
+/* 报告页面 */
+.report-loading { text-align: center; padding: 60px 20px; color: #999; font-size: 16px; }
+.report-loading .spinner { width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #1a237e; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 可收起组件: 数据说明 / 统计指标 */
+.collapsible { background: white; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
+.collapsible-header { padding: 9px 14px; background: #e8eaf6; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; font-weight: 600; color: #1a237e; font-size: 13px; transition: background 0.15s; }
+.collapsible-header:hover { background: #d8dcf0; }
+.collapsible-toggle { display: inline-block; transition: transform 0.2s; font-size: 10px; color: #3949ab; width: 12px; text-align: center; }
+.collapsible.expanded .collapsible-toggle { transform: rotate(90deg); }
+.collapsible-body { display: none; padding: 12px 16px; font-size: 12px; line-height: 1.7; color: #555; }
+.collapsible.expanded .collapsible-body { display: block; }
+.collapsible-hint { margin-left: auto; font-size: 11px; color: #888; font-weight: normal; }
+
+/* 数据说明内容(在 collapsible-body 内) */
+.note-content strong { color: #1a237e; }
+
+/* 指标卡片(更紧凑, 11 个能一行显示) */
+.metrics { display: flex; gap: 8px; margin: 0; flex-wrap: nowrap; }
+.metric { background: white; padding: 8px 10px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); min-width: 0; flex: 1; text-align: center; }
+.metric .label { font-size: 11px; color: #888; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric .value { font-size: 18px; font-weight: 700; line-height: 1.2; }
+
+.filters { display: flex; gap: 8px; align-items: center; z-index: 30; background: #f0f2f5; padding: 10px 0 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box; }
+.filter-left { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 1; min-width: 0; }
+.filter-btn { padding: 7px 14px; border: 2px solid #ddd; background: white; border-radius: 20px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.filter-btn:hover { border-color: #3949ab; }
+.filter-btn.active { background: #3949ab; color: white; border-color: #3949ab; }
+.search-box { padding: 7px 14px; border: 2px solid #ddd; border-radius: 20px; font-size: 13px; width: 240px; outline: none; margin-left: auto; }
+.search-box:focus { border-color: #3949ab; }
+
+/* 多选字段筛选 */
+.field-filter { position: relative; display: inline-block; }
+.field-filter-btn { padding: 7px 14px; border: 2px solid #ddd; background: white; border-radius: 20px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.field-filter-btn:hover { border-color: #3949ab; }
+.field-filter-btn.active { background: #e8eaf6; border-color: #3949ab; color: #1a237e; font-weight: 600; }
+.field-filter-panel { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 10px; min-width: 170px; max-height: 300px; overflow-y: auto; z-index: 100; }
+.field-filter-panel.show { display: block; }
+.field-filter-panel label { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; cursor: pointer; border-radius: 4px; }
+.field-filter-panel label:hover { background: #f0f4ff; }
+.field-filter-panel .panel-actions { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+.field-filter-panel .panel-actions button { font-size: 12px; padding: 3px 12px; border: 1px solid #ddd; border-radius: 12px; background: white; cursor: pointer; }
+.field-filter-panel .panel-actions button:hover { border-color: #3949ab; }
+.clear-filters-btn { padding: 7px 14px; border: 2px solid #dc3545; color: #dc3545; background: white; border-radius: 20px; cursor: pointer; font-size: 13px; margin-left: 4px; }
+.clear-filters-btn:hover { background: #dc3545; color: white; }
+
+/* 表头设置按钮 */
+.col-settings-btn { padding: 7px 14px; border: 2px solid #3949ab; background: white; color: #3949ab; border-radius: 20px; cursor: pointer; font-size: 13px; white-space: nowrap; transition: all 0.2s; }
+.col-settings-btn:hover { background: #3949ab; color: white; }
+
+/* 可隐藏列 */
+.col-hidden { display: none !important; }
+
+/* 表头设置弹窗 */
+.modal-mask { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 200; align-items: center; justify-content: center; }
+.modal-box { background: white; border-radius: 12px; width: 420px; max-width: 92vw; max-height: 80vh; box-shadow: 0 8px 32px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
+.modal-title { padding: 14px 18px; font-weight: 600; font-size: 15px; color: #1a237e; border-bottom: 1px solid #eee; }
+.modal-body { padding: 16px 18px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.col-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 3px 0; }
+.modal-actions { padding: 12px 18px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 8px; }
+.btn-primary { padding: 7px 18px; border: none; background: #3949ab; color: white; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-primary:hover { background: #283593; }
+.btn-default { padding: 7px 18px; border: 1px solid #ddd; background: white; color: #555; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-default:hover { border-color: #3949ab; }
+
+.summary-bar { background: white; padding: 10px 20px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: #666; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+
+/* 备货备注 (每个SPU独立, 同步按钮在导航栏) */
+.spu-note-input { width: 100%; min-height: 54px; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 12px; font-family: 'Microsoft YaHei', sans-serif; resize: vertical; outline: none; box-sizing: border-box; }
+.spu-note-input:focus { border-color: #f9a825; }
+.spu-note-cell { padding: 6px 8px !important; vertical-align: top; }
+.spu-note-cell .spu-note-input { min-height: 42px; padding: 5px 7px; font-size: 11px; resize: vertical; }
+.spu-note-cell .spu-note-meta { font-size: 10px; color: #888; margin-top: 2px; text-align: right; }
+.sn-status { font-size: 12px; }
+.sn-status.ok { color: #2e7d32; }
+.sn-status.warn { color: #e65100; }
+
+/* v2 可编辑业务字段单元格样式 */
+.cell-edit-wrap { padding: 4px 6px !important; vertical-align: middle; }
+.cell-select {
+    width: 100%; min-width: 80px; border: 1px solid #d0d0d0; border-radius: 5px;
+    padding: 4px 6px; font-size: 12px; font-family: 'Microsoft YaHei', sans-serif;
+    background: #fafafa; color: #333; outline: none; box-sizing: border-box; cursor: pointer;
+    appearance: auto;
+}
+.cell-select:hover { border-color: #1976d2; background: #fff; }
+.cell-select:focus { border-color: #f9a825; background: #fffde7; }
+.cell-date {
+    width: 100%; border: 1px solid #d0d0d0; border-radius: 5px;
+    padding: 4px 6px; font-size: 12px; font-family: 'Microsoft YaHei', sans-serif;
+    background: #fafafa; color: #333; outline: none; box-sizing: border-box; cursor: pointer;
+}
+.cell-date:hover { border-color: #1976d2; background: #fff; }
+.cell-date:focus { border-color: #f9a825; background: #fffde7; }
+.cell-readonly {
+    display: inline-block; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+    font-size: 12px; color: #444; min-height: 22px; min-width: 50px;
+}
+.cell-readonly:hover { background: #e3f2fd; }
+.cell-readonly.no-edit { color: #888; cursor: default; }
+.cell-readonly.no-edit:hover { background: transparent; }
+
+.table-container { background: white; border-radius: 12px; overflow: visible; box-shadow: 0 2px 8px rgba(0,0,0,0.06); width: fit-content; min-width: 100%; }
+.bottom-scrollbar { position: fixed; bottom: 0; left: 0; right: 0; height: 14px; background: #e8e8e8; border-top: 1px solid #ccc; overflow-x: auto; overflow-y: hidden; z-index: 40; box-shadow: 0 -2px 4px rgba(0,0,0,0.05); }
+.bottom-scrollbar-inner { height: 1px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #f5f5f5; padding: 12px 10px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #ddd; cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 0; z-index: 20; }
+thead th:hover { background: #e8eaf6; }
+tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+.spu-row { cursor: pointer; transition: background 0.15s; }
+.spu-row:hover { background: #f0f4ff; }
+.spu-row.expanded { background: #e8eaf6; }
+.sku-row { display: none; }
+.sku-row.visible { display: table-row; }
+.sku-row td { background: #fafafa; font-size: 12px; color: #666; }
+/* 需求5: 组合SKU / 无效SKU 明细子行 —— 与 sku-row 同款整行展开 */
+.sku-group-row { display: none; }
+.sku-group-row.visible { display: table-row; }
+.expand-icon { display: inline-block; width: 16px; transition: transform 0.2s; color: #3949ab; font-weight: bold; }
+.spu-row.expanded .expand-icon { transform: rotate(90deg); }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+.pill-new { background: #e3f2fd; color: #1565c0; }
+.pill-blue { background: #e8eaf6; color: #1a237e; }
+.pill-ltl { background: #ffebee; color: #c62828; }
+.pill-multi { background: #fff3e0; color: #e65100; }
+.pill-anomaly { background: #fdecea; color: #c62828; }
+.anomaly-box { margin-top:8px;padding:8px 10px;background:#fdecea;border-left:4px solid #c62828;border-radius:6px;font-size:11px;color:#c62828; }
+.anomaly-box table { margin-top:4px; }
+/* SKU异常记录 确认按钮 (2026-10-20): 正常SKU / 无效SKU / 回到待确认 */
+.sa-btn { font-size:11px;padding:2px 6px;margin:0 2px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;font-family:inherit; }
+.sa-btn:hover { background:#fdecea; }
+.sa-btn.sa-on { background:#e8f5e9;border-color:#2e7d32;color:#2e7d32;font-weight:600; }
+.sa-btn.sa-off { background:#c62828;border-color:#c62828;color:#fff;font-weight:600; }
+.sa-btn.sa-clear { border-color:#bbb;color:#888; }
+.sa-btn.sa-combo { border-color:#7b1fa2;color:#7b1fa2; }
+.sa-btn.sa-combo:hover { background:#f3e5f5; }
+.sa-status-select { font-size:11px;padding:2px 4px;border:1px solid #ffb74d;border-radius:4px;background:#fff;color:#e65100;cursor:pointer; }
+/* 需求3: 勾选多条后浮现的批量操作条 */
+.sa-batch { margin-top:6px;padding:6px 8px;background:#e8eaf6;border:1px dashed #5c6bc0;border-radius:6px;font-size:11px;color:#283593;display:flex;flex-wrap:wrap;align-items:center;gap:4px; }
+.sa-batch .sa-batch-cnt { margin-right:4px;font-weight:600; }
+.sa-note-input { border:1px solid #ddd;border-radius:4px;padding:2px 4px;font-size:11px;font-family:inherit; }
+.status-cell { font-weight: 600; }
+.alias-tag { font-size: 10px; color: #999; cursor: help; }
+.no-record { color: #999; font-style: italic; }
+.ddl-urgent { color: #dc3545; font-weight: 700; }
+.ddl-soon { color: #fd7e14; font-weight: 600; }
+.ddl-normal { color: #28a745; }
+.footer { margin-top: 20px; text-align: center; font-size: 12px; color: #999; padding-bottom: 20px; }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">北美市场事业部</div>
+            <div class="sidebar-sub">新品 / 新色跟进</div>
+        </div>
+        <div class="sidebar-menu">
+            {% if is_admin_bool %}
+            <div class="menu-item active" data-view="upload" onclick="switchView('upload')">
+                <span class="menu-icon">📁</span><span>数据管理</span>
+            </div>
+            {% endif %}
+            <div class="menu-item {% if not is_admin_bool %}active{% endif %}" data-view="new-arrival" onclick="switchView('new-arrival')">
+                <span class="menu-icon">📦</span><span>新品跟进</span>
+            </div>
+            <div class="menu-item" data-view="new-color" onclick="switchView('new-color')">
+                <span class="menu-icon">🎨</span><span>新色跟进</span>
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            {% if is_admin_bool %}
+            <a class="btn-sm" href="/logout">退出管理</a>
+            {% else %}
+            <div style="font-size:11px;color:#94a3b8;text-align:center;">查看模式</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="top-header">
+            <div class="header-title" id="pageTitle">数据管理</div>
+            <div class="header-actions" id="headerActions">
+                <a class="btn-action" href="/na/download/html" data-for="new-arrival">下载报告</a>
+                <a class="btn-action" href="/na/download/csv" data-for="new-arrival">导出CSV</a>
+                <a class="btn-action" href="/na/download/excel" data-for="new-arrival">导出Excel</a>
+                <button class="btn-action warning" onclick="syncAllNotes()" data-for="new-arrival">同步备注</button>
+                <button class="btn-action" onclick="exportNcCSV()" data-for="new-color">导出CSV</button>
+                <a class="btn-action" href="/na/download/nc-excel" data-for="new-color">导出Excel(新色清单)</a>
+            </div>
+        </div>
+        <div class="content-body">
+            {% if is_admin_bool %}
+            <!-- 数据管理页面 (仅管理员可见) -->
+            <div class="view active" id="view-upload">
+                <div class="page-header">
+                    <h2>数据源管理</h2>
+                    <p>上传或更新数据源文件，系统自动识别并处理。<b>已上传的文件保存在云端，代码更新/服务重启都不会丢失</b>；若状态显示"查询失败"只是云端读取超时，点刷新即可，无需重新上传。</p>
+                </div>
+                <div class="actions-bar">
+                    <button class="btn btn-success" onclick="runProcess()" id="runBtn">处理并生成报告</button>
+                    <button class="btn btn-secondary" onclick="refreshSources(true)" id="refreshSrcBtn">刷新状态</button>
+                    <span id="srcStatusTip" style="font-size:12px;color:#888;line-height:32px;"></span>
+                </div>
+                <div class="grid" id="sourceGrid"></div>
+            </div>
+            {% endif %}
+
+            <!-- 新品跟进页面 -->
+            <div class="view {% if not is_admin_bool %}active{% endif %}" id="view-new-arrival">
+                <!-- 备货备注同步状态提示 -->
+                <div id="stockNoteStatusBar" class="sn-status" style="margin-bottom:12px;font-size:12px;"></div>
+                <div id="reportContent">
+                    <div class="report-loading" id="reportLoading">
+                        <div class="spinner"></div>
+                        <div>加载报告数据...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 新色跟进页面 -->
+            <div class="view" id="view-new-color">
+                <div class="page-header">
+                    <h2>新色跟进</h2>
+                    <p>店铺SPU已上架(非已删除)，但有到仓/在途新色未上架 → 待上架新色。母体三态：完全无记录 / 仅已删除 → 跳过；有≥1非删除 → 判定</p>
+                </div>
+                <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>加载新色数据...</div></div>
+                <div id="ncEmpty" style="display:none;text-align:center;padding:60px;color:#999;">
+                    <div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div>
+                    <p style="font-size:13px;color:#aaa;margin-bottom:20px;">请先在"数据管理"页面上传数据源并点击"处理并生成报告"</p>
+                </div>
+                <div id="ncContent" style="display:none;">
+                    <div id="ncPendingPanel" style="display:none;margin-bottom:12px;border:1px solid #ffb74d;background:#fff8e1;border-radius:8px;padding:10px 14px;">
+                        <div style="display:flex;align-items:center;cursor:pointer;" onclick="toggleNcPending()">
+                            <span style="font-weight:600;color:#e65100;">⚠ 颜色待确认</span>
+                            <span id="ncPendingCount" style="margin-left:8px;font-size:12px;color:#bf360c;">0 个颜色码需要人工确认</span>
+                            <span style="margin-left:auto;font-size:12px;color:#888;">系统按历史颜色存档判定；确认后存档，下次处理生效</span>
+                            <span id="ncPendingToggle" style="margin-left:12px;font-size:12px;color:#888;">收起 ▲</span>
+                        </div>
+                        <div id="ncPendingBody" style="margin-top:8px;"></div>
+                    </div>
+                    <div class="filters" id="ncFilters"></div>
+                    <div class="table-container" style="overflow:auto;max-height:660px;">
+                        <table class="data-table" id="ncTable"></table>
+                    </div>
+                    <div id="ncStat" style="margin-top:8px;font-size:12px;color:#888;"></div>
+                </div>
+            </div>
+            <div class="bottom-scrollbar" id="bottomScrollbar"><div class="bottom-scrollbar-inner" id="bottomScrollbarInner"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框 -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+        <h2 id="modalTitle">处理中...</h2>
+        <div id="modalContent"></div>
+        <div style="text-align:right;margin-top:16px;">
+            <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const sources = {{ sources_json | safe }};
+const reportExists = {{ report_exists | tojson }};
+const isAdmin = {{ is_admin }};
+let reportData = null;
+let currentFilter = 'all';
+let currentSort = { key: 'spu', asc: true };
+let dataLoaded = false;
+
+// ========== 视图切换 ==========
+function switchView(view) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.menu-item').forEach(t => t.classList.remove('active'));
+    const viewEl = document.getElementById('view-' + view);
+    if (viewEl) viewEl.classList.add('active');
+    const menuEl = document.querySelector('.menu-item[data-view="' + view + '"]');
+    if (menuEl) menuEl.classList.add('active');
+
+    // 顶部标题随模块切换
+    const titles = { 'upload': '数据管理', 'new-arrival': '新品跟进', 'new-color': '新色跟进' };
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl) titleEl.textContent = titles[view] || '数据管理';
+
+    // 仅对"新品跟进"模块显示下载/导出/同步备注按钮
+    document.querySelectorAll('#headerActions [data-for]').forEach(b => {
+        b.style.display = (b.getAttribute('data-for') === view) ? '' : 'none';
+    });
+
+    // 进入新品跟进时按需加载报告数据
+    if (view === 'new-arrival' && !dataLoaded) {
+        loadReport();
+    }
+    // 进入新色跟进时按需加载数据
+    if (view === 'new-color' && !ncDataLoaded) {
+        loadNewColor();
+    }
+}
+
+// ========== 数据源卡片 ==========
+// 数据源状态三态: 已就绪(绿) / 查询失败(橙, 勿重传) / 未找到(红, 才需要上传)
+function srcStatusBadge(f) {
+    if (f && f.error) {
+        return '<span class="status" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;" title="' + escA(f.error) + '">查询失败</span>';
+    }
+    if (f && f.found) return '<span class="status status-ok">已就绪</span>';
+    return '<span class="status status-missing">未找到</span>';
+}
+
+/* ---- Phase 2 共享数据源：无需重复上传 ---- */
+function sharedPanel(s) {
+    const si = s.shared_info || {};
+    if (si.synced) {
+        return '<div class="shared-box">' +
+            '<div class="shared-hd">&#8644; 已共享 · 无需上传</div>' +
+            '<div class="shared-body">来源：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
+            '<div class="shared-body">源文件：<b>' + (si.src_name || '-') + '</b></div>' +
+            '<div class="shared-body">同步于：' + (si.synced_at || '-') + '</div>' +
+            (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">重新同步</button></div>' : '') +
+            '</div>';
+    }
+    return '<div class="shared-box warn">' +
+        '<div class="shared-hd">&#9888; 共享源未就绪</div>' +
+        '<div class="shared-body">应来自：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
+        '<div class="shared-body">' + (si.error || '请先在 SKU&SPU 清洗看板上传该表格') + '</div>' +
+        (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">立即同步</button></div>' : '') +
+        '</div>';
+}
+
+async function resyncShared() {
+    try {
+        const r = await fetch('/na/api/shared-sources/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true })
+        });
+        const j = await r.json();
+        if (!j.success) { alert('同步失败：' + (j.error || '未知错误')); return; }
+        location.reload();
+    } catch (e) { alert('同步失败：' + e); }
+}
+
+function renderCards() {
+    const grid = document.getElementById('sourceGrid');
+    grid.innerHTML = sources.map(s => `
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">${s.name}</span>
+                ${srcStatusBadge(s.file)}
+            </div>
+            <div class="card-desc">${s.desc}</div>
+            <div class="file-info">
+                <div><span class="label">文件名:</span> <span class="value">${s.file.name || '无'}</span></div>
+                <div><span class="label">大小:</span> <span class="value">${s.file.size_mb ? s.file.size_mb + ' MB' : '-'}</span></div>
+                <div><span class="label">修改:</span> <span class="value">${s.file.modified || '-'}</span></div>
+                ${s.file.error ? '<div style="margin-top:4px;font-size:11px;color:#856404;">云端读取超时，文件仍在云端，点"刷新状态"重试即可，<b>不要重新上传</b></div>' : ''}
+            </div>
+            ${s.shared ? sharedPanel(s) : ''}
+            ${s.shared ? '' : `
+            <div class="upload-area" id="upload-${s.id}" onclick="document.getElementById('input-${s.id}').click()">
+                <div class="icon">&#128194;</div>
+                <div class="text">点击或拖拽文件上传</div>
+                <div style="font-size:11px;color:#999;margin-top:4px;">支持 ${s.accept}</div>
+                <input type="file" id="input-${s.id}" accept="${s.accept}" onchange="uploadFile('${s.id}', this.files[0])">
+            </div>`}
+        </div>
+    `).join('');
+    sources.forEach(s => {
+        const area = document.getElementById('upload-' + s.id);
+        if (!area) return;              // 共享数据源没有上传区
+        area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('dragover'); });
+        area.addEventListener('dragleave', () => area.classList.remove('dragover'));
+        area.addEventListener('drop', e => {
+            e.preventDefault();
+            area.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) uploadFile(s.id, e.dataTransfer.files[0]);
+        });
+    });
+}
+
+function uploadFile(sourceId, file) {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('source_id', sourceId);
+    const area = document.getElementById('upload-' + sourceId);
+    const origHTML = area.innerHTML;
+    const sizeMB = (file.size / 1048576).toFixed(1);
+
+    // 用 XMLHttpRequest 支持真实上传进度 (fetch 不支持 upload progress)
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/na/upload', true);
+    xhr.timeout = 300000;  // 5 分钟, 足够大文件上传 + 瘦身 + 上传 Supabase
+
+    // 进度条 UI
+    area.innerHTML =
+        '<div class="text">上传中... ' + file.name + ' (' + sizeMB + ' MB)</div>' +
+        '<div style="background:#e9ecef;border-radius:4px;overflow:hidden;margin-top:6px;">' +
+          '<div id="progress-' + sourceId + '" style="width:0%;height:8px;background:linear-gradient(90deg,#007bff,#28a745);transition:width 0.3s;"></div>' +
+        '</div>' +
+        '<div id="progress-text-' + sourceId + '" style="font-size:11px;color:#6c757d;margin-top:3px;">准备上传...</div>';
+
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            const bar = document.getElementById('progress-' + sourceId);
+            const text = document.getElementById('progress-text-' + sourceId);
+            if (bar) bar.style.width = pct + '%';
+            if (text) {
+                const loadedMB = (e.loaded / 1048576).toFixed(1);
+                const totalMB = (e.total / 1048576).toFixed(1);
+                text.textContent = pct + '%  (' + loadedMB + ' / ' + totalMB + ' MB)';
+            }
+        }
+    };
+
+    // 上传完成, 服务器正在处理 (瘦身 + 上传 Supabase)
+    xhr.upload.onload = function() {
+        const text = document.getElementById('progress-text-' + sourceId);
+        if (text) text.textContent = '已上传, 服务器处理中 (瘦身 + 同步云端)...';
+    };
+
+    xhr.onload = function() {
+        try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status === 200 && data.success) {
+                let msg = '&#10003; 上传成功: ' + data.filename;
+                if (data.cloud_warn) {
+                    msg += '<br><span style="font-size:12px;color:#856404;">&#9888; ' + data.cloud_warn + '</span>';
+                } else if (data.slim_info && data.slim_info.slimmed) {
+                    msg += '<br><span style="font-size:12px;color:#6c757d;">已自动瘦身: ' + data.slim_info.original_mb + 'MB → ' + data.slim_info.slim_mb + 'MB (剥离 ' + data.slim_info.media_count + ' 张图片)</span>';
+                }
+                area.innerHTML = '<div class="text" style="color:#28a745;">' + msg + '</div>';
+                setTimeout(function() { refreshSources(); }, 1500);
+            } else {
+                alert('上传失败: ' + (data.error || 'HTTP ' + xhr.status));
+                area.innerHTML = origHTML;
+            }
+        } catch (e) {
+            alert('上传失败: 服务器返回无效响应 (HTTP ' + xhr.status + ')\n\n可能是服务器正在冷启动, 请等待 30 秒后重试');
+            area.innerHTML = origHTML;
+        }
+    };
+
+    xhr.onerror = function() {
+        alert('上传失败: 网络错误\n\n可能原因:\n1. 服务器正在冷启动 (Render 免费版 15 分钟无访问会休眠, 唤醒需约 30 秒)\n2. 网络连接中断\n\n请等待 30 秒后重试');
+        area.innerHTML = origHTML;
+    };
+
+    xhr.ontimeout = function() {
+        alert('上传超时: 文件过大或网络过慢\n\n文件大小: ' + sizeMB + ' MB\n\n请检查网络或稍后重试');
+        area.innerHTML = origHTML;
+    };
+
+    xhr.send(formData);
+}
+
+function refreshSources(manual, attempt) {
+    attempt = attempt || 0;
+    const tip = document.getElementById('srcStatusTip');
+    if (manual && tip) tip.textContent = '正在查询云端状态...';
+    fetch('/na/api/data-sources')
+        .then(r => r.json())
+        .then(data => {
+            data.forEach(function(s, i) { if (sources[i]) sources[i].file = s.file; });
+            renderCards();
+            const failed = data.filter(function(s) { return s.file && s.file.error; }).length;
+            if (manual && tip) {
+                tip.textContent = failed ? ('有 ' + failed + ' 项云端查询超时, 可再点一次刷新(文件已存云端, 无需重传)') : '状态已更新';
+            }
+            // 自动刷新: 仍有失败项则退避重试, 最多 2 次 (云端冷启动抖动自愈)
+            if (failed && !manual && attempt < 2) {
+                setTimeout(function() { refreshSources(false, attempt + 1); }, 1500);
+            }
+        })
+        .catch(function() {
+            if (tip) tip.textContent = '状态刷新失败(服务可能冷启动中), 请稍后重试';
+            if (!manual && attempt < 2) {
+                setTimeout(function() { refreshSources(false, attempt + 1); }, 2000);
+            }
+        });
+}
+
+// ========== 处理数据 ==========
+function runProcess() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    btn.textContent = '处理中...';
+    document.getElementById('modalTitle').textContent = '正在处理数据...';
+    document.getElementById('modalContent').innerHTML = '<div class="log-box">正在运行处理脚本, 请稍候...\n</div>';
+    document.getElementById('modalOverlay').classList.add('show');
+    fetch('/na/process', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            let html = '';
+            data.results.forEach(r => {
+                const cls = r.success ? 'result-success' : 'result-fail';
+                const icon = r.success ? '&#10003;' : '&#10007;';
+                const rcInfo = (r.returncode !== undefined) ? ' (返回码:' + r.returncode + ')' : '';
+                html += '<div class="result-item ' + cls + '"><div style="font-weight:600;">' + icon + ' ' + r.script + rcInfo + '</div></div>';
+                if (r.output || r.error) {
+                    html += '<div class="log-box">' + (r.output || '') + (r.error || '') + '</div>';
+                } else if (!r.success) {
+                    html += '<div class="log-box" style="color:#ff8a80;">脚本执行失败但未输出错误信息。可能原因: Flask调试模式reloader冲突、文件被占用或Python环境异常。<br>已自动关闭调试模式，请重试。</div>';
+                }
+            });
+            if (data.report_exists) {
+                html += '<div style="text-align:center;margin-top:12px;"><button class="btn btn-primary" onclick="closeModal();switchView(\'new-arrival\');">查看报告</button></div>';
+                dataLoaded = false;
+            }
+            document.getElementById('modalTitle').textContent = data.success ? '处理完成!' : '处理完成(有警告)';
+            document.getElementById('modalContent').innerHTML = html;
+            btn.disabled = false;
+            btn.textContent = '处理并生成报告';
+            refreshSources();
+        })
+        .catch(err => {
+            document.getElementById('modalTitle').textContent = '处理失败';
+            document.getElementById('modalContent').innerHTML = '<div class="result-item result-fail"><div style="font-weight:600;">&#10007; 请求失败</div></div><div class="log-box">' + err + '</div>';
+            btn.disabled = false;
+            btn.textContent = '处理并生成报告';
+        });
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+// ========== 报告渲染 ==========
+function loadReport() {
+    const loadingEl = document.getElementById('reportLoading');
+    if (!loadingEl) return;
+    loadingEl.style.display = 'block';
+
+    fetch('/na/api/report-data')
+        .then(r => {
+            if (!r.ok) throw new Error('数据不存在');
+            return r.json();
+        })
+        .then(data => {
+            reportData = data;
+            dataLoaded = true;
+            renderReport();
+            buildFieldFilters();
+            // chips 填充后 .filters 高度变化, 重新测量
+            updateFilterBarHeight();
+        })
+        .catch(err => {
+            let actionBtn = isAdmin
+                ? '<button class="btn btn-primary" onclick="switchView(\'upload\')">前往数据管理</button>'
+                : '<p style="font-size:13px;color:#aaa;">请联系管理员上传数据源并生成报告</p>';
+            document.getElementById('reportContent').innerHTML =
+                '<div style="text-align:center;padding:60px;color:#999;">' +
+                '<p style="font-size:16px;margin-bottom:16px;">报告数据尚未生成</p>' +
+                '<p style="font-size:13px;color:#aaa;margin-bottom:20px;">' + (isAdmin ? '请先在"数据管理"页面上传数据源并点击"处理并生成报告"' : '当前无可用报告') + '</p>' +
+                actionBtn + '</div>';
+        });
+}
+
+function renderReport() {
+    if (!reportData) { loadReport(); return; }
+    const stats = reportData.stats;
+    const sources = reportData.data_sources || {};
+    const today = reportData.today || '';
+
+    let html = '';
+
+    // ===== 统计指标 (可收起, 默认收起) =====
+    html += '<div class="collapsible" id="metrics-section">';
+    html += '<div class="collapsible-header" onclick="toggleCollapsible(\'metrics-section\')">';
+    html += '<span class="collapsible-toggle">&#9654;</span>';
+    html += '<span>统计指标</span>';
+    html += '<span class="collapsible-hint">共 ' + stats.total_spu + ' SPU / ' + stats.total_sku + ' SKU &mdash; 可上架 ' + stats.can_launch + ' / 不可上架 ' + stats.cannot_launch + ' / 暂无需上架 ' + stats.no_need + '</span>';
+    html += '</div>';
+    html += '<div class="collapsible-body">';
+    html += '<div class="metrics">';
+    html += metricCard('总跟进SPU', stats.total_spu, '');
+    html += metricCard('总SKU', stats.total_sku, '');
+    html += metricCard('待上架', stats.blue_pending_spus, '#1a237e');
+    html += metricCard('新增', stats.new_spus, '#1565c0');
+    html += metricCard('可上架', stats.can_launch, '#28a745');
+    html += metricCard('不可上架', stats.cannot_launch, '#dc3545');
+    html += metricCard('等到仓', stats.wait_arrival, '#ffc107');
+    html += metricCard('暂无需上架', stats.no_need, '#6c757d');
+    html += metricCard('需关注', stats.warning, '#fd7e14');
+    html += metricCard('多包裹', stats.multi_pkg_spus, '#e65100');
+    html += metricCard('SKU异常', stats.dim_anomaly_skus, '#c62828');
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // ===== 漏项诊断 (可收起, 默认收起) =====
+    // 回答「表里有记录、面板却查不到」: 列出上品通知表被平台口径排除的行,
+    // 以及候选库里有上品/增长记录但未进跟进的SPU(在款式表但非蓝色)
+    // 长清单用可滚动小卡片渲染, 保证全部可见
+    const diag = reportData.diagnostics || {};
+    const cNotTracked = diag.candidate_not_tracked || [];
+    const nonAmzSpus = diag.notify_non_amz_spus || [];
+    const platPairs = Object.keys(diag.notify_non_amz_platforms || {}).map(function(k){
+        return k + ' ×' + diag.notify_non_amz_platforms[k];
+    });
+    function diagChips(arr, color) {
+        return '<div style="max-height:200px;overflow-y:auto;background:#f8f9fa;border:1px solid #e0e0e0;'
+            + 'border-radius:6px;padding:8px;margin-top:4px;">'
+            + arr.map(function(s){ return '<span style="display:inline-block;background:' + color
+                + ';color:#333;border-radius:4px;padding:1px 7px;margin:2px;font-size:11px;font-family:Consolas,monospace;">'
+                + escapeHtml(s) + '</span>'; }).join('')
+            + '</div>';
+    }
+    html += '<div class="collapsible" id="diag-section">';
+    html += '<div class="collapsible-header" onclick="toggleCollapsible(\'diag-section\')">';
+    html += '<span class="collapsible-toggle">&#9654;</span>';
+    html += '<span>漏项诊断</span>';
+    html += '<span class="collapsible-hint">非亚马逊排除 ' + (diag.notify_non_amz_rows || 0)
+         + ' 行(' + nonAmzSpus.length + ' SPU) / 通知时间为空已纳入 ' + (diag.notify_no_notify_rows || 0)
+         + ' 行 / 候选未跟进 ' + cNotTracked.length + ' 个SPU</span>';
+    html += '</div>';
+    html += '<div class="collapsible-body">';
+    html += '<div class="note-content">';
+    html += '<p><b>上品通知表:</b> 共 ' + (diag.notify_total_rows || 0) + ' 行; 亚马逊口径纳入 '
+         + (diag.notify_amz_rows || 0) + ' 行; 非亚马逊平台排除 <b>' + (diag.notify_non_amz_rows || 0)
+         + '</b> 行; 通知上架时间为空(已按新规则纳入) ' + (diag.notify_no_notify_rows || 0) + ' 行。</p>';
+    if (platPairs.length) {
+        html += '<p>被排除的平台取值: ' + escapeHtml(platPairs.join(' / ')) + '</p>';
+    }
+    html += '<p><b>非亚马逊排除涉及的SPU</b> (' + nonAmzSpus.length + ' 个, 可滚动查看全部):</p>';
+    if (nonAmzSpus.length) html += diagChips(nonAmzSpus, '#fff3e0');
+    html += '<p style="margin-top:10px;"><b>候选库未进跟进</b> (' + cNotTracked.length
+         + ' 个SPU —— 上品通知表/增长清单有记录, 但款式表中已存在且底色非蓝色, 故不进跟进, 可滚动查看全部):</p>';
+    if (cNotTracked.length) html += diagChips(cNotTracked, '#e3f2fd');
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // ===== 数据说明 (可收起, 默认收起) =====
+    html += '<div class="collapsible" id="note-section">';
+    html += '<div class="collapsible-header" onclick="toggleCollapsible(\'note-section\')">';
+    html += '<span class="collapsible-toggle">&#9654;</span>';
+    html += '<span>数据说明</span>';
+    html += '<span class="collapsible-hint">点击展开查看业务规则</span>';
+    html += '</div>';
+    html += '<div class="collapsible-body">';
+    html += '<div class="note-content">';
+    html += '<strong>跟进范围:</strong> 待上架新品(款式表蓝色) ' + stats.blue_pending_spus + '个 + 新增SPU ' + stats.new_spus + '个 = 共 ' + stats.total_spu + '个SPU / ' + stats.total_sku + '个SKU。';
+    html += '<br><strong>多包裹:</strong> 按颜色分组检测A/B/C后缀。SPU级取最大: LTL>Oversize>AHS>Standard。';
+    html += '<br><strong>FedEx类型:</strong> 逐SKU判定(2026规则), 有LTL不可上架。';
+    html += '<br><strong>库存:</strong> SPU级评估: 有在库→已到仓, 无在库有在途→在途(取最早预计到仓时间), 无→无记录。';
+    html += '<br><strong>上架DDL:</strong> 已到仓(新增SPU)=今日+3天, 在途=预计到仓时间-7天; 重新处理时沿用上次记录的上架DDL(不随处理日期漂移, 仅新增SPU才计算)。可在列表中点击 ✎ 手工调整, 调整后以调整值为准(重处理不覆盖); 清空并保存=恢复系统计算值。';
+    html += '<br><strong>SKU异常:</strong> 同SPU同颜色下若部分SKU缺重量/尺寸, 该SKU移入异常记录, 不参与包裹类型划分。';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // 摘要栏 + 筛选条固定在 .report-scroll 外部, 不受表格横向滚动影响
+    // (放在 .report-scroll 里面会被横向滚走, 看不到左侧 chip)
+    html += '<div class="summary-bar" id="summaryBar">';
+    html += '<span>数据源: 增长产品 ' + (sources.growth_eligible || 0) + ' | 上品通知表 ' + (sources.self_operated_skus || 0) + 'SKU | 款式表 ' + (sources.existing_spus || 0) + 'SPU | SKU尺寸 ' + (sources.sku_dimensions || 0) + ' | 库存 ' + (sources.inventory || 0) + ' | 在途 ' + (sources.in_transit || 0) + '</span>';
+    html += '</div>';
+
+    // 筛选按钮 (固定在顶部, 不随表格横向滚动)
+    html += '<div class="filters">';
+    html += '<div class="filter-left">';
+    html += '<button class="filter-btn active" data-filter="all" onclick="setFilter(\'all\')">全部</button>';
+    html += '<button class="filter-btn" data-filter="anomaly" onclick="setFilter(\'anomaly\')">SKU异常记录</button>';
+    html += '<span id="fieldFilters"></span>';
+    html += '<button class="clear-filters-btn" id="clearFieldFilters" style="display:none;" onclick="clearFieldFilters()">清除筛选</button>';
+    html += '</div>';
+    html += '<input type="text" class="search-box" id="searchBox" placeholder="搜索SPU/SKU/品类/运营..." oninput="renderTable()">';
+    html += '<button class="col-settings-btn" onclick="openColumnSettings()" title="自定义表头展示字段">⚙ 表头设置</button>';
+    html += '</div>';
+
+    // 表头设置弹窗 (可定制展示字段, 按浏览器 localStorage 保存)
+    html += '<div class="modal-mask" id="colSettingsMask" onclick="if(event.target===this)closeColumnSettings()">';
+    html += '<div class="modal-box">';
+    html += '<div class="modal-title">自定义表头展示字段<span style="font-size:11px;color:#888;font-weight:normal;margin-left:8px;">设置仅保存在当前浏览器</span></div>';
+    html += '<div class="modal-body" id="colSettingsBody"></div>';
+    html += '<div class="modal-actions"><button class="btn-primary" onclick="saveColumnSettings()">保存</button><button class="btn-default" onclick="closeColumnSettings()">取消</button><button class="btn-default" onclick="resetColumnSettings()">恢复默认</button></div>';
+    html += '</div></div>';
+
+    // 报告滚动区: 只装表格(横向+纵向只滚这一个)
+    html += '<div class="report-scroll">';
+
+    // 表格
+    html += '<div class="table-container">';
+    html += '<table id="mainTable"><thead><tr>';
+    html += '<th style="width:30px;" data-col="__expand"></th>';
+    html += '<th style="width:110px;min-width:110px;" data-col="abnormal_status">异常处理</th>';
+    html += '<th onclick="sortBy(\'spu\')" data-col="spu">SPU</th>';
+    html += '<th onclick="sortBy(\'source\')" data-col="source">来源</th>';
+    html += '<th onclick="sortBy(\'category\')" data-col="category">运营组</th>';
+    html += '<th onclick="sortBy(\'operator\')" data-col="operator">运营</th>';
+    html += '<th onclick="sortBy(\'multi_pkg\')" data-col="multi_pkg">SPU包裹情况</th>';
+    html += '<th onclick="sortBy(\'spu_pkg_type\')" data-col="spu_pkg_type">FedEx类型</th>';
+    html += '<th onclick="sortBy(\'inv_status\')" data-col="inv_status">库存状态</th>';
+    html += '<th onclick="sortBy(\'earliest_eta\')" data-col="earliest_eta">预计到仓时间</th>';
+    html += '<th onclick="sortBy(\'launch_ddl\')" data-col="launch_ddl">上架DDL</th>';
+    html += '<th onclick="sortBy(\'launch\')" data-col="launch">SPU是否需要上架</th>';
+    html += '<th style="width:100px;min-width:100px;" data-col="launch_store">上架店铺</th>';
+    html += '<th style="width:100px;min-width:100px;" data-col="launch_completed">是否完成上架</th>';
+    html += '<th onclick="sortBy(\'launch_reason\')" data-col="launch_reason">说明</th>';
+    html += '<th onclick="sortBy(\'sku_count\')" data-col="sku_count">SKU数</th>';
+    html += '<th onclick="sortBy(\'anomaly\')" data-col="anomaly">SKU异常记录</th>';
+    html += '<th style="width:120px;min-width:120px;" data-col="combo_sku">组合SKU</th>';
+    html += '<th style="width:120px;min-width:120px;" data-col="invalid_sku">无效SKU</th>';
+    html += '<th style="width:160px;min-width:160px;" data-col="content">SPU特殊备注</th>';
+    html += '</tr></thead><tbody id="tableBody"></tbody></table></div>';
+    html += '</div>';   // close .report-scroll
+    html += '<div class="footer">北美市场事业部新品跟进 | 候选库: 增长产品+上品通知表 | 主记录: 款式表(上架汇总-US) | FedEx 2026规则 | 生成时间: ' + reportData.generated_at + '</div>';
+
+    document.getElementById('reportContent').innerHTML = html;
+    renderTable();
+}
+
+function metricCard(label, value, color) {
+    return '<div class="metric"><div class="label">' + label + '</div><div class="value" style="color:' + (color || '#333') + '">' + value + '</div></div>';
+}
+
+function setFilter(f) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.filter-btn[data-filter="' + f + '"]').classList.add('active');
+    renderTable();
+}
+
+function sortBy(key) {
+    if (currentSort.key === key) { currentSort.asc = !currentSort.asc; }
+    else { currentSort.key = key; currentSort.asc = true; }
+    renderTable();
+}
+
+function getLaunchLabel(status) {
+    const m = { can_launch: ['可上架','#28a745'], cannot_launch: ['不可上架','#dc3545'], wait_arrival: ['等到仓','#ffc107'], warning: ['需关注','#fd7e14'], no_need: ['暂无需上架','#6c757d'] };
+    return m[status] || ['未知','#999'];
+}
+
+// 列「SPU是否需要上架」四态决策映射 (需求 2026-08-24, 2026-10-21 由三态改为四态):
+//   需要上架 = 可上架(can_launch) + 等到仓(wait_arrival)  —— 两者都允许上架, 区别见「库存状态/预计到仓时间/上架说明」
+//   不可上架 = LTL(cannot_launch) 保留独立第二态
+//   待确认   = warning (未确认Unknown包裹类型SKU, 真实原因见列「上架说明」)
+//   暂无需上架 = no_need (无SKU记录 / 全部SKU无在库在途)
+// 优先用服务端算好的 need_launch_label(已是四态); 回落到本表。
+function getNeedLaunchLabel(status, row) {
+    const custom = (row && row.need_launch_label) ? row.need_launch_label : '';
+    if (custom) {
+        const cm = { '需要上架': '#28a745', '不可上架': '#dc3545', '待确认': '#fd7e14', '暂无需上架': '#6c757d' };
+        return [custom, cm[custom] || '#fd7e14'];
+    }
+    const m = {
+        can_launch: ['需要上架', '#28a745'],
+        wait_arrival: ['需要上架', '#28a745'],
+        warning: ['待确认', '#fd7e14'],
+        cannot_launch: ['不可上架', '#dc3545'],
+        no_need: ['暂无需上架', '#6c757d']
+    };
+    return m[status] || ['未知', '#999'];
+}
+
+function getInvLabel(status) {
+    const m = { in_stock: '已到仓', in_transit: '在途', no_record: '无记录' };
+    return m[status] || status;
+}
+
+function getDdlClass(ddl) {
+    if (!ddl) return '';
+    const today = new Date(reportData.today);
+    const d = new Date(ddl);
+    const diff = Math.ceil((d - today) / 86400000);
+    if (diff <= 3) return 'ddl-urgent';
+    if (diff <= 7) return 'ddl-soon';
+    return 'ddl-normal';
+}
+
+// ========== 需求5: 组合SKU / 无效SKU 分栏展示 (2026-10-22) ==========
+let skuGroupSeq = 0;
+// 顶层包裹类型颜色 (与 renderTable 内的局部 pkgColorMap 同值; 供顶层渲染函数使用)
+const PKG_COLOR_MAP = { 'Standard': '#28a745', 'AHS-Dimension': '#ffc107', 'Oversize': '#fd7e14', 'LTL': '#dc3545', 'Unknown': '#6c757d' };
+
+// 明细对象映射 (正常/组合/无效/成员 统一结构)
+function _mapSkuDetail(s) {
+    const pd = s.package_details || {};
+    return {
+        sku: s.sku,
+        pkg_type: s.package_type || 'Unknown',
+        weight_lb: pd.weight_lb || '',
+        longest: pd.longest_in || '',
+        lpg: pd.length_plus_girth_in || '',
+        volume: pd.volume_cu_in || '',
+        inv_status: s.inventory_status || '',
+        in_stock: s.in_stock || 0,
+        in_transit: s.in_transit || [],
+        is_anomaly: s.is_dim_anomaly || false,
+        confirm_status: s.confirm_status || ''
+    };
+}
+
+// 单个SKU明细行 (9列, 与正常SKU明细表一致; 成员货品也复用)
+function _skuDetailRowHtml(s) {
+    let transitStr = '<span class="no-record">-</span>';
+    if (s.in_transit && s.in_transit.length > 0) {
+        transitStr = s.in_transit.map(function(t) {
+            return (t.warehouse || '') + ': ' + t.quantity + '个 ' + (t.arrival_date || t.eta || '');
+        }).join('; ');
+    }
+    let h = '<tr>';
+    h += '<td style="padding:4px 8px;font-family:monospace;">' + escapeHtml(s.sku) + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;color:' + (PKG_COLOR_MAP[s.pkg_type] || '#999') + ';font-weight:600;">' + escapeHtml(s.pkg_type) + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + (s.weight_lb !== '' ? s.weight_lb : '-') + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + (s.longest || '-') + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + (s.lpg || '-') + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + (s.volume || '-') + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + getInvLabel(s.inv_status) + '</td>';
+    h += '<td style="padding:4px 8px;text-align:center;">' + (s.in_stock > 0 ? s.in_stock : '-') + '</td>';
+    h += '<td style="padding:4px 8px;font-size:11px;">' + transitStr + '</td>';
+    h += '</tr>';
+    return h;
+}
+
+// 展开状态跨重绘保留: key = 'sg_<spu序号>_<combo|invalid>' (稳定, 不随渲染次数变化)
+const openSkuGroups = {};
+
+// 「组合SKU」「无效SKU」主行单元格: 只放紧凑pill + 个数, 点击切换下方整行宽度子行的展开
+// ⚠ 不能把明细表塞进这个 <td>: 该列宽 120px, 9 列明细表会被挤成不可见 (2026-10-22 修)
+function skuGroupPillHtml(list, label, kind, scope) {
+    if (!list || list.length === 0) return '<span class="no-record">-</span>';
+    const uid = 'sg_' + scope + '_' + kind;
+    const on = !!openSkuGroups[uid];
+    const color = (kind === 'combo') ? '#1565c0' : '#c62828';
+    const bg = (kind === 'combo') ? '#e3f2fd' : '#fdecea';
+    return '<span class="pill" style="cursor:pointer;user-select:none;background:' + bg + ';color:' + color + ';" '
+        + 'onclick="toggleSkuGroupRow(event,\'' + uid + '\')" title="点击展开/收起' + label + 'SKU明细">'
+        + label + ' ×' + list.length + ' <span id="ic_' + uid + '">' + (on ? '&#9662;' : '&#9656;') + '</span></span>';
+}
+
+// 整行宽度子行 (colspan 贯通整表), 展现 9 列明细; 组合SKU 下再二级折叠成员货品
+function skuGroupRowHtml(list, label, kind, scope, totalCols) {
+    if (!list || list.length === 0) return '';
+    const uid = 'sg_' + scope + '_' + kind;
+    const on = !!openSkuGroups[uid];
+    const headBg = (kind === 'combo') ? '#e3f2fd' : '#fdecea';
+    const titleColor = (kind === 'combo') ? '#1565c0' : '#c62828';
+    const titleText = (kind === 'combo')
+        ? '组合SKU明细（共 ' + list.length + ' 个；上架判定由套件成员货品接管）'
+        : '无效SKU明细（共 ' + list.length + ' 个；已确认无效，不计入上架判定）';
+    let h = '<tr class="sku-group-row' + (on ? ' visible' : '') + '" id="' + uid + '">';
+    h += '<td></td><td colspan="' + (totalCols - 1) + '" style="padding:6px 12px;background:#fafafa;">';
+    h += '<div style="font-size:12px;font-weight:600;color:' + titleColor + ';margin-bottom:4px;">' + titleText + '</div>';
+    h += '<table style="width:100%;font-size:12px;border-collapse:collapse;background:#fff;">';
+    h += '<thead><tr style="background:' + headBg + ';">';
+    h += '<th style="padding:4px 8px;text-align:center;width:28px;">选择</th>';
+    h += '<th style="padding:4px 8px;text-align:left;">SKU</th>';
+    h += '<th style="padding:4px 8px;">FedEx类型</th>';
+    h += '<th style="padding:4px 8px;">重量(lb)</th>';
+    h += '<th style="padding:4px 8px;">最长边(in)</th>';
+    h += '<th style="padding:4px 8px;">长+周长(in)</th>';
+    h += '<th style="padding:4px 8px;">体积(cu.in)</th>';
+    h += '<th style="padding:4px 8px;">库存状态</th>';
+    h += '<th style="padding:4px 8px;">在库量</th>';
+    h += '<th style="padding:4px 8px;">在途信息</th>';
+    h += '<th style="padding:4px 8px;background:#fff3e0;">判定(可调整)</th>';
+    h += '</tr></thead><tbody>';
+    list.forEach(function(s) {
+        const _row = _skuDetailRowHtml(s).replace('<tr>',
+            '<tr><td style="text-align:center;background:#fff;"><input type="checkbox" class="sa-adjust-cb" data-sku="' + escapeHtml(s.sku) + '" onchange="saAdjustUpdateBar()"></td>');
+        h += _row;
+        h += '<td style="padding:4px 8px;text-align:center;background:#fff3e0;">' + saAdjustSelect(s.sku, s.confirm_status || '') + '</td>';
+        if (kind === 'combo' && s.members && s.members.length > 0) {
+            skuGroupSeq += 1;
+            const mid = 'mb_' + skuGroupSeq;
+            h += '<tr><td colspan="11" style="padding:2px 6px 6px 18px;background:#f7fbff;">';
+            h += '<span style="cursor:pointer;color:#1565c0;font-size:11px;font-weight:600;user-select:none;" onclick="toggleSkuGroup(\'' + mid + '\')">'
+               + '成员货品 ×' + s.members.length + '（判定依据） <span id="ic_' + mid + '">&#9656;</span></span>';
+            h += '<div id="' + mid + '" style="display:none;margin-top:4px;">';
+            h += '<table style="width:100%;font-size:12px;border-collapse:collapse;background:#fff;">';
+            h += '<thead><tr style="background:#e3f2fd;">';
+            h += '<th style="padding:3px 8px;text-align:left;">成员SKU</th>';
+            h += '<th style="padding:3px 8px;">FedEx类型</th>';
+            h += '<th style="padding:3px 8px;">重量(lb)</th>';
+            h += '<th style="padding:3px 8px;">最长边(in)</th>';
+            h += '<th style="padding:3px 8px;">长+周长(in)</th>';
+            h += '<th style="padding:3px 8px;">体积(cu.in)</th>';
+            h += '<th style="padding:3px 8px;">库存状态</th>';
+            h += '<th style="padding:3px 8px;">在库量</th>';
+            h += '<th style="padding:3px 8px;">在途信息</th>';
+            h += '</tr></thead><tbody>';
+            s.members.forEach(function(m) { h += _skuDetailRowHtml(m); });
+            h += '</tbody></table></div></td></tr>';
+        }
+    });
+    h += '</tbody></table></td></tr>';
+    return h;
+}
+
+function toggleSkuGroupRow(ev, uid) {
+    if (ev) { ev.stopPropagation(); if (ev.preventDefault) ev.preventDefault(); }
+    const el = document.getElementById(uid);
+    if (!el) return;
+    const willShow = !el.classList.contains('visible');
+    el.classList.toggle('visible', willShow);
+    openSkuGroups[uid] = willShow;
+    const ic = document.getElementById('ic_' + uid);
+    if (ic) ic.innerHTML = willShow ? '&#9662;' : '&#9656;';
+}
+
+// 二级折叠 (组合SKU → 成员货品)
+function toggleSkuGroup(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const willShow = (el.style.display === 'none');
+    el.style.display = willShow ? 'block' : 'none';
+    const ic = document.getElementById('ic_' + id);
+    if (ic) ic.innerHTML = willShow ? '&#9662;' : '&#9656;';
+}
+
+function anomalyCellHtml(row) {
+    if (!row.anomaly_count || row.anomaly_count === 0) return '<span class="no-record">-</span>';
+    const names = row.sku_anomalies.map(function(s) { return s.sku; }).join('<br>');
+    return '<span class="pill pill-anomaly">异常×' + row.anomaly_count + '</span><br><span style="font-size:11px;color:#c62828;font-family:monospace;">' + names + '</span>';
+}
+
+// ========== 多选字段筛选 ==========
+const FILTER_FIELDS = [
+    {key:'source', label:'来源', get: r => r.source_label || r.source || ''},
+    {key:'category', label:'运营组', get: r => r.operator_group_edit || r.category || '-'},
+    {key:'operator', label:'运营', get: r => r.operator_edit || r.operator || '-'},
+    {key:'pkg', label:'FedEx类型', get: r => r.spu_pkg_type || r.spu_package_type},
+    {key:'inv', label:'库存状态', get: r => getInvLabel(r.inv_status || r.spu_inventory_status)},
+    {key:'launch', label:'SPU是否需要上架', get: r => getNeedLaunchLabel(r.launch || r.launch_status, r)[0]},
+    {key:'launch_store', label:'上架店铺', options:['-','DECO','HN','Urban','XYT','JYT'], get: r => r.launch_store || '-'},
+    {key:'launch_completed', label:'是否完成上架', options:['未完成','已完成','无需上架'], get: r => r.launch_completed === 'done' ? '已完成' : (r.launch_completed === 'not_needed' ? '无需上架' : '未完成')},
+];
+let fieldFilters = {};
+let dateRangeFilters = { from: '', to: '' };
+
+// ========== 可定制表头 (按浏览器 localStorage 保存) ==========
+// 所有可选列 (不含固定的展开列)
+const ALL_COLUMNS = [
+    {key:'abnormal_status', label:'异常处理'},
+    {key:'spu', label:'SPU', fixed:true},
+    {key:'source', label:'来源'},
+    {key:'category', label:'运营组'},
+    {key:'operator', label:'运营'},
+    {key:'multi_pkg', label:'SPU包裹情况'},
+    {key:'spu_pkg_type', label:'FedEx类型'},
+    {key:'inv_status', label:'库存状态'},
+    {key:'earliest_eta', label:'预计到仓时间'},
+    {key:'launch_ddl', label:'上架DDL'},
+    {key:'launch', label:'SPU是否需要上架'},
+    {key:'launch_store', label:'上架店铺'},
+    {key:'launch_completed', label:'是否完成上架'},
+    {key:'launch_reason', label:'上架说明'},
+    {key:'sku_count', label:'SKU数'},
+    {key:'anomaly', label:'SKU异常记录'},
+    // 需求5: 确认后的组合/无效SKU 与正常SKU 分栏展示 (默认折叠, 可人工展开)
+    {key:'combo_sku', label:'组合SKU'},
+    {key:'invalid_sku', label:'无效SKU'},
+    {key:'content', label:'SPU特殊备注'},
+];
+// 首次进入默认展示字段 (需求 2026-08-24)
+const DEFAULT_VISIBLE = ['spu','category','operator','launch','launch_store','earliest_eta','multi_pkg','launch_completed','combo_sku','invalid_sku','content'];
+const COL_STORAGE_KEY = 'new_arrival_visible_cols';
+
+function getVisibleCols() {
+    try {
+        const s = localStorage.getItem(COL_STORAGE_KEY);
+        if (s) {
+            const arr = JSON.parse(s);
+            if (Array.isArray(arr) && arr.length > 0) return new Set(arr);
+        }
+    } catch(e) {}
+    return new Set(DEFAULT_VISIBLE);
+}
+
+function applyColumnVisibility() {
+    const vis = getVisibleCols();
+    document.querySelectorAll('#mainTable [data-col]').forEach(el => {
+        const k = el.getAttribute('data-col');
+        if (k === '__expand') return;  // 展开列始终显示
+        el.classList.toggle('col-hidden', !vis.has(k));
+    });
+}
+
+function openColumnSettings() {
+    const body = document.getElementById('colSettingsBody');
+    if (!body) return;
+    const vis = getVisibleCols();
+    body.innerHTML = ALL_COLUMNS.map(c => {
+        const checked = c.fixed ? 'checked disabled' : (vis.has(c.key) ? 'checked' : '');
+        return '<label class="col-opt"><input type="checkbox" data-colkey="' + c.key + '" ' + checked + '> ' + c.label + (c.fixed ? ' (固定)' : '') + '</label>';
+    }).join('');
+    document.getElementById('colSettingsMask').style.display = 'flex';
+}
+
+function saveColumnSettings() {
+    const keys = [];
+    document.querySelectorAll('#colSettingsBody input[type=checkbox]').forEach(cb => {
+        if (cb.checked) keys.push(cb.getAttribute('data-colkey'));
+    });
+    if (!keys.includes('spu')) keys.push('spu');  // 至少保留 SPU
+    localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(keys));
+    applyColumnVisibility();
+    closeColumnSettings();
+}
+
+function resetColumnSettings() {
+    localStorage.removeItem(COL_STORAGE_KEY);
+    applyColumnVisibility();
+    openColumnSettings();  // 刷新勾选状态
+}
+
+function closeColumnSettings() {
+    const mask = document.getElementById('colSettingsMask');
+    if (mask) mask.style.display = 'none';
+}
+
+function buildFieldFilters() {
+    const container = document.getElementById('fieldFilters');
+    if (!container || !reportData) return;
+    container.innerHTML = '';
+    fieldFilters = {};
+    FILTER_FIELDS.forEach(f => {
+        const wrap = document.createElement('span');
+        wrap.className = 'field-filter';
+        if (f.type === 'daterange') {
+            wrap.innerHTML = '<button class="field-filter-btn" onclick="toggleFilterPanel(\'' + f.key + '\')">' + f.label + ' <span class="ff-count"></span>▾</button>' +
+                '<div class="field-filter-panel" id="panel-' + f.key + '" style="min-width:250px;">' +
+                '<div style="font-size:12px;color:#666;margin-bottom:6px;">范围: 起始 ~ 结束</div>' +
+                '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' +
+                '<input type="date" id="dr-from-' + f.key + '" style="flex:1;min-width:0;padding:4px;border:1px solid #ddd;border-radius:5px;font-size:12px;">' +
+                '<span style="color:#999;">~</span>' +
+                '<input type="date" id="dr-to-' + f.key + '" style="flex:1;min-width:0;padding:4px;border:1px solid #ddd;border-radius:5px;font-size:12px;">' +
+                '</div>' +
+                '<div class="panel-actions"><button onclick="applyDateRange(\'' + f.key + '\')">应用</button><button onclick="clearDateRange(\'' + f.key + '\')">清空</button></div>' +
+                '</div>';
+            container.appendChild(wrap);
+            return;
+        }
+        fieldFilters[f.key] = new Set();
+        let opts;
+        if (f.options) {
+            opts = f.options.slice();
+        } else {
+            const values = new Set();
+            reportData.products.forEach(p => values.add(f.get(p)));
+            if (f.key === 'pkg') values.add('LTL');
+            if (f.key === 'launch') { values.add('需要上架'); values.add('不可上架'); values.add('待确认'); values.add('暂无需上架'); }
+            opts = [...values].filter(v => v !== '').sort();
+        }
+        const labels = opts.map(o => '<label><input type="checkbox" value="' + o + '" onchange="onFieldFilterChange(\'' + f.key + '\', this)"> ' + o + '</label>').join('');
+        wrap.innerHTML = '<button class="field-filter-btn" onclick="toggleFilterPanel(\'' + f.key + '\')">' + f.label + ' <span class="ff-count"></span>▾</button>' +
+            '<div class="field-filter-panel" id="panel-' + f.key + '">' + labels +
+            '<div class="panel-actions"><button onclick="selectAllInPanel(\'' + f.key + '\', true)">全选</button><button onclick="selectAllInPanel(\'' + f.key + '\', false)">清空</button></div></div>';
+        container.appendChild(wrap);
+    });
+    updateDateRangeUI();
+    if (!window._fieldPanelBound) {
+        document.addEventListener('click', closeFieldPanelsOnOutside);
+        window._fieldPanelBound = true;
+    }
+}
+
+function applyDateRange(key) {
+    const fromEl = document.getElementById('dr-from-' + key);
+    const toEl = document.getElementById('dr-to-' + key);
+    if (!fromEl || !toEl) return;
+    dateRangeFilters.from = fromEl.value;
+    dateRangeFilters.to = toEl.value;
+    updateDateRangeUI();
+    renderTable();
+    const panel = document.getElementById('panel-' + key);
+    if (panel) panel.classList.remove('show');
+}
+
+function clearDateRange(key) {
+    dateRangeFilters.from = '';
+    dateRangeFilters.to = '';
+    const fromEl = document.getElementById('dr-from-' + key);
+    const toEl = document.getElementById('dr-to-' + key);
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    updateDateRangeUI();
+    renderTable();
+}
+
+function updateDateRangeUI() {
+    const drField = FILTER_FIELDS.find(f => f.type === 'daterange');
+    if (!drField) return;
+    const btn = document.querySelector('.field-filter-btn[onclick*="' + drField.key + '"]');
+    if (!btn) return;
+    const has = !!(dateRangeFilters.from || dateRangeFilters.to);
+    const txt = has ? (dateRangeFilters.from || '…') + ' ~ ' + (dateRangeFilters.to || '…') : '';
+    btn.querySelector('.ff-count').textContent = has ? ' (' + txt + ')' : '';
+    if (has) btn.classList.add('active');
+    else btn.classList.remove('active');
+    const clearBtn = document.getElementById('clearFieldFilters');
+    if (clearBtn) {
+        const anySel = FILTER_FIELDS.some(f => {
+            if (f.type === 'daterange') return !!(dateRangeFilters.from || dateRangeFilters.to);
+            return fieldFilters[f.key] && fieldFilters[f.key].size > 0;
+        });
+        clearBtn.style.display = anySel ? 'inline-block' : 'none';
+    }
+}
+
+function closeFieldPanelsOnOutside(e) {
+    if (!e.target.closest('.field-filter')) {
+        document.querySelectorAll('.field-filter-panel.show').forEach(p => p.classList.remove('show'));
+    }
+}
+
+function toggleFilterPanel(key) {
+    const panel = document.getElementById('panel-' + key);
+    if (!panel) return;
+    const isOpen = panel.classList.contains('show');
+    document.querySelectorAll('.field-filter-panel.show').forEach(p => p.classList.remove('show'));
+    if (!isOpen) panel.classList.add('show');
+}
+
+function onFieldFilterChange(key, cb) {
+    if (cb.checked) fieldFilters[key].add(cb.value);
+    else fieldFilters[key].delete(cb.value);
+    updateFieldFilterUI(key);
+    renderTable();
+}
+
+function selectAllInPanel(key, all) {
+    const panel = document.getElementById('panel-' + key);
+    if (!panel) return;
+    panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.checked = all;
+        if (all) fieldFilters[key].add(cb.value);
+        else fieldFilters[key].delete(cb.value);
+    });
+    updateFieldFilterUI(key);
+    renderTable();
+}
+
+function updateFieldFilterUI(key) {
+    const btn = document.querySelector('.field-filter-btn[onclick*="' + key + '"]');
+    if (!btn) return;
+    const cnt = fieldFilters[key].size;
+    btn.querySelector('.ff-count').textContent = cnt > 0 ? '(' + cnt + ')' : '';
+    if (cnt > 0) btn.classList.add('active');
+    else btn.classList.remove('active');
+    const clearBtn = document.getElementById('clearFieldFilters');
+    if (clearBtn) clearBtn.style.display = FILTER_FIELDS.some(f => fieldFilters[f.key].size > 0) ? 'inline-block' : 'none';
+}
+
+function clearFieldFilters() {
+    FILTER_FIELDS.forEach(f => {
+        if (f.type === 'daterange') return;
+        fieldFilters[f.key].clear();
+        const panel = document.getElementById('panel-' + f.key);
+        if (panel) panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+        updateFieldFilterUI(f.key);
+    });
+    dateRangeFilters.from = '';
+    dateRangeFilters.to = '';
+    updateDateRangeUI();
+    renderTable();
+}
+
+function renderTable() {
+    if (!reportData) return;
+    let filtered = reportData.products.map((p, idx) => {
+        const skus = p.skus || [];
+        const spu = p.spu;
+        // 读取可编辑字段: 优先 stock_note (实时编辑), 若该 SPU 从未在 stock_note 中出现过
+        // 则回退到 report_data 中携带的 note_fields (重新处理时从旧 stock_note 继承的历史值)
+        const snRec = spuNotes[spu];
+        // 合并历史继承值(note_fields)与实时编辑值(spuNotes): spuNotes 优先, 逐字段覆盖。
+        // 修复: 之前是二选一, 只要该 SPU 在 spuNotes 出现过(哪怕只编辑过备注), 就完全丢弃
+        // note_fields 里已继承的 launch_store/launch_completed/operator_group 等, 导致 10 秒轮询
+        // 拉回 spuNotes 后这些字段被清空, 表现为"编辑后一会恢复更改之前的内容"。
+        const note = Object.assign({}, p.note_fields || {}, snRec || {});
+        return {
+            idx: idx,
+            spu: spu,
+            aliases: p.aliases || [],
+            source: p.source_label || '',
+            source_raw: p.source,
+            category: p.category || '',
+            operator: p.operator || '',
+            multi_pkg: p.multi_package_count || 1,
+            multi_pkg_display: p.multi_package_display || '',
+            spu_pkg_type: p.spu_package_type || 'Unknown',
+            color_pkg: p.color_package_details || {},
+            inv_status: p.spu_inventory_status || '',
+            earliest_eta: p.earliest_eta || '',
+            // 上架DDL: 手工调整值(note)优先; 清空(存'')=恢复系统计算值
+            launch_ddl: (note.launch_ddl !== undefined && note.launch_ddl !== '') ? note.launch_ddl : (p.launch_ddl || ''),
+            launch_ddl_has_note: (note.launch_ddl !== undefined && note.launch_ddl !== ''),
+            launch: p.launch_status || '',
+            launch_reason: p.launch_reason || '',
+            need_launch_label: p.need_launch_label || '',
+            has_ltl: p.has_ltl || false,
+            has_unknown: p.has_unknown_dim || false,
+            anomaly_count: p.anomaly_count || p.dim_anomaly_count || 0,
+            sku_anomalies: (p.sku_anomalies || []).map(function(s) {
+                return {
+                    sku: s.sku,
+                    pkg_type: s.package_type || 'Unknown',
+                    inv_status: s.inventory_status || '',
+                    in_stock: s.in_stock || 0,
+                    in_transit: s.in_transit || [],
+                    anomaly_type: s.anomaly_type || '',
+                    anomaly_type_label: s.anomaly_type_label || '',
+                    confirm_status: s.confirm_status || '',
+                    confirm_status_label: s.confirm_status_label || '待确认',
+                    confirm_note: s.confirm_note || '',
+                    confirm_updated_at: s.confirm_updated_at || '',
+                    confirm_updated_by: s.confirm_updated_by || ''
+                };
+            }),
+            notify_time: p.notify_time || '',
+            candidate_sources: p.candidate_sources || [],
+            lines: p.lines || [],
+            sku_count: (p.sku_count_total !== undefined ? p.sku_count_total : skus.length),
+            skus: skus.map(s => _mapSkuDetail(s)),
+            // 需求5: 组合SKU / 无效SKU 分栏 (默认折叠, 可展开; 组合下二级折叠成员货品)
+            combo_skus: (p.combo_skus || []).map(function(s) {
+                const o = _mapSkuDetail(s);
+                o.members = (s.members || s.kit_members || []).map(function(m) { return _mapSkuDetail(m); });
+                return o;
+            }),
+            invalid_skus: (p.invalid_skus || []).map(function(s) { return _mapSkuDetail(s); }),
+            // ===== v2 可编辑业务字段 (来自 stock_note) =====
+            abnormal_status: note.abnormal_status || 'normal',
+            operator_group_edit: note.operator_group || '',
+            operator_edit: note.operator || '',
+            // 合并 note (note_fields+spuNotes) 中字段是否存在: 与筛选取值同源, 保证筛选与单元格显示一致
+            operator_group_has_note: (note.operator_group !== undefined),
+            operator_has_note: (note.operator !== undefined),
+            launch_store: note.launch_store || '',
+            launch_completed: note.launch_completed || 'pending',
+        };
+    });
+
+    // 异常处理过滤: 非管理员看不到 abnormal 记录 (需求 1)
+    if (!isAdmin) {
+        filtered = filtered.filter(r => r.abnormal_status !== 'abnormal');
+    }
+
+    // Filter
+    if (currentFilter === 'anomaly') filtered = filtered.filter(r => r.anomaly_count > 0);
+
+    // 字段多选筛选 (同字段OR, 跨字段AND)
+    FILTER_FIELDS.forEach(f => {
+        const sel = fieldFilters[f.key];
+        if (sel && sel.size > 0) {
+            filtered = filtered.filter(r => sel.has(f.get(r)));
+        }
+    });
+
+    // Search
+    const search = document.getElementById('searchBox').value.toLowerCase();
+    if (search) {
+        filtered = filtered.filter(r => {
+            const allText = (r.spu + ' ' + r.aliases.join(' ') + ' ' + r.category + ' ' + r.operator + ' ' + r.skus.map(s => s.sku).join(' ')).toLowerCase();
+            return allText.includes(search);
+        });
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+        let va = a[currentSort.key], vb = b[currentSort.key];
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return currentSort.asc ? -1 : 1;
+        if (va > vb) return currentSort.asc ? 1 : -1;
+        return 0;
+    });
+
+    const pkgColorMap = { 'Standard': '#28a745', 'AHS-Dimension': '#ffc107', 'Oversize': '#fd7e14', 'LTL': '#dc3545', 'Unknown': '#6c757d' };
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    // 表头总列数: 子行 colspan 用; 只查一次, 避免每行重复 querySelectorAll
+    const _theadCols = document.querySelectorAll('#mainTable thead th').length;
+
+    filtered.forEach(row => {
+        const launchInfo = getNeedLaunchLabel(row.launch, row);
+        const sourcePill = row.source_raw === 'blue_pending'
+            ? '<span class="pill pill-blue">待上架</span>'
+            : '<span class="pill pill-new">新增</span>';
+        const ltlTag = row.has_ltl ? '<span class="pill pill-ltl">LTL</span>' : '';
+        const multiTag = row.multi_pkg > 1 ? '<span class="pill pill-multi">' + row.multi_pkg + '包裹</span>' : '';
+        const aliasTag = row.aliases.length > 1
+            ? '<span class="alias-tag" title="' + row.aliases.join(', ') + '">+' + (row.aliases.length - 1) + '别名</span>'
+            : '';
+        const ddlClass = getDdlClass(row.launch_ddl);
+        // 上架DDL: 未调整过 = 只读展示系统计算值 + ✎; 已调整 = 日期输入框 (清空保存=恢复系统值)
+        const ddlCell = row.launch_ddl_has_note
+            ? '<input type="date" class="cell-select" style="width:132px;" data-spu="' + row.spu + '" data-field="launch_ddl" value="' + escapeHtml(row.launch_ddl || '') + '" onchange="onCellChange(this)" title="手工调整的上架DDL; 清空并保存=恢复系统计算值">'
+            : '<span class="cell-readonly" data-spu="' + row.spu + '" data-field="launch_ddl" data-fallback="' + escapeHtml(row.launch_ddl || '') + '" onclick="activateDateEdit(this)" title="点击调整上架DDL">' + (row.launch_ddl || '<span class="no-record">-</span>') + ' <span style="font-size:10px;color:#1976d2;cursor:pointer;">&#9998;</span></span>';
+        const noteVal = (spuNoteDraft[row.spu] !== undefined) ? spuNoteDraft[row.spu] : (spuNotes[row.spu] ? spuNotes[row.spu].content : '');
+
+        // ===== v2 可编辑字段渲染 =====
+        // 1) 异常处理: 仅管理员可编辑, 非管理员只读 (但已被过滤逻辑排除 abnormal 记录)
+        const abnormalCur = row.abnormal_status || 'normal';
+        const abnormalOpts = [
+            {v: 'normal', l: '正常'},
+            {v: 'abnormal', l: '异常（非上架新品）'}
+        ];
+        const abnormalCell = isAdmin
+            ? '<select class="cell-select" data-spu="' + row.spu + '" data-field="abnormal_status" onchange="onCellChange(this)">' +
+                abnormalOpts.map(o => '<option value="' + o.v + '"' + (o.v === abnormalCur ? ' selected' : '') + '>' + o.l + '</option>').join('') +
+                '</select>'
+            : '<span style="color:#28a745;font-size:12px;">正常</span>';
+
+        // 2) 运营组: 可编辑下拉, 选项来自 style_options.groups, 默认沿用款式表原值
+        const groups = (reportData.style_options && reportData.style_options.groups) || [];
+        const operatorGroupCur = row.operator_group_edit || row.category || '';
+        const operatorGroupCell = buildDynamicSelect(row.spu, 'operator_group', operatorGroupCur, groups, row.category || '', row.operator_group_has_note);
+
+        // 3) 运营: 可编辑下拉, 选项来自 style_options.operators
+        const operators = (reportData.style_options && reportData.style_options.operators) || [];
+        const operatorCur = row.operator_edit || row.operator || '';
+        const operatorCell = buildDynamicSelect(row.spu, 'operator', operatorCur, operators, row.operator || '', row.operator_has_note);
+
+        // 4) 上架店铺: 5 个固定选项 + 空选项
+        const storeCur = row.launch_store || '';
+        const storeOpts = ['', 'DECO', 'HN', 'Urban', 'XYT', 'JYT'];
+        const storeCell = '<select class="cell-select" data-spu="' + row.spu + '" data-field="launch_store" onchange="onCellChange(this)">' +
+            storeOpts.map(o => '<option value="' + o + '"' + (o === storeCur ? ' selected' : '') + '>' + (o || '-') + '</option>').join('') +
+            '</select>';
+
+        // 5) 是否上架完成: pending/done/not_needed（字段原"运营预计上架时间"已删除）
+        const completedCur = row.launch_completed || 'pending';
+        const completedOpts = [
+            {v: 'pending', l: '未完成'},
+            {v: 'done', l: '已完成'},
+            {v: 'not_needed', l: '无需上架'}
+        ];
+        const completedCell = '<select class="cell-select" data-spu="' + row.spu + '" data-field="launch_completed" onchange="onCellChange(this)">' +
+            completedOpts.map(o => '<option value="' + o.v + '"' + (o.v === completedCur ? ' selected' : '') + '>' + o.l + '</option>').join('') +
+            '</select>';
+
+        // SPU主行 (展开状态跨重新渲染保留: 确认异常SKU后报表会重算重绘, 不能让用户重新点开)
+        const tr = document.createElement('tr');
+        tr.className = 'spu-row' + (expandedSpus[row.spu] ? ' expanded' : '');
+        tr.dataset.rowIdx = row.idx;
+        // 预计到仓时间: 已到仓显示"已到仓", 否则显示日期
+        const etaCell = row.inv_status === 'in_stock'
+            ? '<span style="color:#28a745;font-weight:600;">已到仓</span>'
+            : (row.earliest_eta || '<span class="no-record">-</span>');
+        tr.innerHTML =
+            '<td data-col="__expand"><span class="expand-icon">&#9654;</span></td>' +
+            '<td class="cell-edit-wrap" data-col="abnormal_status">' + abnormalCell + '</td>' +
+            '<td style="font-weight:600;" data-col="spu">' + row.spu + ' ' + aliasTag + '</td>' +
+            '<td data-col="source">' + sourcePill + ' ' + ltlTag + ' ' + multiTag + '</td>' +
+            '<td data-col="category">' + operatorGroupCell + '</td>' +
+            '<td data-col="operator">' + operatorCell + '</td>' +
+            '<td data-col="multi_pkg">' + (row.multi_pkg_display || (row.multi_pkg > 1 ? row.multi_pkg + '包' : '单包')) + '</td>' +
+            '<td style="font-weight:600;color:' + (pkgColorMap[row.spu_pkg_type] || '#999') + ';" data-col="spu_pkg_type">' + row.spu_pkg_type + '</td>' +
+            '<td data-col="inv_status">' + getInvLabel(row.inv_status) + '</td>' +
+            '<td data-col="earliest_eta">' + etaCell + '</td>' +
+            '<td class="' + ddlClass + '" data-col="launch_ddl">' + ddlCell + '</td>' +
+            '<td class="status-cell" style="color:' + launchInfo[1] + ';" data-col="launch">' + launchInfo[0] + '</td>' +
+            '<td class="cell-edit-wrap" data-col="launch_store">' + storeCell + '</td>' +
+            '<td class="cell-edit-wrap" data-col="launch_completed">' + completedCell + '</td>' +
+            '<td style="font-size:12px;color:#666;" data-col="launch_reason">' + row.launch_reason + '</td>' +
+            '<td style="text-align:center;" data-col="sku_count">' + row.sku_count + '</td>' +
+            '<td data-col="anomaly">' + anomalyCellHtml(row) + '</td>' +
+            '<td data-col="combo_sku">' + skuGroupPillHtml(row.combo_skus, '组合', 'combo', row.idx) + '</td>' +
+            '<td data-col="invalid_sku">' + skuGroupPillHtml(row.invalid_skus, '无效', 'invalid', row.idx) + '</td>' +
+            '<td class="spu-note-cell" data-col="content">' +
+            '<textarea class="spu-note-input" data-spu="' + row.spu + '" oninput="onSpuNoteInput(this)" placeholder="填写SPU特殊备注...">' + escapeHtml(noteVal) + '</textarea>' +
+            '<div class="spu-note-meta" data-spu="' + row.spu + '"></div>' +
+            '</td>';
+        tr.onclick = function() { toggleExpand(this, row); };
+        tbody.appendChild(tr);
+
+        // SKU子行 (默认隐藏)
+        if (row.skus.length > 0) {
+            const skuTr = document.createElement('tr');
+            skuTr.className = 'sku-row' + (expandedSpus[row.spu] ? ' visible' : '');
+            skuTr.dataset.parentIdx = row.idx;
+            let skuHtml = '<td></td><td colspan="' + (_theadCols - 1) + '" style="padding:8px 12px;">';
+            skuHtml += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+            skuHtml += '<thead><tr style="background:#f0f0f0;">';
+            skuHtml += '<th style="padding:4px 8px;text-align:center;width:28px;">选择</th>';
+            skuHtml += '<th style="padding:4px 8px;text-align:left;">SKU</th>';
+            skuHtml += '<th style="padding:4px 8px;">FedEx类型</th>';
+            skuHtml += '<th style="padding:4px 8px;">重量(lb)</th>';
+            skuHtml += '<th style="padding:4px 8px;">最长边(in)</th>';
+            skuHtml += '<th style="padding:4px 8px;">长+周长(in)</th>';
+            skuHtml += '<th style="padding:4px 8px;">体积(cu.in)</th>';
+            skuHtml += '<th style="padding:4px 8px;">库存状态</th>';
+            skuHtml += '<th style="padding:4px 8px;">在库量</th>';
+            skuHtml += '<th style="padding:4px 8px;">在途信息</th>';
+            skuHtml += '<th style="padding:4px 8px;background:#fff3e0;">判定(可调整)</th>';
+            skuHtml += '</tr></thead><tbody>';
+            row.skus.filter(function(s) { return !s.is_anomaly; }).forEach(s => {
+                const pkgColor = pkgColorMap[s.pkg_type] || '#999';
+                let transitStr = '<span class="no-record">-</span>';
+                if (s.in_transit && s.in_transit.length > 0) {
+                    transitStr = s.in_transit.map(function(t) {
+                        return (t.warehouse || '') + ': ' + t.quantity + '个 ' + (t.arrival_date || t.eta || '');
+                    }).join('; ');
+                }
+                skuHtml += '<tr>';
+                skuHtml += '<td style="text-align:center;background:#fff;">' + (s.confirm_status ? '<input type="checkbox" class="sa-adjust-cb" data-sku="' + escapeHtml(s.sku) + '" onchange="saAdjustUpdateBar()">' : '') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;font-family:monospace;">' + s.sku + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;color:' + pkgColor + ';font-weight:600;">' + s.pkg_type + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.weight_lb !== '' ? s.weight_lb : '-') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.longest || '-') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.lpg || '-') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.volume || '-') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + getInvLabel(s.inv_status) + '</td>';
+                skuHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.in_stock > 0 ? s.in_stock : '-') + '</td>';
+                skuHtml += '<td style="padding:4px 8px;font-size:11px;">' + transitStr + '</td>';
+                // 仅对已被异常流程判定过的SKU(confirm_status 非空)显示调整下拉; 普通SKU显示 -
+                skuHtml += '<td style="padding:4px 8px;text-align:center;background:#fff3e0;">'
+                    + (s.confirm_status ? saAdjustSelect(s.sku, s.confirm_status) : '<span class="no-record">-</span>')
+                    + '</td>';
+                skuHtml += '</tr>';
+            });
+            skuHtml += '</tbody></table>';
+            // SKU异常记录: 待确认的异常SKU (①同色部分缺尺寸 / ②无任何尺寸记录的野SKU)
+            // 需求3: 每条带勾选框, 勾选≥1条浮现批量操作条, 可一次确认为 正常SKU / 无效SKU / 组合SKU
+            // 需求4/5: 确认后从本面板移出 → 移入主表「组合SKU」「无效SKU」分栏(可展开查看, 可改回待确认)
+            if (row.sku_anomalies && row.sku_anomalies.length > 0) {
+                const _scope = row.idx;
+                let anomHtml = '';
+                // 批量操作条 (默认隐藏, 勾选后显示)
+                anomHtml += '<div class="sa-batch" id="saBar_' + _scope + '" style="display:none;">';
+                anomHtml += '<span class="sa-batch-cnt">已选 <b id="saCnt_' + _scope + '">0</b> 个</span>';
+                anomHtml += '<button class="sa-btn sa-on" onclick="saveSkuAnomalyBatch(' + _scope + ',\'valid\')">批量确认 正常SKU</button>';
+                anomHtml += '<button class="sa-btn sa-off" onclick="saveSkuAnomalyBatch(' + _scope + ',\'invalid\')">批量确认 无效SKU</button>';
+                anomHtml += '<button class="sa-btn sa-combo" onclick="saveSkuAnomalyBatch(' + _scope + ',\'combo\')">批量确认 组合SKU</button>';
+                anomHtml += '<button class="sa-btn sa-clear" onclick="saClearSel(' + _scope + ')">取消选择</button>';
+                anomHtml += '</div>';
+                anomHtml += '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:4px;">';
+                anomHtml += '<thead><tr style="background:#fdecea;">';
+                anomHtml += '<th style="padding:4px 6px;width:26px;"><input type="checkbox" id="saAll_' + _scope + '" onchange="saToggleAll(this,' + _scope + ')" title="全选/取消全选"></th>';
+                anomHtml += '<th style="padding:4px 8px;text-align:left;">SKU</th>';
+                anomHtml += '<th style="padding:4px 8px;">异常类型</th>';
+                anomHtml += '<th style="padding:4px 8px;">库存状态</th>';
+                anomHtml += '<th style="padding:4px 8px;">在库量</th>';
+                anomHtml += '<th style="padding:4px 8px;">在途信息</th>';
+                anomHtml += '<th style="padding:4px 8px;">确认结果（留档）</th>';
+                anomHtml += '<th style="padding:4px 8px;">备注</th>';
+                anomHtml += '</tr></thead><tbody>';
+                row.sku_anomalies.forEach(function(s) {
+                    let transitStr = '<span class="no-record">-</span>';
+                    if (s.in_transit && s.in_transit.length > 0) {
+                        transitStr = s.in_transit.map(function(t) {
+                            return (t.warehouse || '') + ': ' + t.quantity + '个 ' + (t.arrival_date || t.eta || '');
+                        }).join('; ');
+                    }
+                    const st = s.confirm_status || '';
+                    const titleTip = st ? ('已留档: ' + (s.confirm_updated_at || '') + ' ' + (s.confirm_updated_by || '')) : '尚未确认';
+                    const _sku = escA(s.sku);
+                    anomHtml += '<tr>';
+                    anomHtml += '<td style="padding:4px 6px;text-align:center;"><input type="checkbox" class="sa-cb" data-scope="' + _scope + '" data-sku="' + _sku + '" onchange="saUpdateBar(' + _scope + ')"></td>';
+                    anomHtml += '<td style="padding:4px 8px;font-family:monospace;color:#c62828;">' + escapeHtml(s.sku) + '</td>';
+                    anomHtml += '<td style="padding:4px 8px;text-align:center;font-size:11px;">' + escapeHtml(s.anomaly_type_label || '-') + '</td>';
+                    anomHtml += '<td style="padding:4px 8px;text-align:center;">' + getInvLabel(s.inv_status) + '</td>';
+                    anomHtml += '<td style="padding:4px 8px;text-align:center;">' + (s.in_stock > 0 ? s.in_stock : '-') + '</td>';
+                    anomHtml += '<td style="padding:4px 8px;font-size:11px;">' + transitStr + '</td>';
+                    anomHtml += '<td style="padding:4px 8px;text-align:center;white-space:nowrap;" title="' + escapeHtml(titleTip) + '">';
+                    anomHtml += '<button class="sa-btn' + (st === 'valid' ? ' sa-on' : '') + '" onclick="saveSkuAnomaly(\'' + _sku + '\',\'valid\')" title="确认这个SKU是真实有效的SKU, 缺尺寸需补录, 异常提示继续保留">正常SKU</button>';
+                    anomHtml += '<button class="sa-btn' + (st === 'invalid' ? ' sa-off' : '') + '" onclick="saveSkuAnomaly(\'' + _sku + '\',\'invalid\')" title="确认无效/作废脏数据: 不计入上架判定, 移入「无效SKU」栏">无效SKU</button>';
+                    anomHtml += '<button class="sa-btn sa-combo" onclick="saveSkuAnomaly(\'' + _sku + '\',\'combo\')" title="确认组合SKU: 按套件成员货品的包裹类型与库存接管上架判定, 移入「组合SKU」栏">组合SKU</button>';
+                    anomHtml += '<button class="sa-btn sa-clear" onclick="saveSkuAnomaly(\'' + _sku + '\',\'\')" title="清空确认结果, 回到待确认">待确认</button>';
+                    anomHtml += '</td>';
+                    anomHtml += '<td style="padding:4px 8px;">';
+                    anomHtml += '<input class="sa-note-input" style="width:120px;" data-sku="' + _sku + '" value="' + escapeHtml(s.confirm_note || '') + '" placeholder="备注(选填)" onchange="saveSkuAnomalyNote(this)">';
+                    anomHtml += '</td>';
+                    anomHtml += '</tr>';
+                });
+                anomHtml += '</tbody></table>';
+                skuHtml += '<div class="anomaly-box"><strong>SKU异常记录</strong>'
+                    + '（共 ' + row.sku_anomalies.length + ' 条待确认；勾选多条可批量确认。'
+                    + '「无效SKU」不计入上架判定并移入「无效SKU」栏；「组合SKU」由套件成员货品接管判定并移入「组合SKU」栏；'
+                    + '确认结果留档，重新处理不会重置）：'
+                    + anomHtml + '</div>';
+            }
+            // 多包裹详情
+            if (row.multi_pkg > 1 && Object.keys(row.color_pkg).length > 0) {
+                const colorDetails = Object.entries(row.color_pkg)
+                    .map(function(c) { return c[0] + ': ' + (c[1].package_types ? c[1].package_types.join('/') : c[1].count + '包'); })
+                    .join(' | ');
+                skuHtml += '<div style="margin-top:8px;padding:6px 10px;background:#fff3e0;border-radius:6px;font-size:11px;color:#e65100;"><strong>多包裹详情:</strong> ' + colorDetails + '</div>';
+            }
+            // 来源信息
+            const sourceInfo = [];
+            if (row.lines && row.lines.length > 0) sourceInfo.push('产品线: ' + row.lines.join(', '));
+            if (row.candidate_sources && row.candidate_sources.length > 0) sourceInfo.push('候选来源: ' + row.candidate_sources.join(', '));
+            if (row.notify_time) sourceInfo.push('通知上架时间: ' + row.notify_time);
+            if (sourceInfo.length > 0) {
+                skuHtml += '<div style="margin-top:6px;padding:6px 10px;background:#e8eaf6;border-radius:6px;font-size:11px;color:#3949ab;">' + sourceInfo.join(' | ') + '</div>';
+            }
+            skuHtml += '</td>';
+            skuTr.innerHTML = skuHtml;
+            tbody.appendChild(skuTr);
+        }
+        // 需求5: 组合SKU / 无效SKU 明细 —— 整行宽度子行 (窄列里放不下 9 列表格)
+        [['combo', row.combo_skus, '组合'], ['invalid', row.invalid_skus, '无效']].forEach(function(g) {
+            const gh = skuGroupRowHtml(g[1], g[2], g[0], row.idx, _theadCols);
+            if (gh) tbody.insertAdjacentHTML('beforeend', gh);
+        });
+        // 备注已移到SPU主行最右侧"SPU特殊备注"列
+    });
+
+    // 更新计数
+    const countEl = document.getElementById('summaryBar');
+    const existing = document.getElementById('filterCount');
+    if (existing) existing.remove();
+    const span = document.createElement('span');
+    span.id = 'filterCount';
+    span.innerHTML = '| 当前显示: <strong>' + filtered.length + '</strong> 个SPU';
+    countEl.appendChild(span);
+
+    // 同步底部横向滚动条 + 测量筛选条高度
+    updateFilterBarHeight();
+    syncBottomScrollbar();
+    // 应用可定制表头 (每次重渲染后)
+    applyColumnVisibility();
+    // 已确认SKU 批量改判: 重渲染后重置悬浮条状态 (勾选随 DOM 重建而清零)
+    saAdjustUpdateBar();
+}
+
+// ========== 表头吸顶 + 底部横向滚动条 ==========
+function updateFilterBarHeight() {
+    const filters = document.querySelector('.filters');
+    if (filters) {
+        document.documentElement.style.setProperty('--filter-bar-height', filters.offsetHeight + 'px');
+    }
+}
+
+// 用 ResizeObserver 监听 .filters 高度变化, 自动更新 CSS 变量
+if (typeof ResizeObserver !== 'undefined') {
+    const _ro = new ResizeObserver(function() { updateFilterBarHeight(); });
+    const _initFiltersEl = document.querySelector('.filters');
+    if (_initFiltersEl) _ro.observe(_initFiltersEl);
+    // 监听 DOM 变化(.filters 可能被动态替换)
+    const _mo = new MutationObserver(function() {
+        const el = document.querySelector('.filters');
+        if (el && !_ro._observed) {
+            _ro.observe(el);
+            el._observed = true;
+        }
+        updateFilterBarHeight();
+    });
+    _mo.observe(document.body, { childList: true, subtree: true });
+}
+
+let _bottomScrollbarSyncing = false;
+function syncBottomScrollbar() {
+    const tc = document.querySelector('.report-scroll');
+    const bs = document.getElementById('bottomScrollbar');
+    const bsi = document.getElementById('bottomScrollbarInner');
+    if (!tc || !bs || !bsi) return;
+
+    // 1. 对齐底部滚动条的左右边界到 .report-scroll 的实际位置
+    //    (position:fixed 默认 left:0;right:0 占满整个视口, 但 .report-scroll
+    //     宽度 = 视口 - 侧边栏 - padding, 宽度不一致会导致滚动位置错位)
+    var rect = tc.getBoundingClientRect();
+    if (rect.width > 0) {
+        bs.style.left = rect.left + 'px';
+        bs.style.right = (window.innerWidth - rect.right) + 'px';
+    }
+
+    // 2. inner 宽度 = 滚动区 scrollWidth, 才能拖出与表格等长的滚动条
+    bsi.style.width = tc.scrollWidth + 'px';
+
+    // 3. 双向同步滚动位置
+    if (_bottomScrollbarSyncing) return;
+    _bottomScrollbarSyncing = true;
+    // 表格横向滚 → 底部滚动条跟滚
+    tc.onscroll = function() { bs.scrollLeft = tc.scrollLeft; };
+    // 底部滚动条横向滚 → 表格跟滚
+    bs.onscroll = function() { tc.scrollLeft = bs.scrollLeft; };
+    _bottomScrollbarSyncing = false;
+}
+
+window.addEventListener('resize', function() {
+    updateFilterBarHeight();
+    syncBottomScrollbar();
+});
+
+// 展开状态记忆: spu -> true。确认异常SKU后报表会重算重绘, 借此保持该行仍是展开的。
+var expandedSpus = {};
+
+function toggleExpand(spuRow, rowData) {
+    spuRow.classList.toggle('expanded');
+    if (rowData && rowData.spu) {
+        expandedSpus[rowData.spu] = spuRow.classList.contains('expanded');
+    }
+    const skuRows = document.querySelectorAll('.sku-row[data-parent-idx="' + rowData.idx + '"]');
+    skuRows.forEach(function(r) { r.classList.toggle('visible'); });
+}
+
+// ========== SKU异常确认 (2026-10-20) ==========
+// 需求: SKU异常记录可逐条确认「正常SKU / 无效SKU」, 结果留档(重新处理不重置)且可改。
+// 确认「无效SKU」= 认定这条是无效/作废的脏数据 → 服务端把它从 SKU明细、SKU数、包裹统计、
+// 库存评估、上架判定中全流程剔除, 于是该 SPU 的「是否需要上架」会立刻回到真实结论
+// (例如 Z6DTJY0623 从「待确认」回落为「需要上架」), 且不用等约6分钟的后台重跑。
+function _saPost(notes, okMsg) {
+    fetch('/na/api/sku-anomaly-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notes, updated_by: isAdmin ? 'admin' : 'user' })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success) {
+            showNoteStatus(okMsg, 'ok');
+            refreshReportAfterConfirm();
+        } else {
+            showNoteStatus('保存失败: ' + (res.error || ''), 'warn');
+        }
+    })
+    .catch(function() { showNoteStatus('保存失败: 网络错误', 'warn'); });
+}
+
+function _saStatusLabel(status) {
+    if (status === 'invalid') return '无效SKU';
+    if (status === 'combo') return '组合SKU';
+    if (status === 'valid') return '正常SKU';
+    return '待确认';
+}
+
+// 已确认SKU 的「判定调整」下拉: 直接改判为 正常/无效/组合/待确认, 避免误操作后无法回退
+// 仅在 confirm_status 非空前(即该SKU曾被异常流程判定过)才显示控制项
+function saAdjustSelect(sku, cur) {
+    const opts = [['valid', '正常SKU'], ['invalid', '无效SKU'], ['combo', '组合SKU'], ['', '改回待确认']];
+    return '<select class="sa-status-select" data-sku="' + escapeHtml(sku) + '" '
+        + 'onchange="saveSkuAnomaly(\'' + escapeHtml(sku) + '\', this.value)" '
+        + 'title="调整该SKU的判定结果 (误操作可改回/改判)">'
+        + opts.map(function(o) {
+            return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('')
+        + '</select>';
+}
+
+// ---- 已确认SKU 批量改判: 跨 SPU 统一勾选 + 一键改判 ----
+// 全局悬浮条 (动态注入, 避免改动模板); 任意 .sa-adjust-cb 勾选 ≥1 条即显示
+function saAdjustEnsureBar() {
+    if (document.getElementById('saBatchAdjust')) return;
+    const d = document.createElement('div');
+    d.id = 'saBatchAdjust';
+    d.style.cssText = 'display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);'
+        + 'z-index:60;background:#fff;border:1px solid #ffb74d;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.18);'
+        + 'padding:8px 14px;align-items:center;gap:8px;font-size:12px;color:#333;';
+    d.innerHTML =
+        '<span>已选 <b id="saAdjustCnt" style="color:#e65100;">0</b> 个已确认SKU</span>'
+        + '<button class="sa-btn sa-on" onclick="saAdjustBatchSet(\'valid\')">批量改为 正常SKU</button>'
+        + '<button class="sa-btn sa-off" onclick="saAdjustBatchSet(\'invalid\')">批量改为 无效SKU</button>'
+        + '<button class="sa-btn sa-combo" onclick="saAdjustBatchSet(\'combo\')">批量改为 组合SKU</button>'
+        + '<button class="sa-btn sa-clear" onclick="saAdjustBatchSet(\'\')">批量改回 待确认</button>'
+        + '<button class="sa-btn sa-clear" onclick="saAdjustClearSel()">取消</button>';
+    document.body.appendChild(d);
+}
+
+function saAdjustUpdateBar() {
+    saAdjustEnsureBar();
+    const cbs = document.querySelectorAll('.sa-adjust-cb:checked');
+    const bar = document.getElementById('saBatchAdjust');
+    const cnt = document.getElementById('saAdjustCnt');
+    if (cnt) cnt.textContent = cbs.length;
+    if (bar) bar.style.display = cbs.length > 0 ? 'flex' : 'none';
+}
+
+function saAdjustClearSel() {
+    document.querySelectorAll('.sa-adjust-cb:checked').forEach(function(cb) { cb.checked = false; });
+    saAdjustUpdateBar();
+}
+
+function saAdjustBatchSet(status) {
+    const cbs = Array.prototype.slice.call(document.querySelectorAll('.sa-adjust-cb:checked'));
+    if (!cbs.length) { saAdjustUpdateBar(); return; }
+    const payload = {};
+    cbs.forEach(function(cb) { payload[cb.getAttribute('data-sku')] = { status: status }; });
+    saAdjustClearSel();
+    _saPost(payload, '已将 ' + cbs.length + ' 个已确认SKU 批量改为「' + _saStatusLabel(status) + '」，正在按新结果重算…');
+}
+
+function saveSkuAnomaly(sku, status) {
+    if (!sku) return;
+    const payload = {};
+    payload[sku] = { status: status };
+    _saPost(payload, '已将 ' + sku + ' 确认为「' + _saStatusLabel(status) + '」，正在按新结果重算…');
+}
+
+// ---- 需求3: 异常记录多选批量确认 ----
+function _saCheckedSkus(scope) {
+    const out = [];
+    document.querySelectorAll('.sa-cb[data-scope="' + scope + '"]').forEach(function(cb) {
+        if (cb.checked) out.push(cb.getAttribute('data-sku'));
+    });
+    return out;
+}
+
+function saUpdateBar(scope) {
+    const n = _saCheckedSkus(scope).length;
+    const bar = document.getElementById('saBar_' + scope);
+    const cnt = document.getElementById('saCnt_' + scope);
+    if (cnt) cnt.textContent = n;
+    if (bar) bar.style.display = n > 0 ? 'block' : 'none';
+    const all = document.getElementById('saAll_' + scope);
+    if (all) {
+        const total = document.querySelectorAll('.sa-cb[data-scope="' + scope + '"]').length;
+        all.checked = (n > 0 && n === total);
+    }
+}
+
+function saToggleAll(master, scope) {
+    document.querySelectorAll('.sa-cb[data-scope="' + scope + '"]').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
+    saUpdateBar(scope);
+}
+
+function saClearSel(scope) {
+    document.querySelectorAll('.sa-cb[data-scope="' + scope + '"]').forEach(function(cb) { cb.checked = false; });
+    const all = document.getElementById('saAll_' + scope);
+    if (all) all.checked = false;
+    saUpdateBar(scope);
+}
+
+function saveSkuAnomalyBatch(scope, status) {
+    const skus = _saCheckedSkus(scope);
+    if (!skus.length) { showNoteStatus('请先勾选要确认的SKU', 'warn'); return; }
+    const payload = {};
+    skus.forEach(function(s) { payload[s] = { status: status }; });
+    _saPost(payload, '已将 ' + skus.length + ' 个SKU确认为「' + _saStatusLabel(status) + '」，正在按新结果重算…');
+}
+
+function saveSkuAnomalyNote(input) {
+    if (!input) return;
+    const sku = input.getAttribute('data-sku');
+    if (!sku) return;
+    const payload = {};
+    payload[sku] = { note: input.value || '' };
+    _saPost(payload, '已保存 ' + sku + ' 的异常备注');
+}
+
+function refreshReportAfterConfirm() {
+    fetch('/na/api/report-data')
+        .then(function(r) { if (!r.ok) throw new Error('读取失败'); return r.json(); })
+        .then(function(data) {
+            reportData = data;
+            renderReport();
+            buildFieldFilters();
+            updateFilterBarHeight();
+        })
+        .catch(function(e) { showNoteStatus('重算后刷新失败: ' + (e.message || ''), 'warn'); });
+}
+
+// 可收起组件: 点击 header 切换 expanded
+function toggleCollapsible(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('expanded');
+}
+
+// ========== 备货备注 + 可编辑业务字段 (每个SPU独立, 所有账户可编辑, 同步广播) ==========
+let spuNotes = {};       // 已保存: spu -> {content, updated_at, updated_by, abnormal_status, ...}
+let spuNoteDraft = {};   // 草稿: spu -> 当前输入值 (仅用于 textarea content)
+let spuFieldPending = {}; // 单字段保存状态: spu -> {field: 'saving'|'ok'|'err'}
+
+function escapeHtml(s) {
+    return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function onSpuNoteInput(ta) {
+    spuNoteDraft[ta.dataset.spu] = ta.value;
+}
+
+function updateNoteMeta(ta, note) {
+    const cell = ta.closest('.spu-note-cell');
+    const meta = cell ? cell.querySelector('.spu-note-meta') : null;
+    if (meta) meta.textContent = (note && note.updated_at) ? ('同步于 ' + note.updated_at) : '';
+}
+
+// 通用动态下拉框构建 (选项来自 style_options)
+function buildDynamicSelect(spu, field, currentValue, options, fallbackText, hasNote) {
+    // 如果用户没在 stock_note 中编辑过, 用款式表原值 (只读展示)
+    // hasNote: 合并 note 中该字段存在(含历史继承编辑值)也算已编辑, 与筛选取值一致, 避免筛选与显示不符
+    const edited = hasNote || (spuNotes[spu] && spuNotes[spu][field] !== undefined);
+    if (!edited) {
+        // 未编辑过: 显示款式表原值 + 一个"编辑"按钮 (点击后变 select)
+        const displayText = fallbackText || '<span class="no-record">-</span>';
+        return '<span class="cell-readonly" data-spu="' + spu + '" data-field="' + field + '" data-fallback="' + escapeHtml(fallbackText || '') + '" onclick="activateSelectEdit(this)">' + displayText + ' <span style="font-size:10px;color:#1976d2;cursor:pointer;">&#9998;</span></span>';
+    }
+    // 已编辑: 渲染 select, 默认选中 currentValue
+    const opts = [''].concat(options || []); // 头部加空选项代表"清除"
+    return '<select class="cell-select" data-spu="' + spu + '" data-field="' + field + '" onchange="onCellChange(this)">' +
+        opts.map(o => '<option value="' + escapeHtml(o) + '"' + (o === currentValue ? ' selected' : '') + '>' + (o || '-') + '</option>').join('') +
+        '</select>';
+}
+
+// 点击"编辑"图标, 把只读 span 变成 select
+function activateSelectEdit(span) {
+    const spu = span.dataset.spu;
+    const field = span.dataset.field;
+    const fallback = span.dataset.fallback || '';
+    let options = [];
+    if (field === 'operator_group') options = (reportData.style_options && reportData.style_options.groups) || [];
+    else if (field === 'operator') options = (reportData.style_options && reportData.style_options.operators) || [];
+    const opts = [''].concat(options);
+    const sel = document.createElement('select');
+    sel.className = 'cell-select';
+    sel.dataset.spu = spu;
+    sel.dataset.field = field;
+    sel.onchange = function() { onCellChange(this); };
+    sel.innerHTML = opts.map(o => '<option value="' + escapeHtml(o) + '"' + (o === fallback ? ' selected' : '') + '>' + (o || '-') + '</option>').join('');
+    span.replaceWith(sel);
+    sel.focus();
+}
+
+// 点击"编辑"图标, 把只读 span 变成日期输入框 (上架DDL)
+function activateDateEdit(span) {
+    const inp = document.createElement('input');
+    inp.type = 'date';
+    inp.className = 'cell-select';
+    inp.style.width = '132px';
+    inp.dataset.spu = span.dataset.spu;
+    inp.dataset.field = span.dataset.field;
+    if (span.dataset.fallback) inp.value = span.dataset.fallback;
+    inp.onchange = function() { onCellChange(this); };
+    span.replaceWith(inp);
+    inp.focus();
+}
+
+// 单字段 onchange: 立即保存
+function onCellChange(el) {
+    const spu = el.dataset.spu;
+    const field = el.dataset.field;
+    const value = el.value;
+    saveSpuField(spu, field, value);
+}
+
+// 保存/恢复字段筛选面板的勾选状态, 用于重建下拉选项时不丢失用户已选条件
+function saveFieldFilterSelections() {
+    const saved = {};
+    FILTER_FIELDS.forEach(function(f) {
+        if (f.type === 'daterange') return;
+        const panel = document.getElementById('panel-' + f.key);
+        if (!panel) return;
+        const checked = [];
+        panel.querySelectorAll('input[type="checkbox"]:checked').forEach(function(cb) { checked.push(cb.value); });
+        if (checked.length) saved[f.key] = checked;
+    });
+    return saved;
+}
+function restoreFieldFilterSelections(saved) {
+    Object.keys(saved).forEach(function(key) {
+        const vals = saved[key];
+        const panel = document.getElementById('panel-' + key);
+        if (!panel) return;
+        panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+            cb.checked = vals.indexOf(cb.value) !== -1;
+        });
+        fieldFilters[key] = new Set(vals);
+    });
+}
+
+// 保存单个 SPU 的单个字段 (后端会自动合并到 stock_note)
+let spuSaveRetry = {};  // key=spu|field -> {spu, field, value, tries}
+// 本地覆盖守卫: 用户刚保存成功的字段, 在 Supabase 读后写延迟窗口内不被轮询旧值覆盖
+// key=spu|field -> {value, ts}; loadStockNote 据此保留本地值, 待轮询确认已同步后自动解除
+let localOverrides = {};
+const OVERRIDE_GUARD_MS = 30000;
+function saveSpuField(spu, field, value) {
+    if (!spu || !field) return;
+    const payload = {};
+    payload[spu] = {};
+    payload[spu][field] = value;
+    fetch('/na/api/stock-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: payload, updated_by: isAdmin ? 'admin' : 'user' })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            delete spuSaveRetry[spu + '|' + field];
+            spuNotes = res.notes || {};
+            // 标记本地覆盖: 该字段 30s 内不被轮询旧值回退 (Supabase 读后写延迟导致界面"改了又恢复")
+            localOverrides[spu + '|' + field] = { value: value, ts: Date.now() };
+            // 运营组/运营: 同步更新本地 row, 重建筛选下拉并刷新表格, 使编辑值立刻参与筛选
+            if (field === 'operator_group' || field === 'operator') {
+                const row = reportData.products.find(function(p) { return p.spu === spu; });
+                if (row) {
+                    if (field === 'operator_group') { row.operator_group_edit = value || ''; row.operator_group_has_note = true; }
+                    else { row.operator_edit = value || ''; row.operator_has_note = true; }
+                }
+                const saved = saveFieldFilterSelections();
+                buildFieldFilters();
+                restoreFieldFilterSelections(saved);
+                FILTER_FIELDS.forEach(function(f) { if (f.type !== 'daterange') updateFieldFilterUI(f.key); });
+                renderTable();
+            } else if (field === 'abnormal_status') {
+                // 刷新表格以反映过滤 (异常处理变化时, 非管理员可能看不到)
+                // 但避免在用户正在编辑时刷新丢焦点
+                renderTable();
+            } else if (field === 'launch_ddl') {
+                // 上架DDL: 单元格在 只读/日期输入 两种形态间切换, 保存后重渲染反映"已调整"状态
+                renderTable();
+            }
+            showNoteStatus('已保存 ' + spu + ' 的 ' + field + ' 字段', 'ok');
+        } else {
+            handleSaveFail(spu, field, value, res.error);
+        }
+    })
+    .catch(() => handleSaveFail(spu, field, value, '网络错误'));
+}
+
+// 保存失败: 自动重试 (最多3次, 间隔2秒), 期间保留用户填写值不丢失
+function handleSaveFail(spu, field, value, err) {
+    const key = spu + '|' + field;
+    const rec = spuSaveRetry[key] || { spu: spu, field: field, value: value, tries: 0 };
+    rec.tries += 1;
+    rec.value = value;
+    spuSaveRetry[key] = rec;
+    if (rec.tries <= 3) {
+        showNoteStatus('⚠ 保存失败 (' + (err || '') + '), ' + rec.tries + '/3 次重试中: ' + spu + ' ' + field, 'warn');
+        setTimeout(function() { saveSpuField(spu, field, value); }, 2000);
+    } else {
+        delete spuSaveRetry[key];
+        showNoteStatus('⚠ 保存失败(已自动重试3次): ' + spu + ' ' + field + ' 未保存成功, 请稍后重新操作', 'warn');
+    }
+}
+
+// 将客户端 spuNotes 的运营组/运营编辑值同步回 reportData.products,
+// 使筛选的 get (operator_group_edit || category) 与表格显示使用同一数据源
+function syncNotesToProducts() {
+    if (!reportData || !reportData.products) return;
+    reportData.products.forEach(function(p) {
+        const note = spuNotes[p.spu];
+        if (!note) return;
+        if (note.operator_group !== undefined) { p.operator_group_edit = note.operator_group || ''; p.operator_group_has_note = true; }
+        if (note.operator !== undefined) { p.operator_edit = note.operator || ''; p.operator_has_note = true; }
+    });
+}
+
+function initStockNote() {
+    loadStockNote();
+    // 每10秒轮询, 实现全员实时同步
+    setInterval(loadStockNote, 10000);
+    // 新色跟进备注 (独立存储, 同样 10 秒轮询; loadNcNote 定义在新色跟进区块)
+    loadNcNote();
+    setInterval(loadNcNote, 10000);
+}
+
+function loadStockNote() {
+    fetch('/na/api/stock-note')
+        .then(r => r.json())
+        .then(data => {
+            const oldNotes = spuNotes;
+            // 应用本地覆盖守卫: 把轮询到的(可能滞后的)数据, 对用户刚保存的字段用本地值覆盖,
+            // 避免 Supabase 读后写延迟窗口内界面闪回旧值 ("改了又恢复")。
+            // 若轮询已返回相同值(延迟已过)或守卫超时, 则解除覆盖, 信任云端。
+            const polled = data || {};
+            const now = Date.now();
+            const merged = {};
+            for (const spu in polled) {
+                if (!polled.hasOwnProperty(spu)) continue;
+                merged[spu] = Object.assign({}, polled[spu]);
+            }
+            for (const key in localOverrides) {
+                if (!localOverrides.hasOwnProperty(key)) continue;
+                const o = localOverrides[key];
+                if (now - o.ts > OVERRIDE_GUARD_MS) { delete localOverrides[key]; continue; }
+                const idx = key.indexOf('|');
+                const spu = key.substring(0, idx);
+                const field = key.substring(idx + 1);
+                if (!merged[spu]) merged[spu] = {};
+                if (polled[spu] && polled[spu][field] === o.value) {
+                    delete localOverrides[key]; // 云端已同步, 解除守卫
+                } else {
+                    merged[spu][field] = o.value; // 保留本地值, 不回退
+                }
+            }
+            spuNotes = merged;
+            // 同步编辑值到 products, 保证筛选与表格一致 (刷新页面后也生效)
+            syncNotesToProducts();
+            // 通知外部: 如果 stock_note 变化, 刷新表格 (非管理员可能因 abnormal 过滤导致行数变化)
+            let changed = JSON.stringify(oldNotes) !== JSON.stringify(spuNotes);
+            document.querySelectorAll('.spu-note-input').forEach(ta => {
+                const spu = ta.dataset.spu;
+                const note = spuNotes[spu];
+                updateNoteMeta(ta, note);
+                // 用户正在编辑或有未同步草稿, 不覆盖
+                if (document.activeElement === ta) return;
+                if (spuNoteDraft[spu] !== undefined) return;
+                ta.value = note ? (note.content || '') : '';
+            });
+            // 仅当不在编辑任何 select/date 时刷新表格 (避免丢焦点)
+            const editing = document.activeElement && (document.activeElement.tagName === 'SELECT' || document.activeElement.tagName === 'INPUT');
+            if (changed && !editing && reportData) {
+                // stock_note 变化后, 重建筛选下拉选项 (保留用户已勾选条件), 使编辑值立刻进入筛选维度
+                const saved = saveFieldFilterSelections();
+                buildFieldFilters();
+                restoreFieldFilterSelections(saved);
+                FILTER_FIELDS.forEach(function(f) { if (f.type !== 'daterange') updateFieldFilterUI(f.key); });
+                renderTable();
+            }
+        })
+        .catch(() => {});
+}
+
+function syncAllNotes() {
+    const notes = {};
+    let count = 0;
+    document.querySelectorAll('.spu-note-input').forEach(ta => {
+        const spu = ta.dataset.spu;
+        // 仅同步非空或有草稿的
+        const draft = spuNoteDraft[spu];
+        const savedContent = spuNotes[spu] ? spuNotes[spu].content : '';
+        if (draft !== undefined && draft !== savedContent) {
+            notes[spu] = { content: draft };
+            count++;
+        }
+    });
+    if (count === 0) {
+        showNoteStatus('无新改动需要同步', 'ok');
+        return;
+    }
+    fetch('/na/api/stock-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notes, updated_by: isAdmin ? 'admin' : 'user' })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            spuNotes = res.notes || {};
+            // 备注内容同样加本地覆盖守卫, 避免轮询旧值闪回
+            for (const spu in notes) {
+                if (notes.hasOwnProperty(spu) && notes[spu].content !== undefined) {
+                    localOverrides[spu + '|content'] = { value: notes[spu].content, ts: Date.now() };
+                }
+            }
+            spuNoteDraft = {};
+            document.querySelectorAll('.spu-note-input').forEach(ta => {
+                updateNoteMeta(ta, spuNotes[ta.dataset.spu]);
+            });
+            showNoteStatus('已同步 ' + count + ' 个SPU备注, 全员可见', 'ok');
+        } else {
+            showNoteStatus('同步失败: ' + (res.error || '云端保存失败') + ', 草稿已保留, 请重试', 'warn');
+        }
+    })
+    .catch(() => showNoteStatus('同步失败: 网络错误, 草稿已保留, 请重试', 'warn'));
+}
+
+let _noteStatusTimer = null;
+function showNoteStatus(msg, type) {
+    const el = document.getElementById('stockNoteStatusBar');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'sn-status ' + (type || '');
+    el.style.padding = '8px 12px';
+    el.style.background = (type === 'ok') ? '#e8f5e9' : '#fff3e0';
+    el.style.borderLeft = '4px solid ' + (type === 'ok' ? '#2e7d32' : '#e65100');
+    el.style.borderRadius = '8px';
+    if (_noteStatusTimer) clearTimeout(_noteStatusTimer);
+    _noteStatusTimer = setTimeout(function() { el.textContent = ''; }, 4000);
+}
+
+// ================= 新色跟进 =================
+let newColorData = null;
+let ncDataLoaded = false;
+let ncFieldFilters = {};   // key -> Set(选中的筛选值)
+let ncExpanded = {};        // SPU|店铺 -> 是否展开
+let ncSpuQuery = '';        // SPU 搜索关键字(子串匹配)
+// 新色跟进备注: 独立于新品跟进 stock_note (2026-09-21 用户确认)
+// 字段: launch_completed(未完成/已完成/无需上架) / content(特殊备注) / operator / operator_group
+let ncNotes = {};
+let ncLocalOverrides = {};  // 本地覆盖守卫 (防 Supabase 读延迟闪回, 与 stock_note 守卫独立)
+const NC_OVERRIDE_GUARD_MS = 30000;
+const NC_FILTER_DEFS = [
+    {key:'status', label:'状态'},
+    {key:'group', label:'运营组'},
+    {key:'operator', label:'运营'},
+    {key:'store', label:'上架店铺'},
+    {key:'completed', label:'是否完成上架'},
+    {key:'spu', label:'SPU', search:true},
+];
+const NC_STORE_LABELS = {
+    'US-Amazon-HLLdeco-KH':'DECO','US-Amazon-Home Nest-KH':'HN',
+    'US-Amazon-Urban-KH':'Urban','US-Amazon-XYT-KH':'XYT',
+    'US-Amazon-JYT-KH':'JYT','US-Walmart':'Walmart'
+};
+const NC_COMPLETED_OPTS = ['未完成', '已完成', '无需上架'];
+let ncSpuIndex = {};        // SPU -> {statuses:Set, stores:Set}
+function ncStoreLabel(store){ return NC_STORE_LABELS[store] || store; }
+function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// 预建 (SPU|店铺) -> 明细状态 索引 (供"状态"筛选使用)
+function buildNcIndex() {
+    ncSpuIndex = {};
+    (newColorData.sku_rows || []).forEach(function(s) {
+        const k = s['SPU'] + '|' + s['店铺'];
+        if (!ncSpuIndex[k]) ncSpuIndex[k] = { statuses: new Set() };
+        if (s['上架状态']) ncSpuIndex[k].statuses.add(s['上架状态']);
+    });
+}
+
+function ncRowKey(r) { return r['SPU'] + '|' + r['店铺']; }
+
+function loadNewColor() {
+    const loadingEl = document.getElementById('ncLoading');
+    const emptyEl = document.getElementById('ncEmpty');
+    const contentEl = document.getElementById('ncContent');
+    if (loadingEl) loadingEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'none';
+    fetch('/na/api/new-color')
+        .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })
+        .then(data => {
+            newColorData = data;
+            ncDataLoaded = true;
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (!data.spu_rows || !data.spu_rows.length) {
+                emptyEl.style.display = 'block';
+                emptyEl.innerHTML = '<div style="font-size:16px;margin-bottom:16px;">未匹配到待上架新色</div><p style="font-size:13px;color:#aaa;">当前数据下没有需要跟进的新色</p>';
+                return;
+            }
+            contentEl.style.display = 'block';
+            buildNcIndex();
+            buildNcFilters();
+            renderNcPending(data.pending_colors || []);
+            renderNewColor();
+        })
+        .catch(() => {
+            if (loadingEl) loadingEl.style.display = 'none';
+            emptyEl.style.display = 'block';
+            emptyEl.innerHTML = '<div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div><p style="font-size:13px;color:#aaa;">请先在"数据管理"页面上传数据源并点击"处理并生成报告"</p>';
+        });
+}
+
+// 运营/运营组: 默认取店铺规则计算值(数据字段 运营组/运营), 有新色备注编辑值则覆盖
+function ncOperator(r, field) {
+    const note = ncNotes[r['SPU']] || {};
+    if (field === 'operator_group') return note.operator_group || r['运营组'] || '';
+    return note.operator || r['运营'] || '';
+}
+
+// 是否完成上架: 默认"未完成", 有新色备注编辑值则覆盖 (独立于新品跟进)
+function ncCompleted(r) {
+    const note = ncNotes[r['SPU']] || {};
+    return note.launch_completed || '未完成';
+}
+
+// 读取新色跟进备注 (独立存储, 每10秒轮询; 带本地覆盖守卫防闪回)
+function loadNcNote() {
+    fetch('/na/api/nc-note')
+        .then(r => r.json())
+        .then(data => {
+            const polled = data || {};
+            const now = Date.now();
+            const merged = {};
+            for (const spu in polled) {
+                if (polled.hasOwnProperty(spu)) merged[spu] = Object.assign({}, polled[spu]);
+            }
+            for (const key in ncLocalOverrides) {
+                if (!ncLocalOverrides.hasOwnProperty(key)) continue;
+                const o = ncLocalOverrides[key];
+                if (now - o.ts > NC_OVERRIDE_GUARD_MS) { delete ncLocalOverrides[key]; continue; }
+                const idx = key.indexOf('|');
+                const spu = key.substring(0, idx);
+                const field = key.substring(idx + 1);
+                if (!merged[spu]) merged[spu] = {};
+                if (polled[spu] && polled[spu][field] === o.value) {
+                    delete ncLocalOverrides[key];
+                } else {
+                    merged[spu][field] = o.value;
+                }
+            }
+            const changed = JSON.stringify(ncNotes) !== JSON.stringify(merged);
+            ncNotes = merged;
+            const editing = document.activeElement &&
+                (document.activeElement.tagName === 'SELECT' || document.activeElement.tagName === 'INPUT');
+            // 备注变化且不在编辑中 → 重建筛选(保留勾选)并重渲染 (编辑值进入筛选维度)
+            if (changed && !editing && ncDataLoaded) {
+                buildNcFilters();
+                renderNewColor();
+            }
+        })
+        .catch(() => {});
+}
+
+// 筛选取值 (空显示 '-', 与下拉/表格显示同源; 一行 = SPU×店铺)
+function ncFilterValues(r) {
+    const idx = ncSpuIndex[ncRowKey(r)] || { statuses: new Set() };
+    return {
+        status: Array.from(idx.statuses),
+        group: [ncOperator(r, 'operator_group') || '-'],
+        operator: [ncOperator(r, 'operator') || '-'],
+        store: [r['店铺'] || '-'],
+        completed: [ncCompleted(r)],
+        spu: [r['SPU']]
+    };
+}
+
+function ncJoinedSpu() {
+    return (newColorData.spu_rows || []).map(function(r) {
+        return Object.assign({}, r, {
+            '运营组显示': ncOperator(r, 'operator_group'),
+            '运营显示': ncOperator(r, 'operator')
+        });
+    });
+}
+
+// ---- 筛选: 下拉多选 + SPU 搜索框 ----
+function ncDdBtnText(f, sel) {
+    return (sel && sel.size) ? f.label + ' (' + sel.size + ')' : '全部' + f.label;
+}
+
+function buildNcFilters() {
+    if (!newColorData) return;
+    const rows = ncJoinedSpu();
+    let html = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
+    NC_FILTER_DEFS.forEach(function(f) {
+        if (f.search) {
+            html += '<input type="text" placeholder="搜索 SPU..." value="' + escA(ncSpuQuery) + '" oninput="onNcSpuSearch(this.value)" style="width:180px;height:30px;padding:4px 12px;border:1px solid #ddd;border-radius:15px;font-size:13px;outline:none;">';
+            return;
+        }
+        const set = new Set();
+        rows.forEach(function(r) {
+            (ncFilterValues(r)[f.key] || []).forEach(function(v) { if (v) set.add(v); });
+        });
+        if (!ncFieldFilters[f.key]) ncFieldFilters[f.key] = new Set();
+        const sel = ncFieldFilters[f.key];
+        const opts = Array.from(set).sort();
+        const items = opts.map(function(o) {
+            const checked = sel.has(o) ? 'checked' : '';
+            return '<label style="display:flex;align-items:center;gap:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap;" onmouseover="this.style.background=\'#f5f6f8\'" onmouseout="this.style.background=\'\'">' +
+                '<input type="checkbox" value="' + escA(o) + '" ' + checked + ' onchange="onNcFilterChange(\'' + f.key + '\')">' + escA(o) + '</label>';
+        }).join('');
+        html += '<div class="nc-dd-wrap" style="position:relative;">' +
+            '<button type="button" onclick="ncDdToggle(\'' + f.key + '\', event)" style="height:30px;padding:4px 14px;border:1px solid #ddd;border-radius:15px;background:#fff;font-size:13px;cursor:pointer;color:' + (sel && sel.size ? '#1a73e8;font-weight:600;' : '#555;') + '">' + escA(ncDdBtnText(f, sel)) + ' ▾</button>' +
+            '<div class="nc-dd-panel" data-fk="' + f.key + '" style="display:none;position:absolute;top:34px;left:0;z-index:60;background:#fff;border:1px solid #e3e5e8;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.13);max-height:260px;overflow:auto;min-width:150px;padding:4px 0;">' +
+            (items || '<div style="padding:8px 12px;color:#bbb;font-size:12px;">无选项</div>') + '</div></div>';
+    });
+    html += '<button class="btn-action" onclick="ncClearFilters()" style="height:30px;">清空筛选</button></div>';
+    document.getElementById('ncFilters').innerHTML = html;
+}
+
+function ncDdToggle(key, ev) {
+    if (ev) ev.stopPropagation();
+    const panel = document.querySelector('.nc-dd-panel[data-fk="' + key + '"]');
+    if (!panel) return;
+    const show = (panel.style.display === 'none');
+    closeNcDd();
+    if (show) panel.style.display = 'block';
+}
+function closeNcDd() {
+    document.querySelectorAll('.nc-dd-panel').forEach(function(p) { p.style.display = 'none'; });
+}
+document.addEventListener('click', function(ev) {
+    const t = ev.target;
+    if (t.closest && (t.closest('.nc-dd-panel') || t.closest('.nc-dd-wrap'))) return;
+    closeNcDd();
+});
+
+function onNcSpuSearch(q) {
+    ncSpuQuery = String(q || '').trim().toLowerCase();
+    renderNewColor();
+}
+
+function onNcFilterChange(keepKey) {
+    document.querySelectorAll('.nc-dd-panel').forEach(function(p) {
+        const fk = p.getAttribute('data-fk');
+        const s = new Set();
+        p.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { if (cb.checked) s.add(cb.value); });
+        ncFieldFilters[fk] = s;
+    });
+    buildNcFilters();
+    if (keepKey) {
+        const panel = document.querySelector('.nc-dd-panel[data-fk="' + keepKey + '"]');
+        if (panel) panel.style.display = 'block';
+    }
+    renderNewColor();
+}
+
+function ncClearFilters() {
+    NC_FILTER_DEFS.forEach(function(f) { ncFieldFilters[f.key] = new Set(); });
+    ncSpuQuery = '';
+    buildNcFilters();
+    renderNewColor();
+}
+
+function ncRowMatch(r) {
+    const vals = ncFilterValues(r);
+    const keys = ['status', 'group', 'operator', 'store', 'completed'];
+    for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const sel = ncFieldFilters[k];
+        if (sel && sel.size) {
+            const v = vals[k] || [];
+            if (!v.some(function(x) { return sel.has(x); })) return false;
+        }
+    }
+    if (ncSpuQuery && String(vals.spu[0] || '').toLowerCase().indexOf(ncSpuQuery) < 0) return false;
+    return true;
+}
+
+function renderNewColor() {
+    if (!newColorData) return;
+    const rows = ncJoinedSpu().filter(ncRowMatch);
+    renderNcTable(rows);
+    const statEl = document.getElementById('ncStat');
+    if (statEl) {
+        const newSku = rows.reduce(function(a, r) { return a + (Number(r['待上架SKU数']) || 0); }, 0);
+        const spuSet = {};
+        rows.forEach(function(r) { spuSet[r['SPU']] = true; });
+        statEl.textContent = '共 ' + rows.length + ' 条记录（' + Object.keys(spuSet).length +
+            ' 个 SPU，一行 = 一个店铺），待上架新色 SKU ' + newSku + ' 个（点击行展开查看该店铺该 SPU 的 SKU 明细）';
+    }
+}
+
+// ---- 颜色待确认面板 (v4 archive-first) ----
+function toggleNcPending() {
+    const body = document.getElementById('ncPendingBody');
+    const tog = document.getElementById('ncPendingToggle');
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    tog.textContent = open ? '展开 ▼' : '收起 ▲';
+}
+
+function renderNcPending(list) {
+    const panel = document.getElementById('ncPendingPanel');
+    if (!panel) return;
+    if (!list || !list.length) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    document.getElementById('ncPendingCount').textContent = list.length + ' 个颜色码需要人工确认';
+    let html = '<table style="width:100%;font-size:12px;border-collapse:collapse;background:#fff;">' +
+        '<thead><tr style="background:#ffeccd;">' +
+        ['颜色码', '涉及SPU数', '涉及SKU数', '新色行数', '示例SKU', '涉及店铺', '人工确认'].map(function(c) {
+            return '<th style="padding:5px 8px;text-align:left;">' + c + '</th>';
+        }).join('') + '</tr></thead><tbody>';
+    list.forEach(function(p) {
+        const code = p['颜色码'];
+        let confirmCell;
+        if (isAdmin) {
+            confirmCell = '<input id="ncColorInput_' + escA(code) + '" type="text" placeholder="规范色名 / 留空标非颜色" ' +
+                'style="width:170px;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;" ' +
+                'onkeydown="if(event.key===\'Enter\'){confirmColorSave(\'' + escA(code) + '\',\'color\')}">' +
+                ' <button class="btn-action" style="height:24px;line-height:24px;padding:0 8px;" onclick="confirmColorSave(\'' + escA(code) + '\',\'color\')">确认</button>' +
+                ' <button class="btn-action" style="height:24px;line-height:24px;padding:0 8px;background:#e0e0e0;" onclick="confirmColorSave(\'' + escA(code) + '\',\'noncolor\')">非颜色</button>';
+        } else {
+            confirmCell = '<span style="color:#999;">待管理员确认</span>';
+        }
+        html += '<tr id="ncPendingRow_' + escA(code) + '">' +
+            '<td style="padding:5px 8px;font-weight:600;font-family:monospace;">' + escA(code) + '</td>' +
+            '<td style="padding:5px 8px;text-align:center;">' + escA(p['SPU数']) + '</td>' +
+            '<td style="padding:5px 8px;text-align:center;">' + escA(p['SKU数']) + '</td>' +
+            '<td style="padding:5px 8px;text-align:center;">' + escA(p['新色行数']) + '</td>' +
+            '<td style="padding:5px 8px;font-family:monospace;">' + escA(p['示例SKU']) + '</td>' +
+            '<td style="padding:5px 8px;">' + escA(p['涉及店铺']) + '</td>' +
+            '<td style="padding:5px 8px;white-space:nowrap;" onclick="event.stopPropagation()">' + confirmCell + '</td>' +
+            '</tr>';
+    });
+    html += '</tbody></table>' +
+        '<div style="font-size:11px;color:#888;margin-top:6px;">确认后写入系统颜色档案并永久生效；重新处理数据后按新档案判定。</div>';
+    document.getElementById('ncPendingBody').innerHTML = html;
+}
+
+function confirmColorSave(code, mode) {
+    const input = document.getElementById('ncColorInput_' + code);
+    let name = input ? input.value.trim() : '';
+    if (mode === 'color' && !name) { showNoteStatus('请先输入规范颜色名', 'warn'); return; }
+    if (mode === 'noncolor') name = '非颜色';
+    fetch('/na/api/color-dict', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code, name: name, updated_by: isAdmin ? 'admin' : 'user' })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            const row = document.getElementById('ncPendingRow_' + code);
+            if (row) {
+                const label = res.status === '非颜色' ? '非颜色' : res.name;
+                row.innerHTML = '<td colspan="7" style="padding:6px 8px;color:#2e7d32;font-weight:600;">✓ ' +
+                    escA(code) + ' 已存档为「' + escA(label) + '」，到"数据管理"点"处理并生成报告"后生效</td>';
+            }
+            showNoteStatus('颜色 ' + code + ' → ' + (res.status === '非颜色' ? '非颜色' : res.name) + ' 已存档', 'ok');
+        } else {
+            showNoteStatus('⚠ 颜色存档失败: ' + (res.error || ''), 'warn');
+        }
+    })
+    .catch(() => showNoteStatus('⚠ 网络错误', 'warn'));
+}
+
+function renderNcTable(rows) {
+    const opts = newColorData.style_options || {};
+    const groups = opts.groups || [];
+    const operators = opts.operators || [];
+    const completedOpts = NC_COMPLETED_OPTS;
+    const ncCols = ['', 'SPU', '店铺', '运营组', '运营', '已上架店铺', '新色数', '新色列表', '是否完成上架', '特殊备注'];
+    let html = '<thead><tr>' + ncCols.map(function(c, i) {
+        return '<th' + (i === 0 ? ' style="width:30px;"' : '') + '>' + c + '</th>';
+    }).join('') + '</tr></thead><tbody>';
+    if (!rows.length) {
+        html += '<tr><td colspan="' + ncCols.length + '" style="text-align:center;color:#999;padding:20px;">无匹配</td></tr>';
+    }
+    rows.forEach(function(r, idx) {
+        const spu = r['SPU'];
+        const key = ncRowKey(r);
+        const note = ncNotes[spu] || {};
+        const expanded = !!ncExpanded[key];
+        const og = buildNcSelect(spu, 'operator_group', ncOperator(r, 'operator_group'), groups);
+        const op = buildNcSelect(spu, 'operator', ncOperator(r, 'operator'), operators);
+        const lc = buildNcSelect(spu, 'launch_completed', note.launch_completed || '未完成', completedOpts);
+        const remark = '<input class="cell-input" type="text" value="' + escA(note.content || '') + '" onchange="saveNcField(\'' + escA(spu) + '\',\'content\',this.value)" placeholder="填写特殊备注...">';
+        html += '<tr class="spu-row' + (expanded ? ' expanded' : '') + '" data-idx="' + idx + '" onclick="toggleNcExpand(\'' + escA(key) + '\')">' +
+            '<td><span class="expand-icon">&#9654;</span></td>' +
+            '<td style="font-weight:600;">' + escA(spu) + '</td>' +
+            '<td><span style="display:inline-block;padding:1px 8px;background:#eef3ff;border-radius:9px;font-size:12px;">' + escA(r['店铺'] || '-') + '</span></td>' +
+            '<td onclick="event.stopPropagation()">' + og + '</td>' +
+            '<td onclick="event.stopPropagation()">' + op + '</td>' +
+            '<td>' + escA(r['店铺'] || '-') + '</td>' +
+            '<td style="text-align:center;font-weight:600;">' + escA(r['新色数']) + '</td>' +
+            '<td>' + escA(r['新色列表']) + '</td>' +
+            '<td onclick="event.stopPropagation()">' + lc + '</td>' +
+            '<td onclick="event.stopPropagation()">' + remark + '</td>' +
+            '</tr>';
+        if (expanded) {
+            // 折叠展开: 只显示「该店铺 + 该SPU」的 SKU
+            // 版式: ①上架SKU 汇总一行 ②待上架新色表(按库存SKU, 含在库/在途/在途最早到仓) ③已上架明细(上架SKU↔库存SKU)
+            const skus = (newColorData.sku_rows || []).filter(function(s) {
+                return s['SPU'] === spu && s['店铺'] === r['店铺'];
+            });
+            const listedSkus = skus.filter(function(s) { return s['上架状态'] === '已上架'; });
+            const newSkus = skus.filter(function(s) { return s['上架状态'] === '未上架'; });
+            // 规则5: 仅保留「有上架SKU 配对」的已上架明细行 (无上架SKU 的配对行直接隐藏)
+            const pairedListed = listedSkus.filter(function(s) { return s['上架SKU']; });
+            const platList = [];
+            pairedListed.forEach(function(s) { if (s['上架SKU'] && platList.indexOf(s['上架SKU']) < 0) platList.push(s['上架SKU']); });
+            platList.sort();
+
+            let sub = '<td></td><td colspan="' + (ncCols.length - 1) + '" style="padding:8px 12px;background:#fafbfc;">';
+            // ① 上架SKU 汇总 (表格化: 上架SKU | 后台状态)
+            sub += '<div style="font-size:12px;font-weight:600;color:#2e7d32;margin-bottom:4px;">上架SKU 汇总（共 ' + platList.length + ' 个上架SKU / ' + newSkus.length + ' 个待上架新色SKU）</div>';
+            sub += '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:6px;"><thead><tr style="background:#eef3ff;">' +
+                '<th style="padding:4px 8px;text-align:left;">上架SKU</th>' +
+                '<th style="padding:4px 8px;text-align:left;">后台状态</th>' +
+                '</tr></thead><tbody>';
+            platList.forEach(function(p) {
+                var st = '';
+                pairedListed.forEach(function(s) { if (s['上架SKU'] === p && s['后台状态']) st = s['后台状态']; });
+                sub += '<tr>' +
+                    '<td style="padding:4px 8px;font-family:monospace;color:#2e7d32;">' + escA(p) + '</td>' +
+                    '<td style="padding:4px 8px;">' + escA(st || '-') + '</td>' +
+                    '</tr>';
+            });
+            sub += '</tbody></table>';
+            // ② 待上架新色表
+            sub += '<div style="font-size:12px;font-weight:600;color:#e65100;margin:8px 0 4px;">待上架新色（按库存SKU维度）</div>';
+            sub += '<table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="background:#fff4e5;">';
+            ['库存SKU', '颜色', '在库库存', '在途库存', '在途最早预计到仓'].forEach(function(c) {
+                sub += '<th style="padding:4px 8px;text-align:left;">' + c + '</th>';
+            });
+            sub += '</tr></thead><tbody>';
+            if (!newSkus.length) {
+                sub += '<tr><td colspan="5" style="text-align:center;color:#999;padding:8px;">无待上架新色</td></tr>';
+            }
+            newSkus.forEach(function(s) {
+                const pendBadge = (s['颜色判定'] === '待确认')
+                    ? ' <span style="background:#ff9800;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;">颜色待确认</span>' : '';
+                sub += '<tr style="background:#fff8e1;">' +
+                    '<td style="padding:4px 8px;font-family:monospace;">' + escA(s['库存SKU']) + '</td>' +
+                    '<td style="padding:4px 8px;">' + escA(s['颜色']) + pendBadge + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['在库库存'] != null ? s['在库库存'] : 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['在途库存'] != null ? s['在途库存'] : 0) + '</td>' +
+                    '<td style="padding:4px 8px;">' + escA(s['在途最早预计到仓'] || s['预计到仓'] || '-') + '</td>' +
+                    '</tr>';
+            });
+            sub += '</tbody></table>';
+            // ③ 已上架明细 (上架SKU ↔ 库存SKU) — 仅显示「有上架SKU 配对」的行 (规则5)
+            sub += '<div style="font-size:12px;font-weight:600;color:#2e7d32;margin:10px 0 4px;">已上架明细（上架SKU ↔ 库存SKU）</div>';
+            sub += '<table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="background:#f0f0f0;">';
+            ['上架SKU', '库存SKU', '颜色', '在库库存', '在途库存'].forEach(function(c) {
+                sub += '<th style="padding:4px 8px;text-align:left;">' + c + '</th>';
+            });
+            sub += '</tr></thead><tbody>';
+            if (!pairedListed.length) {
+                sub += '<tr><td colspan="5" style="text-align:center;color:#999;padding:8px;">无</td></tr>';
+            }
+            pairedListed.forEach(function(s) {
+                sub += '<tr>' +
+                    '<td style="padding:4px 8px;font-family:monospace;">' + escA(s['上架SKU'] || '-') + '</td>' +
+                    '<td style="padding:4px 8px;font-family:monospace;">' + escA(s['库存SKU']) + '</td>' +
+                    '<td style="padding:4px 8px;">' + escA(s['颜色']) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['在库库存'] != null ? s['在库库存'] : 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['在途库存'] != null ? s['在途库存'] : 0) + '</td>' +
+                    '</tr>';
+            });
+            sub += '</tbody></table></td>';
+            // 展开行必须带 visible (CSS .sku-row 默认 display:none, .sku-row.visible 才显示)
+            html += '<tr class="sku-row visible">' + sub + '</tr>';
+        }
+    });
+    html += '</tbody>';
+    const tbl = document.getElementById('ncTable');
+    const wrap = tbl ? tbl.parentElement : null;
+    const keepScroll = wrap ? wrap.scrollTop : 0;
+    tbl.innerHTML = html;
+    if (wrap) wrap.scrollTop = keepScroll;
+}
+
+function toggleNcExpand(key) {
+    ncExpanded[key] = !ncExpanded[key];
+    renderNewColor();
+}
+
+function buildNcSelect(spu, field, value, options) {
+    const opts = [''].concat(options || []);
+    // 当前值不在选项里时必须补入 (如店铺规则固定值 综合组-WLM/Chloris 不在款式表选项中,
+    // 否则 select 没有匹配 option 会显示第一个 '-'), 补入的值也可被用户改回空/其它值
+    if (value && opts.indexOf(value) < 0) opts.push(value);
+    return '<select class="cell-select" data-spu="' + escA(spu) + '" data-field="' + field + '" onchange="saveNcField(\'' + escA(spu) + '\',\'' + field + '\',this.value)">' +
+        opts.map(function(o){ return '<option value="'+escA(o)+'"'+(o===value?' selected':'')+'>'+(o||'-')+'</option>'; }).join('') +
+        '</select>';
+}
+
+function saveNcField(spu, field, value) {
+    if (!spu || !field) return;
+    const payload = {}; payload[spu] = {}; payload[spu][field] = value;
+    fetch('/na/api/nc-note', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ notes: payload, updated_by: isAdmin ? 'admin' : 'user' })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            ncNotes = res.notes || {};
+            ncLocalOverrides[spu + '|' + field] = { value: value, ts: Date.now() };
+            buildNcFilters();   // 编辑值立即进入筛选维度 (保留勾选)
+            renderNewColor();
+            showNoteStatus('已保存 ' + spu + ' 的 ' + field + ' 字段', 'ok');
+        } else {
+            showNoteStatus('⚠ 保存失败: ' + (res.error || ''), 'warn');
+        }
+    })
+    .catch(() => showNoteStatus('⚠ 网络错误', 'warn'));
+}
+
+function exportNcCSV() {
+    if (!newColorData) return;
+    const spus = ncJoinedSpu().filter(ncRowMatch);
+    const meta = {};
+    spus.forEach(function(r) { meta[ncRowKey(r)] = r; });
+    // 只导出命中的「SPU × 店铺」组合的 SKU 明细
+    const rows = (newColorData.sku_rows || []).filter(function(s) {
+        return !!meta[s['SPU'] + '|' + s['店铺']];
+    });
+    const header = ['SPU','店铺','运营组','运营','已上架店铺','上架SKU','库存SKU','颜色','颜色判定','是否需上架新色','转单覆盖','在库库存','在途库存','在途最早预计到仓','特殊备注'];
+    let csv = '\ufeff' + header.join(',') + '\n';
+    rows.forEach(function(r) {
+        const m = meta[r['SPU'] + '|' + r['店铺']] || {};
+        const note = ncNotes[r['SPU']] || {};
+        csv += header.map(function(c) {
+            let v;
+            if (c === '店铺') v = r['店铺'] || '';
+            else if (c === '运营组') v = m['运营组显示'] || m['运营组'] || '';
+            else if (c === '运营') v = m['运营显示'] || m['运营'] || '';
+            else if (c === '已上架店铺') v = m['店铺'] || '';
+            else if (c === '是否需上架新色') {
+                const lc = note.launch_completed || '未完成';
+                v = (r['上架状态'] === '未上架' && lc !== '无需上架') ? '是' : '否';
+            }
+            else if (c === '特殊备注') v = note.content || '';
+            else v = (r[c] == null ? '' : r[c]);
+            return '"' + String(v).replace(/"/g, '""') + '"';
+        }).join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '新色跟进_SKU明细_' + (newColorData.generated_at || '') + '.csv';
+    a.click();
+    showNoteStatus('已导出 ' + rows.length + ' 行 SKU 明细（' + spus.length + ' 条 SPU×店铺 记录）', 'ok');
+}
+
+// 初始化: 管理员默认数据管理, 子账户默认新品跟进
+if (isAdmin) {
+    renderCards();
+    switchView('upload');
+    // 首屏状态由服务端注入(可能遇云端冷启动抖动), 载入后自动再查一次并带退避重试
+    setTimeout(function() { refreshSources(false); }, 300);
+} else {
+    switchView('new-arrival');
+}
+initStockNote();
+</script>
+</body>
+</html>

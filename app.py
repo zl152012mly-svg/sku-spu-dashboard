@@ -115,6 +115,21 @@ app = Flask(__name__)
 from auth import init_app, role_required, current_role
 init_app(app)
 
+# ---------- 新品盘点子系统（Phase 2 Step 3）：蓝图挂载 /na ----------
+try:
+    from na_routes import bp as na_bp, MAX_CONTENT_LENGTH as NA_MAX_LEN
+    app.config['MAX_CONTENT_LENGTH'] = NA_MAX_LEN   # 250MB：增长产品清单原始 216MB
+    app.register_blueprint(na_bp)
+    NA_ENABLED = True
+    NA_IMPORT_ERROR = None
+except Exception as _na_e:  # 子系统异常不得拖垮主站
+    import traceback as _na_tb
+    NA_ENABLED = False
+    NA_IMPORT_ERROR = '%s: %s' % (type(_na_e).__name__, _na_e)
+    print('[app] 新品盘点子系统注册失败：%s' % NA_IMPORT_ERROR)
+    print(_na_tb.format_exc()[-1500:])
+    app.config.setdefault('MAX_CONTENT_LENGTH', 250 * 1024 * 1024)
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):

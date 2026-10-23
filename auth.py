@@ -107,6 +107,14 @@ def init_app(app):
             return None
         if check_request_auth():
             return None
+        # 新品盘点子系统（/na/*）：整站需登录。页面重定向回主站（主站会弹口令框），
+        # 接口返回 401 JSON——与 SKU&SPU 侧保持同一种「默认拒绝」口径。
+        # ⚠ 新品盘点原实现里 9/12 的 /api/* 是裸奔的，合并后这里补上了。
+        if p.startswith('/na/'):
+            if p.startswith('/na/api/') or p.startswith('/na/download/') \
+                    or p in ('/na/upload', '/na/process'):
+                return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
+            return redirect('/')
         # 默认拒绝：/api/* 返回 401（前端据此弹出口令框）；非 /api 页面当前保持公开（合并后改 /login）
         if p.startswith('/api/'):
             return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401

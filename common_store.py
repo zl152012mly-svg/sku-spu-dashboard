@@ -46,10 +46,13 @@ __all__ = [
     'has_cloud', 'last_error',
     'OBJ_RAW', 'OBJ_REF', 'OBJ_LX', 'OBJ_WM', 'OBJ_ADMIN', 'OBJ_TEMU', 'OBJ_TEMU_A', 'OBJ_TEMU_B', 'OBJ_OPS',
     'MODE',
-    # 新品盘点命名空间
-    'find_file_info', 'ensure_data_file_local', 'upload_local_file', 'upload_bytes',
-    'download_bytes', 'read_json', 'write_json', 'file_exists', 'delete_matching',
-    'invalidate_list_cache', 'BUCKET_UPLOADS', 'BUCKET_OUTPUTS',
+# 新品盘点命名空间
+'find_file_info', 'ensure_data_file_local', 'upload_local_file', 'upload_bytes',
+'download_bytes', 'read_json', 'write_json', 'file_exists', 'delete_matching',
+'invalidate_list_cache', 'BUCKET_UPLOADS', 'BUCKET_OUTPUTS',
+# 新品盘点兼容 shim（对齐原 cloud_store.py 的对外 API）
+'NA_DATA_DIR', 'is_cloud', 'download_to_local', 'ensure_all_data_files_local',
+'ensure_report_data_local', 'get_mode_str',
 ]
 
 
@@ -57,6 +60,11 @@ __all__ = [
 BASE_DIR = Path(__file__).parent
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 新品盘点的**本地磁盘根目录**独立成 na_data/，避免数据文件散落在代码根、
+# 也避免 delete_matching('*Listing*.xlsx') 之类的通配误伤 SKU&SPU 侧文件。
+NA_DATA_DIR = BASE_DIR / "na_data"
+NA_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 BUCKET_UPLOADS = "uploads"    # 原始数据源（上品通知表.xlsx 等）
 BUCKET_OUTPUTS = "outputs"    # report_data.json / stock_note.json / color_dict.json 等
@@ -170,7 +178,7 @@ def find_file_info(pattern, bucket=BUCKET_UPLOADS):
             return {"found": False, "name": "", "size_mb": 0, "modified": "",
                     "error": f"{type(e).__name__}: {str(e)[:160]}"}
     # 本地模式
-    matches = sorted(BASE_DIR.glob(pattern))
+    matches = sorted(NA_DATA_DIR.glob(pattern))
     if matches:
         f = matches[-1]
         st = f.stat()
@@ -183,7 +191,7 @@ def find_file_info(pattern, bucket=BUCKET_UPLOADS):
 
 def ensure_data_file_local(pattern, bucket=BUCKET_UPLOADS):
     """确保匹配文件在本地磁盘可用；云端模式则先下载。返回本地 Path 或 None。"""
-    matches = sorted(BASE_DIR.glob(pattern))
+    matches = sorted(NA_DATA_DIR.glob(pattern))
     if matches:
         return matches[-1]
     if NA_USE_OSS:
@@ -192,7 +200,7 @@ def ensure_data_file_local(pattern, bucket=BUCKET_UPLOADS):
             for item in items:
                 original_name = item.get("original_name", item.get("name", ""))
                 if fnmatch.fnmatch(original_name, pattern):
-                    local_path = BASE_DIR / original_name
+                    local_path = NA_DATA_DIR / original_name
                     data = _na_oss_download(bucket, original_name)
                     with open(local_path, "wb") as out:
                         out.write(data)
@@ -224,7 +232,7 @@ def download_bytes(bucket, key):
     """下载原始字节。本地模式：从 BASE_DIR/key 读。找不到抛 FileNotFoundError。"""
     if NA_USE_OSS:
         return _na_oss_download(bucket, key)
-    local_path = BASE_DIR / key if not key.startswith("/") else Path(key)
+    local_path = NA_DATA_DIR / key if not key.startswith("/") else Path(key)
     with open(local_path, "rb") as f:
         return f.read()
 
@@ -239,7 +247,7 @@ def read_json(bucket, key, local_path=None):
         except Exception as e:
             print(f"[common_store] read_json(OSS) error for {bucket}/{key}: {e}")
             return None
-    path = Path(local_path) if local_path else BASE_DIR / key
+    path = Path(local_path) if local_path else NA_DATA_DIR / key
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -250,7 +258,7 @@ def read_json(bucket, key, local_path=None):
 def write_json(bucket, key, data, local_path=None):
     """写 JSON 到存储 + 本地磁盘。云端失败返回 False（数据仍落本地）。"""
     content = json.dumps(data, ensure_ascii=False, indent=2, default=str)
-    path = Path(local_path) if local_path else BASE_DIR / key
+    path = Path(local_path) if local_path else NA_DATA_DIR / key
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -269,13 +277,13 @@ def file_exists(bucket, key, local_path=None):
     """检查文件是否存在。"""
     if NA_USE_OSS:
         return _na_oss_exists(bucket, key)
-    path = Path(local_path) if local_path else BASE_DIR / key
+    path = Path(local_path) if local_path else NA_DATA_DIR / key
     return path.exists()
 
 
 def delete_matching(pattern, bucket=BUCKET_UPLOADS, keep_name=None):
     """删除匹配 glob 的所有文件（云端 + 本地）。keep_name 保留不被删。"""
-    for f in BASE_DIR.glob(pattern):
+    for f in NA_DATA_DIR.glob(pattern):
         if keep_name and f.name == keep_name:
             continue
         try:
@@ -295,3 +303,67 @@ def delete_matching(pattern, bucket=BUCKET_UPLOADS, keep_name=None):
             pass
         finally:
             invalidate_list_cache()
+
+
+# ---------------------------------------------------------------------------
+# 兼容层：对齐新品盘点原 cloud_store.py 的对外 API
+#   （web_app.py / process_script.py / new_color_module.py 原样拷贝后仍用旧名调用）
+# ---------------------------------------------------------------------------
+
+def is_cloud():
+    """是否处于云端存储模式（OSS 或 Supabase）。
+
+    ⚠ 与原 cloud_store 的差别：原实现「本地模式」也返回 False，语义一致；
+    本地模式下 is_cloud()=False 时，web_app 会跳过 _所有_ 云同步分支，行为不变。
+    """
+    return bool(NA_USE_OSS or NA_USE_SUPABASE)
+
+
+def download_to_local(bucket, key, local_path):
+    """把云端对象下载到 local_path。本地模式：文件已在该路径，存在即返回。"""
+    p = Path(local_path)
+    if is_cloud():
+        try:
+            data = download_bytes(bucket, key)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "wb") as f:
+                f.write(data)
+        except Exception as e:
+            print(f"[common_store] download_to_local failed {bucket}/{key}: {e}")
+    return p
+
+
+def ensure_all_data_files_local(patterns, bucket=BUCKET_UPLOADS):
+    """批量确保本地有对应数据源文件。返回 {pattern: Path|None}。"""
+    out = {}
+    for pat in patterns:
+        try:
+            out[pat] = ensure_data_file_local(pat, bucket)
+        except Exception as e:
+            print(f"[common_store] ensure_all_data_files_local({pat}) err: {e}")
+            out[pat] = None
+    return out
+
+
+def ensure_report_data_local(local_path=None, bucket=BUCKET_OUTPUTS):
+    """确保 report_data.json 在本地可用。返回本地 Path 或 None。"""
+    p = Path(local_path) if local_path else (NA_DATA_DIR / "output" / "report_data.json")
+    if p.exists():
+        return p
+    if is_cloud():
+        try:
+            if file_exists(bucket, "report_data.json"):
+                download_to_local(bucket, "report_data.json", p)
+                return p
+        except Exception as e:
+            print(f"[common_store] ensure_report_data_local err: {e}")
+    return None
+
+
+def get_mode_str():
+    """人类可读的存储模式串（启动日志/排障用）。"""
+    if NA_USE_OSS:
+        return f"阿里云OSS(独立桶 {_NA_BUCKET})"
+    if NA_USE_SUPABASE:
+        return f"Supabase({_NA_SUPABASE_URL.split('//')[-1][:24]})"
+    return f"本地磁盘({NA_DATA_DIR})"
