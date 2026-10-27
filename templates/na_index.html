@@ -386,6 +386,9 @@ let reportData = null;
 let currentFilter = 'all';
 let currentSort = { key: 'spu', asc: true };
 let dataLoaded = false;
+// 注意：ncDataLoaded 必须在此顶部声明——?view=nc 嵌入直达时 initConsole 会在脚本前部
+// 调 switchView('new-color')，若声明留在文件后部会触发 let TDZ ReferenceError，导致新色页空白。
+let ncDataLoaded = false;
 
 // ========== 视图切换 ==========
 function switchView(view) {
@@ -2247,7 +2250,7 @@ function showNoteStatus(msg, type) {
 
 // ================= 新色跟进 =================
 let newColorData = null;
-let ncDataLoaded = false;
+// ncDataLoaded 已上移到脚本顶部声明区（TDZ 修复，勿移回）
 let ncFieldFilters = {};   // key -> Set(选中的筛选值)
 let ncExpanded = {};        // SPU|店铺 -> 是否展开
 let ncSpuQuery = '';        // SPU 搜索关键字(子串匹配)
