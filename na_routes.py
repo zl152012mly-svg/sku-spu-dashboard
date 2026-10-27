@@ -108,6 +108,7 @@ DATA_SOURCES = [
         'pattern': '上品通知表.xlsx',
         'accept': '.xlsx',
         'desc': '自营产品上品通知, 表头第5行',
+        'used_by': ['na'],   # 用途: 新品跟进
     },
     {
         'id': 'growth',
@@ -115,6 +116,7 @@ DATA_SOURCES = [
         'pattern': '增长产品清单*.xlsx',
         'accept': '.xlsx',
         'desc': '增长产品, 含sofa/dining/RBAC三个sheet (上传后自动瘦身)',
+        'used_by': ['na'],   # 用途: 新品跟进
     },
     {
         'id': 'style',
@@ -122,6 +124,7 @@ DATA_SOURCES = [
         'pattern': '款式表.xlsx',
         'accept': '.xlsx',
         'desc': '上架汇总-US, 蓝色=待上架新品',
+        'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进 (故意不与清洗共用)
     },
     {
         'id': 'sku_dims',
@@ -129,6 +132,7 @@ DATA_SOURCES = [
         'pattern': 'SKU尺寸货品查询运营结果*.csv',
         'accept': '.csv',
         'desc': 'SKU重量和尺寸数据 (WeightOz+L/W/H)',
+        'used_by': ['na'],   # 用途: 新品跟进
     },
     {
         'id': 'in_transit',
@@ -136,6 +140,7 @@ DATA_SOURCES = [
         'pattern': '动态库存表_*.xlsx',
         'accept': '.xlsx',
         'desc': '在途数据, 含ETA和预计到仓时间',
+        'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进
     },
     {
         'id': 'inventory',
@@ -143,6 +148,7 @@ DATA_SOURCES = [
         'pattern': '库存清单-*.xlsx',
         'accept': '.xlsx',
         'desc': '在库库存数据',
+        'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进
     },
     {
         'id': 'listing',
@@ -152,6 +158,7 @@ DATA_SOURCES = [
         'desc': '亚马逊全店铺上架链接 Listing (在售/停售/已删除)',
         # Phase 2: 与 SKU&SPU 看板「领星清单」共用（MSKU/状态/店铺 同构），无需重复上传
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 领星清单',
+        'used_by': ['clean', 'nc'],   # 用途: 数据清洗(领星清单) + 新色跟进; 新品跟进不直接读它
     },
     {
         'id': 'walmart',
@@ -161,6 +168,7 @@ DATA_SOURCES = [
         'desc': 'Walmart ItemReport (PUBLISHED/UNPUBLISHED)',
         # Phase 2: 与 SKU&SPU 看板「walmart 后台报表」共用（SKU/Publish Status 同构）
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · walmart 后台报表',
+        'used_by': ['clean', 'nc'],   # 用途: 数据清洗 + 新色跟进
     },
     {
         'id': 'suite',
@@ -170,6 +178,7 @@ DATA_SOURCES = [
         'desc': 'SKU平台信息套件成员货品体现 (上架SKU→库存子件)',
         # Phase 2: 与 SKU&SPU 看板「原始表」是同一张表，直接共用
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 原始表（同一张表）',
+        'used_by': ['clean', 'na', 'nc'],   # 用途: 数据清洗(原始表) + 新品跟进 + 新色跟进
     },
     {
         'id': 'transfer',
@@ -180,6 +189,7 @@ DATA_SOURCES = [
                 '新色判定里, 同组任一名字已上架 → 全组不算新色',
         # Phase 2: 与 SKU&SPU 看板「转单表」共用（增长/自营 双 sheet 同构）
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 转单表',
+        'used_by': ['clean', 'na', 'nc'],   # 用途: 数据清洗(转单表) + 新品跟进 + 新色跟进
     },
 ]
 

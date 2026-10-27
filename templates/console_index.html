@@ -49,7 +49,10 @@
       </div>
       {% endif %}
     </div>
-    <div class="nav-foot"><button onclick="doLogout()">退出登录</button></div>
+    <div class="nav-foot">
+      <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">当前身份：{{ '管理员' if is_admin else '运营' }}</div>
+      <button onclick="doLogout()">退出登录</button>
+    </div>
   </div>
   <div class="content">
     <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c1{% else %}/na/?view=xp&embed=1&v=c1{% endif %}"></iframe>
@@ -64,6 +67,15 @@ function go(el){
 function doLogout(){
   fetch('/logout').then(function(){ location.href = '/'; }).catch(function(){ location.href = '/'; });
 }
+// iframe 内「更换数据源」跳到数据源管理视图时, 同步左侧导航高亮 (iframe 自己导航, 这里只改高亮)
+window.addEventListener('message', function(e){
+  var d = e.data || {};
+  if (d && d.type === 'na-console-nav' && d.view === 'dm') {
+    document.querySelectorAll('.nav-item').forEach(function(n){
+      n.classList.toggle('active', (n.getAttribute('data-src') || '').indexOf('view=dm') > -1);
+    });
+  }
+});
 </script>
 </body>
 </html>

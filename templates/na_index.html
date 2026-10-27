@@ -326,6 +326,12 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
             <div class="view {% if not is_admin_bool %}active{% endif %}" id="view-new-arrival">
                 <!-- 备货备注同步状态提示 -->
                 <div id="stockNoteStatusBar" class="sn-status" style="margin-bottom:12px;font-size:12px;"></div>
+                {% if is_admin_bool %}
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;">
+                    <button class="btn btn-secondary" onclick="goSourceMgr()">更换数据源</button>
+                    <button class="btn btn-primary" onclick="recalcFromSources()">按当前数据源重算</button>
+                </div>
+                {% endif %}
                 <div id="reportContent">
                     <div class="report-loading" id="reportLoading">
                         <div class="spinner"></div>
@@ -340,6 +346,12 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <h2>新色跟进</h2>
                     <p>店铺SPU已上架(非已删除)，但有到仓/在途新色未上架 → 待上架新色。母体三态：完全无记录 / 仅已删除 → 跳过；有≥1非删除 → 判定</p>
                 </div>
+                {% if is_admin_bool %}
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;">
+                    <button class="btn btn-secondary" onclick="goSourceMgr()">更换数据源</button>
+                    <button class="btn btn-primary" onclick="recalcFromSources()">按当前数据源重算</button>
+                </div>
+                {% endif %}
                 <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>加载新色数据...</div></div>
                 <div id="ncEmpty" style="display:none;text-align:center;padding:60px;color:#999;">
                     <div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div>
@@ -386,12 +398,14 @@ let reportData = null;
 let currentFilter = 'all';
 let currentSort = { key: 'spu', asc: true };
 let dataLoaded = false;
+let currentViewGlobal = 'upload';   // 当前激活视图 (重算后按需刷新用)
 // 注意：ncDataLoaded 必须在此顶部声明——?view=nc 嵌入直达时 initConsole 会在脚本前部
 // 调 switchView('new-color')，若声明留在文件后部会触发 let TDZ ReferenceError，导致新色页空白。
 let ncDataLoaded = false;
 
 // ========== 视图切换 ==========
 function switchView(view) {
+    currentViewGlobal = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.menu-item').forEach(t => t.classList.remove('active'));
     const viewEl = document.getElementById('view-' + view);
@@ -431,6 +445,7 @@ function switchView(view) {
     if (vp && map[vp]) {
         let target = map[vp];
         if (target === 'upload' && !isAdmin) target = 'new-arrival';  // sub 无系统设置权限
+        window.__naViewFromUrl = true;   // 标记: 已按 URL 直达切换, 末尾默认初始化不再覆盖
         switchView(target);
     }
     if (isAdmin) acctLoad();
@@ -532,6 +547,18 @@ async function resyncShared() {
     } catch (e) { alert('同步失败：' + e); }
 }
 
+// 数据源用途徽章: 标注该源被哪些模块消费 (清洗/新品/新色), 服务端 used_by 下发
+function srcUsedByChips(s) {
+    const map = { clean: '数据清洗', na: '新品跟进', nc: '新色跟进' };
+    const ub = s.used_by || [];
+    if (!ub.length) return '';
+    const chips = ub.map(u =>
+        '<span style="font-size:10px;padding:1px 8px;border-radius:9px;background:#eef2ff;color:#4356c9;border:1px solid #d6ddfa;white-space:nowrap;">' + (map[u] || u) + '</span>'
+    ).join('');
+    return '<div style="margin:6px 0 2px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">' +
+        '<span style="font-size:10px;color:#999;">用途:</span>' + chips + '</div>';
+}
+
 function renderCards() {
     const grid = document.getElementById('sourceGrid');
     grid.innerHTML = sources.map(s => `
@@ -541,6 +568,7 @@ function renderCards() {
                 ${srcStatusBadge(s.file)}
             </div>
             <div class="card-desc">${s.desc}</div>
+            ${srcUsedByChips(s)}
             <div class="file-info">
                 <div><span class="label">文件名:</span> <span class="value">${s.file.name || '无'}</span></div>
                 <div><span class="label">大小:</span> <span class="value">${s.file.size_mb ? s.file.size_mb + ' MB' : '-'}</span></div>
@@ -705,6 +733,9 @@ function runProcess() {
             btn.disabled = false;
             btn.textContent = '处理并生成报告';
             refreshSources();
+            // 业务页发起的重算("按当前数据源重算"): 完成后按当前数据源刷新本页内容
+            if (currentViewGlobal === 'new-color') { ncDataLoaded = false; loadNewColor(); }
+            else if (currentViewGlobal === 'new-arrival') { loadReport(); }
         })
         .catch(err => {
             document.getElementById('modalTitle').textContent = '处理失败';
@@ -715,6 +746,19 @@ function runProcess() {
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+
+// ========== 业务页快捷操作 (仅管理员渲染) ==========
+// 更换数据源: 工作台嵌入时 postMessage 同步导航高亮, iframe 自行切到系统设置; 独立访问时直接切视图
+function goSourceMgr() {
+    if (window.parent && window.parent !== window) {
+        try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
+        location.href = '/na/?view=dm&embed=1&v=c2';
+    } else {
+        switchView('upload');
+    }
+}
+// 按当前数据源重算: 复用 runProcess (处理完成回调里会按 currentViewGlobal 刷新本页)
+function recalcFromSources() { runProcess(); }
 // ========== 报告渲染 ==========
 function loadReport() {
     const loadingEl = document.getElementById('reportLoading');
@@ -2766,13 +2810,14 @@ function exportNcCSV() {
 }
 
 // 初始化: 管理员默认数据管理, 子账户默认新品跟进
+// (工作台 ?view= 直达时 initConsole 已切换好视图, 此处【不再覆盖】——
+//  修复 bug: 末尾默认初始化会覆盖直达视图, 导致"点新色跟进却显示新品/数据管理内容")
 if (isAdmin) {
     renderCards();
-    switchView('upload');
-    // 首屏状态由服务端注入(可能遇云端冷启动抖动), 载入后自动再查一次并带退避重试
     setTimeout(function() { refreshSources(false); }, 300);
-} else {
-    switchView('new-arrival');
+}
+if (!window.__naViewFromUrl) {
+    switchView(isAdmin ? 'upload' : 'new-arrival');
 }
 initStockNote();
 </script>
