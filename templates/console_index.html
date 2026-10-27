@@ -33,18 +33,18 @@
     </div>
     <div class="nav-menu" id="navMenu">
       {% if is_admin %}
-      <div class="nav-item active" data-src="/?embed=1&v=c2" onclick="go(this)">
+      <div class="nav-item active" data-src="/?embed=1&v=c3" onclick="go(this)">
         <span class="ico">🧹</span><span>SKU&SPU数据清洗</span>
       </div>
       {% endif %}
-      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c2" onclick="go(this)">
+      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c3" onclick="go(this)">
         <span class="ico">📦</span><span>新品上架跟进</span>
       </div>
-      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c2" onclick="go(this)">
+      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c3" onclick="go(this)">
         <span class="ico">🎨</span><span>新色上架跟进</span>
       </div>
       {% if is_admin %}
-      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c2" onclick="go(this)">
+      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c3" onclick="go(this)">
         <span class="ico">⚙️</span><span>系统设置</span>
       </div>
       {% endif %}
@@ -55,7 +55,7 @@
     </div>
   </div>
   <div class="content">
-    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c2{% else %}/na/?view=xp&embed=1&v=c2{% endif %}"></iframe>
+    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c3{% else %}/na/?view=xp&embed=1&v=c3{% endif %}"></iframe>
   </div>
 </div>
 <script>

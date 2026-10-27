@@ -99,6 +99,78 @@ def need_launch_text(p):
 
 
 # ============================================================
+# 新色跟进 × 新品跟进 三列联动 (2026-10-27 需求, 口径用户确认):
+#   SPU包裹情况 / 预计到仓时间 —— 与新品上架跟进同名字段逻辑一致;
+#   新色是否需要上架 —— 新品四态基础上加人工评估条件:
+#     新色页手动把「是否完成上架」选成「无需上架」且新色特殊备注有内容
+#     → 「运营评估无需上架」(人工结论, 优先级最高)。
+#   SPU 不在新品报表(已上架老SPU大多不在)时: 预计到仓用新色自己的
+#   库存SKU行算, 包裹情况/是否需要上架留空(前端与导出显示 '-')。
+# ============================================================
+def _build_na_spu_map():
+    """SPU(含别名) -> {pkg, eta, launch}: 取自新品跟进报表(已套用SKU异常确认), 与新品页同口径。"""
+    m = {}
+    try:
+        rep = load_report_data_with_confirmations()
+    except Exception as e:
+        print('[warn] 新色页联动: 新品报表读取失败, 三列按无新品记录处理: %s' % e)
+        return m
+    for p in (rep or {}).get('products', []):
+        spu = p.get('spu', '')
+        if not spu:
+            continue
+        inv = p.get('spu_inventory_status', '')
+        rec = {
+            'pkg': p.get('multi_package_display', '') or '',
+            'eta': '已到仓' if inv == 'in_stock' else (p.get('earliest_eta') or ''),
+            'launch': need_launch_text(p),
+        }
+        if spu not in m:
+            m[spu] = rec
+        for a in (p.get('aliases') or []):
+            if a and a not in m:
+                m[a] = rec
+    return m
+
+
+def _nc_eta_from_sku_rows(sku_rows, spu, store=''):
+    """SPU 不在新品报表时的「预计到仓时间」: 用新色自己的库存SKU行算。
+    口径与新品一致: 有在库(>0)→已到仓; 否则取最早在途日期; 都没有→''。"""
+    has_stock = False
+    earliest = ''
+    for s in sku_rows or []:
+        if str(s.get('SPU', '')) != str(spu):
+            continue
+        if store and str(s.get('店铺', '')) != str(store):
+            continue
+        try:
+            if int(s.get('在库库存') or 0) > 0:
+                has_stock = True
+        except (TypeError, ValueError):
+            pass
+        eta = str(s.get('在途最早预计到仓') or s.get('预计到仓') or '').strip()
+        if eta and eta != '-' and (not earliest or eta < earliest):
+            earliest = eta
+    if has_stock:
+        return '已到仓'
+    return earliest or ''
+
+
+def nc_launch_text(spu, na_map, nc_note):
+    """「新色是否需要上架」:
+    ① 新色页「是否完成上架」=无需上架 且 新色特殊备注有内容 → 运营评估无需上架
+    ② SPU 在新品报表 → 新品页四态 (need_launch_text)
+    ③ 都不满足 → '' (显示 '-')"""
+    if isinstance(nc_note, dict):
+        if nc_note.get('launch_completed') == '无需上架' and str(nc_note.get('content') or '').strip():
+            return '运营评估无需上架'
+    rec = na_map.get(spu) if na_map else None
+    if rec:
+        return rec.get('launch') or ''
+    return ''
+
+
+# ============================================================
 # 数据源配置
 # ============================================================
 DATA_SOURCES = [
@@ -841,6 +913,9 @@ def api_new_color():
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     data['style_options'] = load_style_options()
+    # 2026-10-27: 新色页新增三列 (SPU包裹情况/预计到仓时间/新色是否需要上架) 的
+    # 新品报表侧数据; 每次请求现算, 保证与新品页最新数据一致(含SKU异常确认)
+    data['na_spu_map'] = _build_na_spu_map()
     return jsonify(data)
 
 
@@ -1668,11 +1743,21 @@ def download_nc_excel():
 
     # ================= Sheet2: SPU×店铺 汇总 =================
     ws2 = wb.create_sheet("SPU×店铺汇总")
+    # 2026-10-27: 与新色页同步新增三列 (SPU包裹情况/预计到仓时间/新色是否需要上架), 口径见 _build_na_spu_map
+    na_map = _build_na_spu_map()
     h2 = ['SPU', '店铺', '运营组', '运营', '已上架店铺', '新色数', '新色列表',
-          '待上架SKU数', '是否完成上架', '特殊备注']
+          '待上架SKU数', 'SPU包裹情况', '预计到仓时间', '新色是否需要上架',
+          '是否完成上架', '特殊备注']
     ws2.append(h2)
     for r in data.get('spu_rows', []):
         spu = r.get('SPU', '')
+        _rec = na_map.get(spu)
+        if _rec:
+            _pkg = _rec.get('pkg') or ''
+            _eta = _rec.get('eta') or ''
+        else:
+            _pkg = ''
+            _eta = _nc_eta_from_sku_rows(data.get('sku_rows'), spu, r.get('店铺', ''))
         ws2.append([
             spu,
             r.get('店铺', ''),
@@ -1682,6 +1767,9 @@ def download_nc_excel():
             r.get('新色数', ''),
             r.get('新色列表', ''),
             r.get('待上架SKU数', ''),
+            _pkg,
+            _eta,
+            nc_launch_text(spu, na_map, nc_notes.get(spu)),
             note_val(spu, 'launch_completed', '未完成'),
             note_val(spu, 'content'),
         ])

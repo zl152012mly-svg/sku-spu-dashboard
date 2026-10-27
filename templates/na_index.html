@@ -2447,6 +2447,48 @@ function ncCompleted(r) {
     return note.launch_completed || '未完成';
 }
 
+// ========== 新色页三列联动新品跟进 (2026-10-27 需求) ==========
+// 口径: SPU包裹情况/预计到仓时间 与新品页同名字段一致; 新色是否需要上架
+// = 新品四态 + 人工评估条件(新色页「是否完成上架」选「无需上架」且新色特殊备注有内容 → 运营评估无需上架)。
+// SPU 不在新品报表时: 预计到仓用本页库存SKU行自己算, 其余两列显示 '-'。
+function ncNaRec(spu) {
+    return (newColorData.na_spu_map || {})[spu] || null;
+}
+function ncPkg(r) {
+    const rec = ncNaRec(r['SPU']);
+    return (rec && rec.pkg) ? rec.pkg : '-';
+}
+function ncEta(r) {
+    const rec = ncNaRec(r['SPU']);
+    if (rec) return rec.eta || '-';
+    // 自己算: 该 SPU×店铺 的库存SKU行, 有在库→已到仓, 否则最早在途日期
+    const skus = (newColorData.sku_rows || []).filter(function(s) {
+        return s['SPU'] === r['SPU'] && s['店铺'] === r['店铺'];
+    });
+    let hasStock = false, earliest = '';
+    skus.forEach(function(s) {
+        if ((Number(s['在库库存']) || 0) > 0) hasStock = true;
+        const eta = String(s['在途最早预计到仓'] || s['预计到仓'] || '').trim();
+        if (eta && eta !== '-' && (!earliest || eta < earliest)) earliest = eta;
+    });
+    return hasStock ? '已到仓' : (earliest || '-');
+}
+function ncNeedLaunch(r) {
+    const note = ncNotes[r['SPU']] || {};
+    // ① 运营评估无需上架: 手动选「无需上架」+ 新色特殊备注有内容 (人工结论, 优先级最高)
+    if (note.launch_completed === '无需上架' && String(note.content || '').trim() !== '') {
+        return '运营评估无需上架';
+    }
+    // ② 新品报表四态; ③ 都没有 → '-'
+    const rec = ncNaRec(r['SPU']);
+    return rec ? (rec.launch || '-') : '-';
+}
+function ncLaunchColor(t) {
+    const m = { '需要上架': '#28a745', '不可上架': '#dc3545', '待确认': '#fd7e14',
+                '暂无需上架': '#6c757d', '运营评估无需上架': '#17a2b8' };
+    return m[t] || '#999';
+}
+
 // 读取新色跟进备注 (独立存储, 每10秒轮询; 带本地覆盖守卫防闪回)
 function loadNcNote() {
     fetch('/na/api/nc-note')
@@ -2693,7 +2735,8 @@ function renderNcTable(rows) {
     const groups = opts.groups || [];
     const operators = opts.operators || [];
     const completedOpts = NC_COMPLETED_OPTS;
-    const ncCols = ['', 'SPU', '店铺', '运营组', '运营', '已上架店铺', '新色数', '新色列表', '是否完成上架', '特殊备注'];
+    const ncCols = ['', 'SPU', '店铺', '运营组', '运营', '已上架店铺', '新色数', '新色列表',
+                    'SPU包裹情况', '预计到仓时间', '新色是否需要上架', '是否完成上架', '特殊备注'];
     let html = '<thead><tr>' + ncCols.map(function(c, i) {
         return '<th' + (i === 0 ? ' style="width:30px;"' : '') + '>' + c + '</th>';
     }).join('') + '</tr></thead><tbody>';
@@ -2718,6 +2761,9 @@ function renderNcTable(rows) {
             '<td>' + escA(r['店铺'] || '-') + '</td>' +
             '<td style="text-align:center;font-weight:600;">' + escA(r['新色数']) + '</td>' +
             '<td>' + escA(r['新色列表']) + '</td>' +
+            '<td>' + escA(ncPkg(r)) + '</td>' +
+            '<td>' + escA(ncEta(r)) + '</td>' +
+            '<td style="font-weight:600;color:' + ncLaunchColor(ncNeedLaunch(r)) + ';">' + escA(ncNeedLaunch(r)) + '</td>' +
             '<td onclick="event.stopPropagation()">' + lc + '</td>' +
             '<td onclick="event.stopPropagation()">' + remark + '</td>' +
             '</tr>';
