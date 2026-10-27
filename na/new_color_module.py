@@ -731,6 +731,14 @@ def compute_new_colors(base_dir, color_archive=None):
         inv_q, tr_q, eta = _qty(v[0]), _qty(v[1]), v[2]
         pool_parsed[sku] = (spu, color, cstat, raw_color, pool_stat(v), inv_q, tr_q, eta)
 
+    # ---- SKU尺寸信息 (2026-10-27 需求①②: 与新品跟进共用同一数据源) ----
+    # 每个库存SKU 关联 FedEx类型 + 重量/尺寸; 缺失时优雅降级 (Unknown / 空值), 不阻断新色处理
+    from process_script import load_sku_dimensions  # noqa: E402  (函数内延迟导入, 避免循环依赖)
+    sku_dims = load_sku_dimensions()
+
+    def _dims_of(sku):
+        return sku_dims.get(sku) or {}
+
     # SPU -> [在库/在途 SKU]
     spu_skus = defaultdict(list)
     for sku, pr in pool_parsed.items():
@@ -766,6 +774,7 @@ def compute_new_colors(base_dir, color_archive=None):
                 store_disp = store_label(store)
 
                 def _mk(status, plat, color_val, backend='', transfer=False):
+                    _d = _dims_of(sku)
                     return {
                         'SPU': spu,
                         '上架SKU': plat,
@@ -782,6 +791,12 @@ def compute_new_colors(base_dir, color_archive=None):
                         '库存状态': st,
                         '数量': (inv_q or 0) + (tr_q or 0),
                         '预计到仓': eta,
+                        # 包裹信息 (2026-10-27 需求②: 待上架新色子表展示, 与新品明细同口径)
+                        'FedEx类型': _d.get('package_type', 'Unknown'),
+                        '重量(lb)': _d.get('weight_lb'),
+                        '最长边(in)': _d.get('longest_in'),
+                        '长+周长(in)': _d.get('length_plus_girth_in'),
+                        '体积(cu.in)': _d.get('volume_cu_in'),
                     }
 
                 # 规则1: 淘汰色(生命周期含"淘汰"或"下市期") → 无需安排上架, 不算新色
@@ -843,6 +858,34 @@ def compute_new_colors(base_dir, color_archive=None):
     ]
     pending_colors.sort(key=lambda x: (-x['新色行数'], x['颜色码']))
 
+    # ---- SPU 自评估 (2026-10-27 需求①: SPU 不在新品报表时, 包裹情况/是否需要上架不再显示'-') ----
+    # 口径与新品跟进一致: LTL→不可上架; 有Unknown(尺寸表查不到)→待确认; 有在库/在途→需要上架; 全无→暂无需上架
+    # 预计到仓时间仍由前端按 SPU 汇总 (SKU级属性, 与店铺无关)
+    from process_script import detect_multi_package  # noqa: E402
+    spu_eval = {}
+    for _spu, _skus in spu_skus.items():
+        if not _skus:
+            continue
+        _types = {}
+        for _s in _skus:
+            _types[_s] = _dims_of(_s).get('package_type', 'Unknown')
+        _inv_any = any((pool_parsed[_s][5] or 0) > 0 for _s in _skus)
+        _tr_any = any((pool_parsed[_s][6] or 0) > 0 for _s in _skus)
+        if 'LTL' in _types.values():
+            _launch = '不可上架'
+        elif 'Unknown' in _types.values():
+            _launch = '待确认'
+        elif _inv_any or _tr_any:
+            _launch = '需要上架'
+        else:
+            _launch = '暂无需上架'
+        try:
+            _cnt, _cd, _disp, _maxt = detect_multi_package(
+                _skus, _spu, _types)
+        except Exception:
+            _disp = ''
+        spu_eval[_spu] = {'pkg': _disp or '', 'launch': _launch}
+
     # ---- 上架SKU 解析出的 SPU (供款式表查不到本体SPU时兜底查运营) ----
     alt_spu_map = defaultdict(list)   # (SPU, 店铺显示名) -> [上架SKU的SPU, ...]
     for r in sku_rows:
@@ -895,6 +938,7 @@ def compute_new_colors(base_dir, color_archive=None):
     return {
         'spu_rows': spu_rows,
         'sku_rows': sku_rows,
+        'spu_eval': spu_eval,
         'new_colors': new_color_rows,
         'pending_colors': pending_colors,
         'auto_colors': [

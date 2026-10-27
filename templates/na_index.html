@@ -2379,6 +2379,7 @@ const NC_FILTER_DEFS = [
     {key:'operator', label:'运营'},
     {key:'store', label:'上架店铺'},
     {key:'completed', label:'是否完成上架'},
+    {key:'launch', label:'新色是否需要上架'},
     {key:'spu', label:'SPU', search:true},
 ];
 const NC_STORE_LABELS = {
@@ -2454,9 +2455,15 @@ function ncCompleted(r) {
 function ncNaRec(spu) {
     return (newColorData.na_spu_map || {})[spu] || null;
 }
+// 自评估 (新色管线): SPU 不在新品报表时的兜底 (尺寸+库存同口径计算)
+function ncSelfEval(spu) {
+    return (newColorData.spu_eval || {})[spu] || null;
+}
 function ncPkg(r) {
     const rec = ncNaRec(r['SPU']);
-    return (rec && rec.pkg) ? rec.pkg : '-';
+    if (rec && rec.pkg) return rec.pkg;
+    const se = ncSelfEval(r['SPU']);
+    return (se && se.pkg) ? se.pkg : '-';
 }
 function ncEta(r) {
     const rec = ncNaRec(r['SPU']);
@@ -2478,9 +2485,12 @@ function ncNeedLaunch(r) {
     if (note.launch_completed === '无需上架' && String(note.content || '').trim() !== '') {
         return '运营评估无需上架';
     }
-    // ② 新品报表四态; ③ 都没有 → '-'
+    // ② 新品报表四态; ③ 新色管线自评估四态; ④ 都没有 → '-'
     const rec = ncNaRec(r['SPU']);
-    return rec ? (rec.launch || '-') : '-';
+    if (rec && rec.launch) return rec.launch;
+    const se = ncSelfEval(r['SPU']);
+    if (se && se.launch) return se.launch;
+    return '-';
 }
 function ncLaunchColor(t) {
     const m = { '需要上架': '#28a745', '不可上架': '#dc3545', '待确认': '#fd7e14',
@@ -2535,6 +2545,7 @@ function ncFilterValues(r) {
         operator: [ncOperator(r, 'operator') || '-'],
         store: [r['店铺'] || '-'],
         completed: [ncCompleted(r)],
+        launch: [ncNeedLaunch(r)],
         spu: [r['SPU']]
     };
 }
@@ -2796,22 +2807,29 @@ function renderNcTable(rows) {
                     '</tr>';
             });
             sub += '</tbody></table>';
-            // ② 待上架新色表
+            // ② 待上架新色表 (2026-10-27 需求②: 增加包裹信息5列, 与新品明细同口径)
             sub += '<div style="font-size:12px;font-weight:600;color:#e65100;margin:8px 0 4px;">待上架新色（按库存SKU维度）</div>';
             sub += '<table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="background:#fff4e5;">';
-            ['库存SKU', '颜色', '在库库存', '在途库存', '在途最早预计到仓'].forEach(function(c) {
+            ['库存SKU', '颜色', 'FedEx类型', '重量(lb)', '最长边(in)', '长+周长(in)', '体积(cu.in)', '在库库存', '在途库存', '在途最早预计到仓'].forEach(function(c) {
                 sub += '<th style="padding:4px 8px;text-align:left;">' + c + '</th>';
             });
             sub += '</tr></thead><tbody>';
             if (!newSkus.length) {
-                sub += '<tr><td colspan="5" style="text-align:center;color:#999;padding:8px;">无待上架新色</td></tr>';
+                sub += '<tr><td colspan="10" style="text-align:center;color:#999;padding:8px;">无待上架新色</td></tr>';
             }
             newSkus.forEach(function(s) {
                 const pendBadge = (s['颜色判定'] === '待确认')
                     ? ' <span style="background:#ff9800;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;">颜色待确认</span>' : '';
+                const pkg = s['FedEx类型'] || 'Unknown';
+                const pkgColor = { 'Standard': '#28a745', 'AHS-Dimension': '#ffc107', 'Oversize': '#fd7e14', 'LTL': '#dc3545', 'Unknown': '#6c757d' }[pkg] || '#999';
                 sub += '<tr style="background:#fff8e1;">' +
                     '<td style="padding:4px 8px;font-family:monospace;">' + escA(s['库存SKU']) + '</td>' +
                     '<td style="padding:4px 8px;">' + escA(s['颜色']) + pendBadge + '</td>' +
+                    '<td style="padding:4px 8px;color:' + pkgColor + ';font-weight:600;">' + escA(pkg) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['重量(lb)'] != null ? s['重量(lb)'] : '-') + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['最长边(in)'] != null ? s['最长边(in)'] : '-') + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['长+周长(in)'] != null ? s['长+周长(in)'] : '-') + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;">' + escA(s['体积(cu.in)'] != null ? s['体积(cu.in)'] : '-') + '</td>' +
                     '<td style="padding:4px 8px;text-align:right;">' + escA(s['在库库存'] != null ? s['在库库存'] : 0) + '</td>' +
                     '<td style="padding:4px 8px;text-align:right;">' + escA(s['在途库存'] != null ? s['在途库存'] : 0) + '</td>' +
                     '<td style="padding:4px 8px;">' + escA(s['在途最早预计到仓'] || s['预计到仓'] || '-') + '</td>' +

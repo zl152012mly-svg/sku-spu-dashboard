@@ -158,17 +158,21 @@ def _nc_eta_from_sku_rows(sku_rows, spu):
     return earliest or ''
 
 
-def nc_launch_text(spu, na_map, nc_note):
+def nc_launch_text(spu, na_map, nc_note, spu_eval=None):
     """「新色是否需要上架」:
     ① 新色页「是否完成上架」=无需上架 且 新色特殊备注有内容 → 运营评估无需上架
     ② SPU 在新品报表 → 新品页四态 (need_launch_text)
-    ③ 都不满足 → '' (显示 '-')"""
+    ③ 新色管线自评估 (spu_eval, 尺寸+库存同口径) → 四态
+    ④ 都不满足 → '' (显示 '-')"""
     if isinstance(nc_note, dict):
         if nc_note.get('launch_completed') == '无需上架' and str(nc_note.get('content') or '').strip():
             return '运营评估无需上架'
     rec = na_map.get(spu) if na_map else None
-    if rec:
-        return rec.get('launch') or ''
+    if rec and rec.get('launch'):
+        return rec['launch']
+    se = (spu_eval or {}).get(spu)
+    if se:
+        return se.get('launch') or ''
     return ''
 
 
@@ -206,7 +210,7 @@ DATA_SOURCES = [
         'pattern': 'SKU尺寸货品查询运营结果*.csv',
         'accept': '.csv',
         'desc': 'SKU重量和尺寸数据 (WeightOz+L/W/H)',
-        'used_by': ['na'],   # 用途: 新品跟进
+        'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进 (2026-10-27 起新色也用)
     },
     {
         'id': 'in_transit',
@@ -1754,12 +1758,13 @@ def download_nc_excel():
     for r in data.get('spu_rows', []):
         spu = r.get('SPU', '')
         _rec = na_map.get(spu)
-        if _rec:
+        _se = (data.get('spu_eval') or {}).get(spu)
+        if _rec and (_rec.get('pkg') or _rec.get('launch')):
             _pkg = _rec.get('pkg') or ''
             _eta = _rec.get('eta') or ''
         else:
-            _pkg = ''
-            # 预计到仓时间按 SPU 汇总(不按店铺), 保证同SKU跨店铺取值一致
+            # 新品报表没有 → 用新色管线自评估 (2026-10-27 需求①: 不再显示 '-')
+            _pkg = (_se or {}).get('pkg') or ''
             _eta = _nc_eta_from_sku_rows(data.get('sku_rows'), spu)
         ws2.append([
             spu,
@@ -1772,7 +1777,7 @@ def download_nc_excel():
             r.get('待上架SKU数', ''),
             _pkg,
             _eta,
-            nc_launch_text(spu, na_map, nc_notes.get(spu)),
+            nc_launch_text(spu, na_map, nc_notes.get(spu), data.get('spu_eval')),
             note_val(spu, 'launch_completed', '未完成'),
             note_val(spu, 'content'),
         ])
