@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 数据运营工作台</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #e8edf5 0%, #f4f6fa 55%, #e3ecf7 100%); }
+  .wrap { height: 100%; display: flex; align-items: center; justify-content: center; }
+  .card { width: 360px; background: #fff; border-radius: 14px; box-shadow: 0 10px 40px rgba(30,41,59,.12); padding: 40px 36px 34px; }
+  .brand { text-align: center; font-size: 20px; font-weight: 700; letter-spacing: 6px; color: #1e293b; }
+  .sub { text-align: center; font-size: 12px; color: #94a3b8; margin-top: 6px; }
+  .divider { height: 1px; background: #eef1f6; margin: 22px 0; }
+  label { display: block; font-size: 13px; color: #475569; margin: 14px 0 6px; }
+  select, input { width: 100%; padding: 10px 12px; border: 1px solid #d7dee9; border-radius: 8px; font-size: 14px; color: #1e293b; outline: none; }
+  select:focus, input:focus { border-color: #2563eb; }
+  .btn { width: 100%; margin-top: 22px; padding: 11px; border: 0; border-radius: 8px; background: #2563eb; color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #1d4ed8; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .err { display: none; margin-top: 12px; font-size: 12px; color: #dc2626; text-align: center; }
+  .tip { margin-top: 16px; font-size: 11px; color: #b0b9c6; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="brand">北美市场事业部</div>
+    <div class="sub">数据运营工作台 · 登录</div>
+    <div class="divider"></div>
+    <form onsubmit="return doLogin()">
+      <label>选择角色</label>
+      <select id="role">
+        <option value="admin">管理员</option>
+        <option value="sub">运营</option>
+      </select>
+      <label>密码</label>
+      <input id="pwd" type="password" placeholder="请输入密码" autocomplete="current-password">
+      <button class="btn" id="btn" type="submit">登 录</button>
+      <div class="err" id="err">密码错误，请重试</div>
+      <div class="tip">管理员与运营由系统按密码自动识别，角色选择仅作提示</div>
+    </form>
+  </div>
+</div>
+<script>
+function doLogin(){
+  var pwd = document.getElementById('pwd').value || '';
+  if (!pwd) { document.getElementById('err').style.display = 'block';
+    document.getElementById('err').textContent = '请输入密码'; return false; }
+  var btn = document.getElementById('btn');
+  btn.disabled = true; btn.textContent = '登录中...';
+  document.getElementById('err').style.display = 'none';
+  fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd }) })
+    .then(function(r){ if (!r.ok) throw new Error('bad'); return r.json(); })
+    .then(function(d){
+      if (!d.ok) throw new Error(d.msg || '口令错误');
+      location.href = '/console';   // 登录成功统一进工作台（身份显示在侧边栏底部）
+    })
+    .catch(function(e){
+      btn.disabled = false; btn.textContent = '登 录';
+      var el = document.getElementById('err');
+      el.textContent = (e && e.message === 'bad') ? '密码错误，请重试' : (e.message || '登录失败');
+      el.style.display = 'block';
+    });
+  return false;
+}
+document.getElementById('pwd').focus();
+</script>
+</body>
+</html>

@@ -142,7 +142,7 @@ def role_required(role):
             if r is None:
                 if request.path.startswith('/api/'):
                     return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
-                return redirect('/')
+                return redirect('/login')
             if role == 'admin' and r != 'admin':
                 return jsonify({'ok': False, 'msg': 'forbidden'}), 403
             if role == 'sub' and r not in ('admin', 'sub'):
@@ -180,7 +180,7 @@ def init_app(app):
             if p.startswith('/na/api/') or p.startswith('/na/download/') \
                     or p in ('/na/upload', '/na/process'):
                 return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
-            return redirect('/')
+            return redirect('/login')
         # 默认拒绝：/api/* 返回 401（前端据此弹出口令框）；非 /api 页面当前保持公开（合并后改 /login）
         if p.startswith('/api/'):
             return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
@@ -199,7 +199,8 @@ def init_app(app):
         if not role:
             return jsonify({'ok': False, 'msg': '口令错误'}), 401
         session['role'] = role
-        session.permanent = True
+        # 不设 permanent: session cookie 随浏览器关闭失效 → 每次重新打开浏览器都需登录
+        # (退出登录 /logout 会立即清空; 同一浏览器会话内页面间跳转保持登录态)
         return jsonify({'ok': True, 'token': AUTH_TOKEN, 'role': role})
 
     @app.route('/logout')

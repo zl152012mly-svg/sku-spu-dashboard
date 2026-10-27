@@ -65,7 +65,7 @@ function go(el){
   document.getElementById('frame').src = el.getAttribute('data-src');
 }
 function doLogout(){
-  fetch('/logout').then(function(){ location.href = '/'; }).catch(function(){ location.href = '/'; });
+  fetch('/logout').then(function(){ location.href = '/login'; }).catch(function(){ location.href = '/login'; });
 }
 // iframe 内「更换数据源」跳到数据源管理视图时, 同步左侧导航高亮 (iframe 自己导航, 这里只改高亮)
 window.addEventListener('message', function(e){

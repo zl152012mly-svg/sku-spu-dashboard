@@ -191,6 +191,26 @@ DATA_SOURCES = [
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 转单表',
         'used_by': ['clean', 'na', 'nc'],   # 用途: 数据清洗(转单表) + 新品跟进 + 新色跟进
     },
+    {
+        'id': 'temu_a',
+        'name': 'Temu报表(A类 · 含店铺列)',
+        'pattern': '*temu_a*.xlsx',
+        'accept': '.xlsx',
+        'desc': 'Temu 平台 A 类报表（区分店铺）；与 SKU&SPU 看板 Temu A 类报表共用，'
+                '当前仅集中管理/清洗使用，暂不参与新品与新色判定',
+        'shared': True, 'shared_desc': 'SKU&SPU 看板 · Temu A 类报表',
+        'used_by': ['clean'],
+    },
+    {
+        'id': 'temu_b',
+        'name': 'Temu报表(B类 · 固定COZY店)',
+        'pattern': '*temu_b*.xlsx',
+        'accept': '.xlsx',
+        'desc': 'Temu 平台 B 类报表（无店铺列，固定 COZY CORNER）；与 SKU&SPU 看板 Temu B 类报表共用，'
+                '当前仅集中管理/清洗使用，暂不参与新品与新色判定',
+        'shared': True, 'shared_desc': 'SKU&SPU 看板 · Temu B 类报表',
+        'used_by': ['clean'],
+    },
 ]
 
 

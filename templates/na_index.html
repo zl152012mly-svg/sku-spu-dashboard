@@ -283,14 +283,15 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
     <div class="main-content">
         <div class="top-header">
             <div class="header-title" id="pageTitle">数据管理</div>
-            <div class="header-actions" id="headerActions">
-                <a class="btn-action" href="/na/download/html" data-for="new-arrival">下载报告</a>
-                <a class="btn-action" href="/na/download/csv" data-for="new-arrival">导出CSV</a>
-                <a class="btn-action" href="/na/download/excel" data-for="new-arrival">导出Excel</a>
-                <button class="btn-action warning" onclick="syncAllNotes()" data-for="new-arrival">同步备注</button>
-                <button class="btn-action" onclick="exportNcCSV()" data-for="new-color">导出CSV</button>
-                <a class="btn-action" href="/na/download/nc-excel" data-for="new-color">导出Excel(新色清单)</a>
-            </div>
+        </div>
+        <!-- 操作条: 从 top-header 移出。嵌入模式下顶栏被隐藏, 但 下载报告/导出/同步备注 必须常驻可见 -->
+        <div id="headerActions" style="display:none;justify-content:flex-end;gap:8px;padding:10px 24px 0;">
+            <a class="btn-action" href="/na/download/html" data-for="new-arrival">下载报告</a>
+            <a class="btn-action" href="/na/download/csv" data-for="new-arrival">导出CSV</a>
+            <a class="btn-action" href="/na/download/excel" data-for="new-arrival">导出Excel</a>
+            <button class="btn-action warning" onclick="syncAllNotes()" data-for="new-arrival">同步备注</button>
+            <button class="btn-action" onclick="exportNcCSV()" data-for="new-color">导出CSV</button>
+            <a class="btn-action" href="/na/download/nc-excel" data-for="new-color">导出Excel(新色清单)</a>
         </div>
         <div class="content-body">
             {% if is_admin_bool %}
@@ -336,6 +337,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <div class="report-loading" id="reportLoading">
                         <div class="spinner"></div>
                         <div>加载报告数据...</div>
+                        <div style="font-size:12px;color:#999;margin-top:8px;">首次加载需从云端取数并重算，可能需要数十秒，请勿关闭页面</div>
                     </div>
                 </div>
             </div>
@@ -352,7 +354,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <button class="btn btn-primary" onclick="recalcFromSources()">按当前数据源重算</button>
                 </div>
                 {% endif %}
-                <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>加载新色数据...</div></div>
+                <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>加载新色数据...<div style="font-size:12px;color:#999;margin-top:8px;">首次加载需从云端取数，可能需要数十秒，请勿关闭页面</div></div></div>
                 <div id="ncEmpty" style="display:none;text-align:center;padding:60px;color:#999;">
                     <div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div>
                     <p style="font-size:13px;color:#aaa;margin-bottom:20px;">请先在"数据管理"页面上传数据源并点击"处理并生成报告"</p>
@@ -419,9 +421,15 @@ function switchView(view) {
     if (titleEl) titleEl.textContent = titles[view] || '数据管理';
 
     // 仅对"新品跟进"模块显示下载/导出/同步备注按钮
+    let actionsVisible = false;
     document.querySelectorAll('#headerActions [data-for]').forEach(b => {
-        b.style.display = (b.getAttribute('data-for') === view) ? '' : 'none';
+        const on = (b.getAttribute('data-for') === view);
+        b.style.display = on ? '' : 'none';
+        if (on) actionsVisible = true;
     });
+    // 数据管理/系统设置视图没有操作按钮, 整条隐藏
+    const bar = document.getElementById('headerActions');
+    if (bar) bar.style.display = actionsVisible ? 'flex' : 'none';
 
     // 进入新品跟进时按需加载报告数据
     if (view === 'new-arrival' && !dataLoaded) {
@@ -576,13 +584,12 @@ function renderCards() {
                 ${s.file.error ? '<div style="margin-top:4px;font-size:11px;color:#856404;">云端读取超时，文件仍在云端，点"刷新状态"重试即可，<b>不要重新上传</b></div>' : ''}
             </div>
             ${s.shared ? sharedPanel(s) : ''}
-            ${s.shared ? '' : `
             <div class="upload-area" id="upload-${s.id}" onclick="document.getElementById('input-${s.id}').click()">
                 <div class="icon">&#128194;</div>
                 <div class="text">点击或拖拽文件上传</div>
-                <div style="font-size:11px;color:#999;margin-top:4px;">支持 ${s.accept}</div>
+                <div style="font-size:11px;color:#999;margin-top:4px;">${s.shared ? '默认用共享源 · 无需上传；如需提前更新可在此手动覆盖' : ('支持 ' + s.accept)}</div>
                 <input type="file" id="input-${s.id}" accept="${s.accept}" onchange="uploadFile('${s.id}', this.files[0])">
-            </div>`}
+            </div>
         </div>
     `).join('');
     sources.forEach(s => {

@@ -112,6 +112,10 @@ def sku_source_local_path(kind):
         local, fallback = UPLOAD_DIR / 'latest_lingxing.xlsx', 'lx/latest_lingxing.xlsx'
     elif kind == 'wm':
         local, fallback = UPLOAD_DIR / 'latest_walmart.csv', 'wm/latest_walmart.csv'
+    elif kind == 'temu_a':
+        local, fallback = UPLOAD_DIR / 'latest_temu_a.xlsx', 'temu/latest_temu_a'
+    elif kind == 'temu_b':
+        local, fallback = UPLOAD_DIR / 'latest_temu_b.xlsx', 'temu/latest_temu_b'
     elif kind == 'ops':
         local, fallback = UPLOAD_DIR / 'latest_ops.xlsx', 'ops/latest_ops'
     elif kind == 'ref':
@@ -160,6 +164,12 @@ SHARED_SOURCES = [
     {'na_id': 'listing', 'label': '店铺上架链接(Amazon)', 'pattern': '*Listing*.xlsx',
      'target': 'Amazon共享Listing.xlsx', 'kind': 'lx',
      'src_desc': 'SKU&SPU 看板 · 领星清单'},
+    {'na_id': 'temu_a', 'label': 'Temu报表(A类·含店铺列)', 'pattern': '*temu_a*.xlsx',
+     'target': 'Temu_A类报表_共享.xlsx', 'kind': 'temu_a',
+     'src_desc': 'SKU&SPU 看板 · Temu A 类报表'},
+    {'na_id': 'temu_b', 'label': 'Temu报表(B类·固定COZY店)', 'pattern': '*temu_b*.xlsx',
+     'target': 'Temu_B类报表_共享.xlsx', 'kind': 'temu_b',
+     'src_desc': 'SKU&SPU 看板 · Temu B 类报表'},
 ]
 
 _SHARED_MANIFEST = NA_DATA_DIR / '_shared_manifest.json'

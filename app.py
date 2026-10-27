@@ -26,7 +26,7 @@ import time
 import hashlib
 from datetime import datetime, timezone, timedelta
 from flask import (Flask, request, jsonify, render_template,
-                   send_file, send_from_directory)
+                   send_file, send_from_directory, redirect)
 
 # ============================ 北京时间 + 计算进度 ============================
 # 服务器（Render）时区为 UTC，所有对外展示时间统一用北京时间 UTC+8
@@ -888,6 +888,15 @@ def console():
     模块一 SKU&SPU数据清洗 / 模块四 系统设置 仅管理员可见；运营(sub)仅见新品/新色跟进。"""
     return render_template('console_index.html',
                            is_admin=auth.current_role() == 'admin')
+
+
+@app.route('/login')
+def login_page():
+    """登录页：退出登录 / 未登录直达工作台时落地到这里。
+    已登录则直接进工作台，避免重复输入。"""
+    if auth.current_role() in ('admin', 'sub'):
+        return redirect('/console')
+    return render_template('login.html')
 
 
 @app.route('/api/progress')
