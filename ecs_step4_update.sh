@@ -82,6 +82,17 @@ K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
 echo "  /console 未登录返回码 = $K  （302=正常跳转到登录；404=console_index.html 漏传；000/502=服务没起来）"
 sudo systemctl status sku-spu.service --no-pager | head -3
 
-say "5. 若失败，看日志"
+say "5. 子账号文件自查"
+if [ -f "$APP/accounts.json" ]; then
+  ok "找到 accounts.json（说明界面里保存过子账号）"
+  echo "  ---- 内容 ----"
+  cat "$APP/accounts.json"
+  echo "  --------------"
+else
+  warn "accounts.json 不存在 —— 还没在「系统设置 → 账号设置」里成功保存过子账号"
+  warn "请按：填名称密码 → 点「添加到列表」→ 点「保存（立即生效）」，看到绿色「已保存 N 个账号」才算成功"
+fi
+
+say "6. 若失败，看日志"
 echo "  sudo journalctl -u sku-spu.service -n 40 --no-pager"
 echo "  （常见：No module named 'pandas' → 安装依赖；No module named 'na_core' → 文件漏传；/na/ 404 → na 目录漏传）"

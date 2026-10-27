@@ -302,13 +302,17 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <div class="card-header"><h3>账号设置（子账号）</h3><span id="acctCount" style="font-size:12px;color:#888;"></span></div>
                     <div id="acctList"></div>
                     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <input id="acctName" placeholder="账号名称" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;">
-                        <input id="acctPwd" placeholder="密码" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;">
-                        <button class="btn btn-secondary" onclick="acctAddRow()">添加账号</button>
-                        <button class="btn btn-primary" onclick="acctSave()">保存全部</button>
+                        <input id="acctName" placeholder="① 账号名称" autocomplete="off" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;">
+                        <input id="acctPwd" type="text" placeholder="① 密码" autocomplete="off" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;">
+                        <button class="btn btn-secondary" onclick="acctAddRow()">② 添加到列表</button>
+                        <button class="btn btn-primary" onclick="acctSave()">③ 保存（立即生效）</button>
                         <span id="acctMsg" style="font-size:12px;"></span>
                     </div>
-                    <p style="font-size:12px;color:#888;margin-top:8px;">子账号仅可查看/编辑备注类内容；「待确认SKU确认 / 组合SKU / 无效SKU调整」仅管理员可操作。修改后立即生效，无需重启。</p>
+                    <p style="font-size:12px;color:#666;margin-top:8px;line-height:1.8;">
+                        <b>操作顺序：</b>① 填名称 + 密码 → ② 点「添加到列表」（内容会进入上方列表）→ ③ 点「保存（立即生效）」，<b style="color:#28a745;">看到绿色「已保存 N 个账号」才算成功</b>。<br>
+                        忘了第 ② 步也没关系：点保存时会自动把输入框里的账号一并保存。<b>保存成功后刷新页面仍会显示。</b><br>
+                        子账号仅可查看/编辑备注类内容；「待确认SKU确认 / 组合SKU / 无效SKU调整」仅管理员可操作。
+                    </p>
                 </div>
                 <div class="page-header">
                     <h2>数据源管理</h2>
@@ -482,16 +486,62 @@ function acctRowHtml(a){
         + '<input class="acct-pwd" value="' + escA(a.password) + '" placeholder="密码" style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;width:160px;">'
         + '<button class="btn btn-secondary" onclick="acctDelRow(this)">删除</button></div>';
 }
+function acctMsgBox(text, color){
+    const msg = document.getElementById('acctMsg');
+    if (msg) { msg.style.color = color || '#666'; msg.textContent = text; }
+}
+function acctSyncCount(){
+    const rows = document.querySelectorAll('#acctList .acct-row');
+    const c = document.getElementById('acctCount');
+    if (c) c.textContent = '当前 ' + rows.length + ' 个子账号';
+}
 function acctRender(list){
     const box = document.getElementById('acctList'); if (!box) return;
     box.innerHTML = '';
     (list || []).forEach(function(a){ box.insertAdjacentHTML('beforeend', acctRowHtml(a)); });
-    const c = document.getElementById('acctCount'); if (c) c.textContent = '当前 ' + list.length + ' 个子账号';
+    if (!list || !list.length) {
+        box.innerHTML = '<div class="acct-empty" style="font-size:12px;color:#999;padding:6px 2px;">'
+            + '暂无子账号 —— 请在下方填「账号名称」和「密码」后点「添加到列表」</div>';
+    }
+    const c = document.getElementById('acctCount'); if (c) c.textContent = '当前 ' + ((list || []).length) + ' 个子账号';
 }
+// 关键点：把输入框里填的内容真正带进行里（旧版会插入空行，导致保存后被后端过滤掉）
 function acctAddRow(){
-    const box = document.getElementById('acctList'); if (box) box.insertAdjacentHTML('beforeend', acctRowHtml({name:'', password:''}));
+    const ni = document.getElementById('acctName');
+    const pi = document.getElementById('acctPwd');
+    const name = ni ? (ni.value || '').trim() : '';
+    const pwd = pi ? (pi.value || '') : '';
+    if (!name || !pwd) {
+        acctMsgBox('请先填写账号名称和密码，再点「添加到列表」', '#dc3545');
+        if (ni && !name) ni.focus(); else if (pi && !pwd) pi.focus();
+        return;
+    }
+    const box = document.getElementById('acctList');
+    if (box) {
+        const ph = box.querySelector('.acct-empty'); if (ph) ph.remove();
+        box.insertAdjacentHTML('beforeend', acctRowHtml({ name: name, password: pwd }));
+    }
+    if (ni) ni.value = '';
+    if (pi) pi.value = '';
+    acctMsgBox('已加入列表，请点「保存（立即生效）」', '#28a745');
+    acctSyncCount();
 }
-function acctDelRow(btn){ if (btn && btn.parentNode) btn.parentNode.remove(); }
+function acctDelRow(btn){ if (btn && btn.parentNode) btn.parentNode.remove(); acctSyncCount(); }
+// 兜底：用户忘了点「添加到列表」时，保存前自动把输入框内容收进列表
+function acctAutoPickInputs(){
+    const ni = document.getElementById('acctName');
+    const pi = document.getElementById('acctPwd');
+    if (!ni || !pi) return;
+    const name = (ni.value || '').trim();
+    const pwd = (pi.value || '');
+    if (!name || !pwd) return;
+    const box = document.getElementById('acctList');
+    if (box) {
+        const ph = box.querySelector('.acct-empty'); if (ph) ph.remove();
+        box.insertAdjacentHTML('beforeend', acctRowHtml({ name: name, password: pwd }));
+    }
+    ni.value = ''; pi.value = '';
+}
 function acctLoad(){
     if (!isAdmin) return;
     fetch('/na/api/accounts').then(function(r){ return r.json(); }).then(function(d){
@@ -499,17 +549,30 @@ function acctLoad(){
     }).catch(function(){});
 }
 function acctSave(){
+    acctAutoPickInputs();   // 忘记点「添加到列表」也能保住输入框里的账号
     const rows = document.querySelectorAll('#acctList .acct-row');
     const accounts = [];
     rows.forEach(function(r){
-        accounts.push({ name: r.querySelector('.acct-name').value, password: r.querySelector('.acct-pwd').value });
+        const nmEl = r.querySelector('.acct-name');
+        const pwEl = r.querySelector('.acct-pwd');
+        if (!nmEl || !pwEl) return;
+        const nm = (nmEl.value || '').trim();
+        const pw = pwEl.value || '';
+        if (nm || pw) accounts.push({ name: nm, password: pw });
     });
-    const msg = document.getElementById('acctMsg'); if (msg) msg.textContent = '保存中…';
+    if (!accounts.length) {
+        acctMsgBox('列表为空，请先填名称密码并添加到列表', '#dc3545');
+        return;
+    }
+    acctMsgBox('保存中…', '#666');
     fetch('/na/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accounts: accounts }) })
         .then(function(r){ return r.json(); }).then(function(d){
-            if (d.ok) { if (msg) { msg.style.color = '#28a745'; msg.textContent = '已保存 ' + d.count + ' 个账号'; } acctRender(d.accounts); }
-            else { if (msg) { msg.style.color = '#dc3545'; msg.textContent = '失败: ' + (d.error || ''); } }
-        }).catch(function(){ if (msg) { msg.style.color = '#dc3545'; msg.textContent = '网络错误'; } });
+            if (d.ok) {
+                acctMsgBox('已保存 ' + d.count + ' 个账号（刷新后仍在）', '#28a745');
+                acctRender(d.accounts);
+            }
+            else { acctMsgBox('失败: ' + (d.error || ''), '#dc3545'); }
+        }).catch(function(){ acctMsgBox('网络错误', '#dc3545'); });
 }
 
 // ========== 数据源卡片 ==========
