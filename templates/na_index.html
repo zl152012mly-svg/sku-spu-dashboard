@@ -2461,12 +2461,11 @@ function ncPkg(r) {
 function ncEta(r) {
     const rec = ncNaRec(r['SPU']);
     if (rec) return rec.eta || '-';
-    // 自己算: 该 SPU×店铺 的库存SKU行, 有在库→已到仓, 否则最早在途日期
-    const skus = (newColorData.sku_rows || []).filter(function(s) {
-        return s['SPU'] === r['SPU'] && s['店铺'] === r['店铺'];
-    });
+    // 自己算: 预计到仓时间是 SKU 级属性, 与店铺无关 (2026-10-27 用户确认)
+    // 同一 SKU 在不同店铺 → 值必须相同, 所以按 SPU 汇总后取「任一在库 / 最早在途」, 不按店铺过滤
     let hasStock = false, earliest = '';
-    skus.forEach(function(s) {
+    (newColorData.sku_rows || []).forEach(function(s) {
+        if (s['SPU'] !== r['SPU']) return;
         if ((Number(s['在库库存']) || 0) > 0) hasStock = true;
         const eta = String(s['在途最早预计到仓'] || s['预计到仓'] || '').trim();
         if (eta && eta !== '-' && (!earliest || eta < earliest)) earliest = eta;

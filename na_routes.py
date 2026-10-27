@@ -133,15 +133,17 @@ def _build_na_spu_map():
     return m
 
 
-def _nc_eta_from_sku_rows(sku_rows, spu, store=''):
+def _nc_eta_from_sku_rows(sku_rows, spu):
     """SPU 不在新品报表时的「预计到仓时间」: 用新色自己的库存SKU行算。
-    口径与新品一致: 有在库(>0)→已到仓; 否则取最早在途日期; 都没有→''。"""
+    口径与新品一致: 有在库(>0)→已到仓; 否则取最早在途日期; 都没有→''。
+    ⚠️ 预计到仓时间是 SKU 级属性, 与店铺无关 (2026-10-27 用户确认):
+    同一 SKU 出现在不同店铺 → 值必须相同, 所以这里**不按店铺过滤**,
+    按 SPU 汇总全部店铺的 SKU 行后取「任一在库 / 最早在途」。
+    (不做 SKU 去重: 去重会丢掉「另一店铺该SKU有在库」的信息, 取并集才是对的)"""
     has_stock = False
     earliest = ''
     for s in sku_rows or []:
         if str(s.get('SPU', '')) != str(spu):
-            continue
-        if store and str(s.get('店铺', '')) != str(store):
             continue
         try:
             if int(s.get('在库库存') or 0) > 0:
@@ -1757,7 +1759,8 @@ def download_nc_excel():
             _eta = _rec.get('eta') or ''
         else:
             _pkg = ''
-            _eta = _nc_eta_from_sku_rows(data.get('sku_rows'), spu, r.get('店铺', ''))
+            # 预计到仓时间按 SPU 汇总(不按店铺), 保证同SKU跨店铺取值一致
+            _eta = _nc_eta_from_sku_rows(data.get('sku_rows'), spu)
         ws2.append([
             spu,
             r.get('店铺', ''),
