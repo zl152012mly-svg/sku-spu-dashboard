@@ -389,15 +389,16 @@ function renderTemuInfo() {
 function renderOpsInfo() {
   const box = $$('#ops-info');
   if (!box) return;
-  if (!OPS) {
-    box.innerHTML = '<span class="warn">未上传产品运营表</span>　—— Amazon 店铺的「运营 / 运营组」按 SPU 查询不到时会填「未查询到」（Walmart·Temu 不受影响）。';
-    return;
-  }
+if (!OPS) {
+box.innerHTML = '<span class="warn">未上传产品运营表</span>　—— 将<b>自动沿用新品/新色上传的款式表</b>（要求款式表含「AMZ组」「综合组-AMZ」sheet）；若款式表也没有，Amazon 店铺的运营/运营组会填「未查询到」（Walmart·Temu 不受影响）。';
+return;
+}
   const s = OPS.summary || {};
   const sheets = (s.sheets || []).map(escHtml).join('、') || '—';
   box.innerHTML =
     `<span class="ok">当前生效</span>：<b>${escHtml(OPS.filename)}</b>　上传于 ${escHtml(OPS.uploaded_at)}<br>` +
-    `可查询 sheet：${sheets}　｜　SPU 别名键 ${s.rows || 0} 条`;
+    `可查询 sheet：${sheets}　｜　SPU 别名键 ${s.rows || 0} 条<br>` +
+`<button class="btn ghost" style="margin-top:8px;font-size:12px;" onclick="removeOps()">移除（改用款式表）</button>`;
 }
 
 function renderRawInfo() {
@@ -577,6 +578,32 @@ function uploadTemu(files) {
       if (lk) lk.onclick = () => { if (d.ready) rebuild(msg); };
     })
     .catch(err => { msg.className = 'msg err'; msg.textContent = '✗ 上传失败：' + ((err && err.message) || err); });
+}
+
+/* ---------- 移除产品运营表（方案A：改用款式表） ---------- */
+function removeOps() {
+if (!confirm('移除后，Amazon 运营/运营组将改用新品/新色上传的「款式表」。确定继续？')) return;
+const msg = $$('#ops-msg');
+if (msg) { msg.className = 'msg'; msg.textContent = '移除中…'; }
+apiCall('/api/remove/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+.then(safeJson)
+.then(({ ok, d }) => {
+  if (!ok || !d.ok) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = '✗ ' + (d.msg || '移除失败'); }
+    return;
+  }
+  OPS = d.ops || null;          // 移除成功后展示"沿用款式表"的来源信息
+  renderOpsInfo();
+  if (msg) {
+    msg.className = 'msg';
+    msg.innerHTML = '<span style="color:#16a34a">✓ 已移除产品运营表</span>，当前来源：<b>' +
+      escHtml((OPS && OPS.filename) || '款式表') + '</b>' +
+      (d.needs_rebuild ? '　—— 需按当前数据源重算后生效，可<a href="javascript:;" id="lnk-rebuild-rm">立即重算</a>。' : '');
+    const lk = $$('#lnk-rebuild-rm');
+    if (lk) lk.onclick = () => { if (d.needs_rebuild) rebuild(msg); };
+  }
+})
+.catch(err => { if (msg) { msg.className = 'msg err'; msg.textContent = '✗ 移除失败：' + ((err && err.message) || err); } });
 }
 
 /* ---------- 产品运营表（第 7 步，Amazon 运营/运营组 查询源）上传 ---------- */

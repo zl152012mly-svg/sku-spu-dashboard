@@ -102,6 +102,8 @@ RAW_META = os.path.join(DATA_DIR, 'raw_meta.json')
 # Temu 报表（第 6 步独立上传源，Option ②）：留档 + 元信息
 OPS_META = os.path.join(DATA_DIR, 'ops_meta.json')              # 产品运营表（第 7 步）元信息
 LATEST_OPS = os.path.join(UPLOAD_DIR, 'latest_ops.xlsx')        # 产品运营表留档（Amazon 运营查询）
+# 用户主动「移除产品运营表」的标记：存在该文件时，重启不再从云端把它拉回来
+OPS_REMOVED_FLAG = os.path.join(DATA_DIR, 'ops_removed.json')
 TEMU_META = os.path.join(DATA_DIR, 'temu_meta.json')          # 新格式 {'a': entry|None, 'b': entry|None}
 LATEST_TEMU_A = os.path.join(UPLOAD_DIR, 'latest_temu_a.xlsx')  # Temu A 类（含「店铺」列）留档
 LATEST_TEMU_B = os.path.join(UPLOAD_DIR, 'latest_temu_b.xlsx')  # Temu B 类（固定 COZY 店）留档
@@ -412,7 +414,7 @@ def _current_ds():
     wm = LATEST_WALMART if os.path.exists(LATEST_WALMART) else None
     admin = _current_admin_path()
     temu = [p for p in (LATEST_TEMU_A, LATEST_TEMU_B) if os.path.exists(p)]
-    ops = LATEST_OPS if os.path.exists(LATEST_OPS) else None
+    ops, _ops_src = _ops_source()   # 单独上传的产品运营表优先, 否则沿用款式表 (方案A)
     return lx, wm, admin, temu, ops
 
 
@@ -488,7 +490,8 @@ def _ds_info():
         'temu': temu,
         'ops': ({'filename': ops.get('filename'),
                  'uploaded_at': ops.get('uploaded_at'),
-                 'summary': ops.get('summary')} if ops else None),
+                 'summary': ops.get('summary'),
+                 'source': 'ops'} if ops else _style_fallback_info()),
     }
 
 
@@ -824,7 +827,10 @@ def _ensure_cloud_ds():
     except Exception:
         pass
     # 产品运营表（第 7 步）：云端覆盖本地留档 + 重建 meta
+    # 用户主动移除过（方案A：改用款式表）则不再恢复，否则重启后又会从云端拉回来
     try:
+        if os.path.exists(OPS_REMOVED_FLAG):
+            raise RuntimeError('ops removed by user')
         data = storage.ds_file_download(storage.OBJ_OPS)
         if data:
             _atomic_write_bytes(LATEST_OPS, data)
@@ -1257,6 +1263,65 @@ def api_upload_temu():
                     'needs_rebuild': STATE['rows'] is not None})
 
 
+def _ops_source():
+    """产品运营表来源二选一（方案 A：一次上传双用）。
+
+    返回 (path, source)；source: 'ops'=单独上传的产品运营表 / 'style'=沿用新品侧的款式表。
+    优先级：单独上传的产品运营表 > 款式表（款式表尾部需含「AMZ组」「综合组-AMZ」sheet）。
+    """
+    if os.path.exists(LATEST_OPS):
+        return LATEST_OPS, 'ops'
+    try:
+        from na_core import style_table_path
+        p = style_table_path()
+        if p and os.path.exists(str(p)):
+            return str(p), 'style'
+    except Exception:
+        pass
+    return None, None
+
+
+def _style_fallback_info():
+    """未单独上传产品运营表时，卡片上展示「沿用款式表」的来源信息。"""
+    path, src = _ops_source()
+    if not path or src != 'style':
+        return None
+    try:
+        mt = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+        uploaded = mt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        uploaded = None
+    return {'filename': '款式表（沿用新品/新色上传的版本）',
+            'uploaded_at': uploaded,
+            'summary': None,
+            'source': 'style'}
+
+
+def _validate_ops_book(path):
+    """产品运营表结构校验。
+
+    要求文件中**至少含一个**「AMZ组 / 综合组-AMZ」这类 sheet（方案 A 后款式表也可作为来源，
+    因此不再凭「上架汇总」sheet 拒收，只确保运营归属能按店铺分 sheet 查到）。
+    返回 (ok, msg, detail)。
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheets = [str(s).strip() for s in wb.sheetnames]
+    finally:
+        wb.close()
+    detail = {'sheets': sheets}
+
+    ops_like = [s for s in sheets
+                if ('综合组' in s) or ('AMZ' in s.upper() and '组' in s)]
+    if not ops_like:
+        return False, ('未找到运营归属可用的 sheet（当前 sheet：%s）。需要包含「AMZ组」或「综合组-AMZ」'
+                       '这类 sheet（用于 Urban→综合组-AMZ、HLLdeco/HomeNest→AMZ组 的分店铺查询）。'
+                       % ('、'.join(sheets[:6]) or '空')), detail
+    detail['ops_sheets'] = ops_like
+    return True, '', detail
+
+
 @app.route('/api/upload/ops', methods=['POST'])
 def api_upload_ops():
     """上传/更新「产品运营表」（第 7 步，Amazon 店铺运营/运营组查询源）。
@@ -1285,14 +1350,27 @@ def api_upload_ops():
         except OSError:
             pass
         return jsonify({'ok': False, 'msg': '产品运营表解析失败：' + str(e)}), 400
+    # 结构校验: 挡住"款式表当成产品运营表"的误传 (两者都有 SPU 列, load_ops 无法区分)
+    try:
+        okv, vmsg, detail = _validate_ops_book(tmp_path)
+    except Exception as e:
+        okv, vmsg, detail = False, ('产品运营表结构校验失败：' + str(e)), {}
     try:
         os.remove(tmp_path)
     except OSError:
         pass
+    if not okv:
+        return jsonify({'ok': False, 'msg': vmsg, 'detail': detail}), 400
     if not ops_map:
         return jsonify({'ok': False, 'msg': '产品运营表未解析到任何含「SPU」列的 sheet'}), 400
 
     _atomic_write_bytes(LATEST_OPS, raw)
+    # 重新上传: 清除"已移除"标记, 使今后重启仍能从云端恢复该文件
+    try:
+        if os.path.exists(OPS_REMOVED_FLAG):
+            os.remove(OPS_REMOVED_FLAG)
+    except OSError:
+        pass
     meta = {'filename': f.filename,
             'uploaded_at': now_bj(),
             'summary': {'sheets': sorted(ops_map.keys()),
@@ -1306,6 +1384,40 @@ def api_upload_ops():
     return jsonify({'ok': True, 'ops': meta,
                     'cloud_error': cloud_err,
                     'ready': STATE['rows'] is not None,
+                    'needs_rebuild': STATE['rows'] is not None})
+
+
+@app.route('/api/remove/ops', methods=['POST'])
+@auth.role_required('admin')
+def api_remove_ops():
+    """移除已上传的「产品运营表」（方案A：移除后自动沿用新品/新色上传的款式表）。
+
+    同时写 ops_removed.json 标记，避免服务重启时从云端把旧文件又恢复回来。"""
+    removed = []
+    for p, tag in ((LATEST_OPS, 'latest_ops.xlsx'), (OPS_META, 'ops_meta.json')):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+                removed.append(tag)
+        except OSError:
+            pass
+    try:
+        _write_meta_file(OPS_REMOVED_FLAG, {'removed_at': now_bj(), 'reason': '改用款式表(方案A)'})
+    except Exception:
+        pass
+    STATE['ops_filename'] = None
+    STATE['ops_uploaded_at'] = None
+    try:
+        _save_state()
+    except Exception:
+        pass
+    try:
+        _sync_source_meta()
+    except Exception:
+        pass
+    _p, src = _ops_source()
+    return jsonify({'ok': True, 'removed': removed, 'ops_source': src,
+                    'ops': _style_fallback_info(),
                     'needs_rebuild': STATE['rows'] is not None})
 
 

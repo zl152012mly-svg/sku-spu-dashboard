@@ -99,6 +99,19 @@ def _meta(name):
         return None
 
 
+def style_table_path():
+    """返回新品盘点侧「款式表」文件路径（不存在返回 None）。
+
+    方案 A（2026-10-27 用户确认）：款式表尾部含「AMZ组」「综合组-AMZ」两个 sheet，
+    列结构与产品运营表同构（SPU / 新SPU* / 运营 / 运营组），
+    故清洗侧的运营、运营组查询在未单独上传「产品运营表」时直接沿用款式表，避免双份维护。
+    """
+    if not NA_DATA_DIR.exists():
+        return None
+    cands = sorted(p for p in NA_DATA_DIR.glob('款式表*.xlsx') if not p.name.startswith('~$'))
+    return cands[-1] if cands else None
+
+
 def sku_source_local_path(kind):
     """返回 SKU&SPU 侧某类数据源的本地留档路径（不存在返回 None）。
 

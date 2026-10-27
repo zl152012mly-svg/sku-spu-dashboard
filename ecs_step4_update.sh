@@ -75,7 +75,7 @@ sleep 5
 
 say "4. 验证结果"
 V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9a-z-]*' | head -1)
-[ -n "$V" ] && ok "版本号: $V  （期望含 20261023-na）" || bad "取不到版本号，服务可能没起来"
+[ -n "$V" ] && ok "版本号: $V  （期望含 20261027-ops）" || bad "取不到版本号，服务可能没起来"
 C=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/na/)
 echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件缺失；000/502=服务没起来）"
 K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
