@@ -15,7 +15,9 @@ auth.py —— 合并后统一鉴权（SKU&SPU 清洗看板 × 新品盘点系�
   SECRET_KEY             session 签名密钥（建议强随机；缺省为开发值）
 """
 import os
+import json
 import hashlib
+import threading
 from functools import wraps
 from flask import session, request, jsonify, redirect
 
@@ -49,6 +51,58 @@ def _parse_sub_accounts():
 
 SUB_ACCOUNTS = _parse_sub_accounts()
 
+# ---------- 云端文件子账号（系统设置界面管理，立即生效，无需重启） ----------
+# 账号以「密码」为身份（沿用历史 SUB_ACCOUNTS 模型），name 仅作展示标签。
+# 存于 auth.py 同目录 accounts.json；env SUB_ACCOUNTS 作为基础，文件账号覆盖同名项。
+_ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'accounts.json')
+_accounts_lock = threading.Lock()
+
+
+def load_accounts():
+    """返回 {name: password}。env SUB_ACCOUNTS 作基础，文件 accounts.json 覆盖/追加。"""
+    merged = {}
+    for u, p in _parse_sub_accounts().items():
+        merged[u] = p
+    try:
+        if os.path.exists(_ACCOUNTS_FILE):
+            with open(_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for a in (data.get('accounts') or []):
+                if not isinstance(a, dict):
+                    continue
+                name = (a.get('name') or '').strip()
+                pwd = a.get('password') or ''
+                if name:
+                    merged[name] = pwd
+    except Exception:
+        pass
+    return merged
+
+
+def save_accounts(accounts_list):
+    """accounts_list: [{name, password}, ...]；去空/去重后原子写 accounts.json。
+    返回 {count, accounts}（清洗后的全量）。"""
+    clean = []
+    seen = set()
+    for a in (accounts_list or []):
+        if not isinstance(a, dict):
+            continue
+        name = (a.get('name') or '').strip()
+        pwd = (a.get('password') or '')
+        if not name or not pwd:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        clean.append({'name': name, 'password': pwd})
+    data = {'accounts': clean}
+    tmp = _ACCOUNTS_FILE + '.tmp'
+    with _accounts_lock:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, _ACCOUNTS_FILE)
+    return {'count': len(clean), 'accounts': clean}
+
 
 def current_role():
     """当前请求角色：session 优先；否则合法 X-Auth-Token 视为 admin（兼容旧前端）。"""
@@ -65,10 +119,15 @@ def check_request_auth():
 
 
 def attempt_login(password):
-    """校验口令，返回角色字符串或 None。"""
+    """校验口令，返回角色字符串或 None。
+
+    管理员 = ACCESS_PASSWORD / NEW_ARRIVAL_ADMIN_PWD；
+    子账号 = env SUB_ACCOUNTS 或云端文件 accounts.json 中的任一密码（按密码匹配）。
+    文件账号由「系统设置」界面管理，保存后立即生效，无需重启。
+    """
     if password == ACCESS_PASSWORD or password == NEW_ARRIVAL_ADMIN_PWD:
         return 'admin'
-    for _user, pwd in SUB_ACCOUNTS.items():
+    for _user, pwd in load_accounts().items():
         if password == pwd:
             return 'sub'
     return None

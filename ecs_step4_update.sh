@@ -55,6 +55,7 @@ pull na_core.py              na_core.py
 pull na_routes.py            na_routes.py
 pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
+pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台
 
 for f in cloud_store process_script new_color_module sku_eval report_script color_dict_seed color_audit new_color_check; do
   pull "na/$f.py" "na/$f.py"
@@ -77,6 +78,8 @@ V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9a-z-]*' | head -1)
 [ -n "$V" ] && ok "版本号: $V  （期望含 20261023-na）" || bad "取不到版本号，服务可能没起来"
 C=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/na/)
 echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件缺失；000/502=服务没起来）"
+K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
+echo "  /console 未登录返回码 = $K  （302=正常跳转到登录；404=console_index.html 漏传；000/502=服务没起来）"
 sudo systemctl status sku-spu.service --no-pager | head -3
 
 say "5. 若失败，看日志"

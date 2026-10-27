@@ -19,7 +19,7 @@
       <span id="status-bar"></span>
       <button class="btn ghost" id="btn-new">重新上传</button>
       <button class="btn" id="btn-download" disabled>下载清洗结果 CSV</button>
-      <a class="btn ghost" href="/na/" title="打开新品盘点系统">新品盘点 ›</a>
+      <a class="btn ghost" href="/console" title="打开统一工作台">工作台 ›</a>
       <span id="download-status" role="status" aria-live="polite"></span>
     </div>
   </header>
@@ -276,5 +276,14 @@
 <script src="/static/libs/datatables.min.js"></script>
 <script src="/static/libs/echarts.min.js"></script>
 <script src="/static/app.js?v=20261023-na"></script>
+<script>
+// 嵌入模式 (在 /console 框架内): 隐藏顶部工具条，使看板铺满内容区
+(function(){
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    var h = document.querySelector('header.top');
+    if (h) h.style.display = 'none';
+  }
+})();
+</script>
 </body>
 </html>

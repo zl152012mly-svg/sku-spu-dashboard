@@ -1087,9 +1087,10 @@ def api_sa_note_get():
 
 
 @bp.route('/api/sku-anomaly-note', methods=['POST'])
-@auth.role_required('sub')
+@auth.role_required('admin')
 def api_sa_note_post():
-    """保存 SKU 异常确认结果 (支持批量)
+    """保存 SKU 异常确认结果 (支持批量) —— 仅管理员可操作
+    （待确认SKU确认 / 组合SKU / 无效SKU调整；运营角色仅有查看权限）
     接收: {notes: {sku: {status: 'valid'|'invalid'|'combo'|'', note: '...'}}, updated_by: ...}
     一次请求可携带多个 SKU —— 用于「勾选多条后批量确认」(需求3)。"""
     data = request.get_json(silent=True) or {}
@@ -1106,6 +1107,33 @@ def api_sa_note_post():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     return jsonify({'success': True, 'notes': saved, 'count': len(saved)})
+
+
+# ============================================================
+# 账号管理 (系统设置 · 仅管理员)
+#   子账号存于云端文件 accounts.json (auth.save_accounts)，界面增删/改密码立即生效，
+#   无需改环境变量或重启。登录按密码匹配 (env SUB_ACCOUNTS 作基础，文件覆盖)。
+# ============================================================
+@bp.route('/api/accounts', methods=['GET'])
+@auth.role_required('admin')
+def api_accounts_get():
+    """返回全部子账号（含明文密码，仅管理员可见）。"""
+    accts = auth.load_accounts()
+    return jsonify({'count': len(accts),
+                    'accounts': [{'name': n, 'password': p} for n, p in accts.items()]})
+
+
+@bp.route('/api/accounts', methods=['POST'])
+@auth.role_required('admin')
+def api_accounts_post():
+    """保存全部子账号。body: {accounts: [{name, password}, ...]}；空名/空密码自动跳过，同名去重。
+    返回 {ok, count, accounts}。"""
+    data = request.get_json(silent=True) or {}
+    try:
+        res = auth.save_accounts(data.get('accounts', []))
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, **res})
 
 
 @bp.route('/api/stock-note', methods=['POST'])

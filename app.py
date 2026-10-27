@@ -113,6 +113,7 @@ app = Flask(__name__)
 
 # ---------- 统一鉴权（auth.py：session+role，兼容既有 X-Auth-Token 流） ----------
 from auth import init_app, role_required, current_role
+import auth as auth
 init_app(app)
 
 # ---------- 新品盘点子系统（Phase 2 Step 3）：蓝图挂载 /na ----------
@@ -878,6 +879,15 @@ def _boot_rebuild():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/console')
+@auth.role_required('sub')
+def console():
+    """统一工作台外壳：左侧导航（4 模块）+ 右侧 iframe。
+    模块一 SKU&SPU数据清洗 / 模块四 系统设置 仅管理员可见；运营(sub)仅见新品/新色跟进。"""
+    return render_template('console_index.html',
+                           is_admin=auth.current_role() == 'admin')
 
 
 @app.route('/api/progress')

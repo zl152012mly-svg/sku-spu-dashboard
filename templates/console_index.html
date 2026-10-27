@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>北美市场事业部 · 数据运营工作台</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .shell { display: flex; height: 100vh; }
+  .nav { width: 240px; background: #1e293b; color: #fff; display: flex; flex-direction: column; flex-shrink: 0; }
+  .nav-brand { padding: 22px 20px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .nav-brand .t { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+  .nav-brand .s { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+  .nav-menu { flex: 1; padding: 14px 12px; overflow-y: auto; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; margin-bottom: 6px; border-radius: 8px; cursor: pointer; color: #cbd5e1; font-size: 14px; transition: .15s; }
+  .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .nav-item.active { background: #2563eb; color: #fff; }
+  .nav-item .ico { font-size: 16px; width: 22px; text-align: center; }
+  .nav-foot { padding: 16px; border-top: 1px solid rgba(255,255,255,.08); }
+  .nav-foot button { width: 100%; padding: 9px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .nav-foot button:hover { background: rgba(255,255,255,.2); }
+  .content { flex: 1; min-width: 0; background: #f1f5f9; }
+  .content iframe { width: 100%; height: 100%; border: 0; display: block; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="nav">
+    <div class="nav-brand">
+      <div class="t">北美市场事业部</div>
+      <div class="s">数据运营工作台</div>
+    </div>
+    <div class="nav-menu" id="navMenu">
+      {% if is_admin %}
+      <div class="nav-item active" data-src="/?embed=1&v=c1" onclick="go(this)">
+        <span class="ico">🧹</span><span>SKU&SPU数据清洗</span>
+      </div>
+      {% endif %}
+      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c1" onclick="go(this)">
+        <span class="ico">📦</span><span>新品上架跟进</span>
+      </div>
+      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c1" onclick="go(this)">
+        <span class="ico">🎨</span><span>新色上架跟进</span>
+      </div>
+      {% if is_admin %}
+      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c1" onclick="go(this)">
+        <span class="ico">⚙️</span><span>系统设置</span>
+      </div>
+      {% endif %}
+    </div>
+    <div class="nav-foot"><button onclick="doLogout()">退出登录</button></div>
+  </div>
+  <div class="content">
+    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c1{% else %}/na/?view=xp&embed=1&v=c1{% endif %}"></iframe>
+  </div>
+</div>
+<script>
+function go(el){
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('frame').src = el.getAttribute('data-src');
+}
+function doLogout(){
+  fetch('/logout').then(function(){ location.href = '/'; }).catch(function(){ location.href = '/'; });
+}
+</script>
+</body>
+</html>
