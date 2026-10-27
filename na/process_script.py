@@ -24,6 +24,7 @@ from pathlib import Path
 try:
     from sku_eval import (  # noqa: F401
         parse_sku_color_suffix, detect_dim_anomalies, detect_multi_package,
+        combo_member_pkg_display, combo_member_pkg_types,
         read_note_file as _read_sku_anomaly_note,
         invalid_sku_set as _invalid_sku_set,
         build_anomaly_records, NOTE_FILENAME as SKU_ANOMALY_NOTE_NAME,
@@ -35,6 +36,7 @@ except ImportError:  # 极端情况下在本目录外执行时的兜底
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from sku_eval import (  # noqa: F401
         parse_sku_color_suffix, detect_dim_anomalies, detect_multi_package,
+        combo_member_pkg_display, combo_member_pkg_types,
         read_note_file as _read_sku_anomaly_note,
         invalid_sku_set as _invalid_sku_set,
         build_anomaly_records, NOTE_FILENAME as SKU_ANOMALY_NOTE_NAME,
@@ -102,28 +104,6 @@ def determine_fedex_package_type(weight_oz, length, width, height):
         return "AHS-Dimension"
     return "Standard"
 
-
-def combo_member_pkg_display(member_types):
-    """全组合SPU的「SPU包裹情况」: 按成员货品包裹类型汇总 (2026-10-27 需求)。
-    一种类型→「单包Oversize」(多个同类→「N包Oversize」); 多种→「1包AHS，1包Oversize」(严格的在前)。
-    返回: (display, spu_max_type, member_count)"""
-    _rank = {'LTL': 4, 'Oversize': 3, 'AHS-Dimension': 2, 'Standard': 1, 'Unknown': 0}
-    _short = {'LTL': 'LTL', 'Oversize': 'Oversize', 'AHS-Dimension': 'AHS',
-              'Standard': 'Standard', 'Unknown': 'Unknown'}
-    if not member_types:
-        return '', 'Unknown', 0
-    spu_max = max(member_types, key=lambda t: _rank.get(t, 0))
-    cnt_by = {}
-    for t in member_types:
-        cnt_by[t] = cnt_by.get(t, 0) + 1
-    if len(cnt_by) == 1:
-        t, n = list(cnt_by.items())[0]
-        display = ('单包%s' % _short.get(t, t)) if n == 1 else ('%d包%s' % (n, _short.get(t, t)))
-    else:
-        parts = ['%d包%s' % (n, _short.get(t, t)) for t, n in
-                 sorted(cnt_by.items(), key=lambda x: _rank.get(x[0], 0), reverse=True)]
-        display = "，".join(parts)
-    return display, spu_max, len(member_types)
 
 
 def get_package_type_details(weight_oz, length, width, height):
@@ -1300,18 +1280,16 @@ def process_all():
             sku_to_pkg_type = {s['sku']: s['package_type'] for s in clean_skus}
             multi_pkg_count, color_pkg_details, multi_pkg_display, spu_max_type = detect_multi_package(
                 [s['sku'] for s in clean_skus], spu, sku_to_pkg_type)
-        elif not normal_skus and combo_skus_list:
-            # 全组合SPU: 收集全部成员货品的包裹类型做汇总
-            member_types = []
-            for c in combo_skus_list:
-                for m in (c.get('kit_members') or []):
-                    member_types.append((m or {}).get('package_type') or 'Unknown')
-            multi_pkg_display, spu_max_type, multi_pkg_count = combo_member_pkg_display(member_types)
-            color_pkg_details = {}
         else:
-            sku_to_pkg_type = {}
-            multi_pkg_count, color_pkg_details, multi_pkg_display, spu_max_type = detect_multi_package(
-                [], spu, sku_to_pkg_type)
+            # 没有可用的干净正常SKU: 优先用组合SKU的成员货品类型汇总, 否则退回原口径
+            member_types = combo_member_pkg_types(combo_skus_list)
+            if member_types:
+                multi_pkg_display, spu_max_type, multi_pkg_count = combo_member_pkg_display(member_types)
+                color_pkg_details = {}
+            else:
+                sku_to_pkg_type = {}
+                multi_pkg_count, color_pkg_details, multi_pkg_display, spu_max_type = detect_multi_package(
+                    [], spu, sku_to_pkg_type)
         if multi_pkg_count > 1:
             stats["multi_pkg_spus"] += 1
 

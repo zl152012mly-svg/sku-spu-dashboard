@@ -113,6 +113,43 @@ def detect_dim_anomalies(sku_details, spu):
     return clean, anomalies, wild
 
 
+def combo_member_pkg_display(member_types):
+    """全组合SPU的「SPU包裹情况」: 按成员货品(套件成员)的包裹类型汇总 (2026-10-27 需求)。
+
+    SPU 下的所有SKU都被确认为「组合SKU」时, 组合SKU自身没有尺寸数据(package_type=Unknown),
+    其判定由成员货品接管 —— 这里把全部成员货品的包裹类型汇总成展示串:
+      一种类型  → 「单包Oversize」(同类多个 → 「2包Oversize」)
+      多种类型  → 「1包LTL，1包Standard」(严格的在前)
+    返回: (display, spu_max_type, member_count)
+    """
+    _rank = {'LTL': 4, 'Oversize': 3, 'AHS-Dimension': 2, 'Standard': 1, 'Unknown': 0}
+    _short = {'LTL': 'LTL', 'Oversize': 'Oversize', 'AHS-Dimension': 'AHS',
+              'Standard': 'Standard', 'Unknown': 'Unknown'}
+    if not member_types:
+        return '', 'Unknown', 0
+    spu_max = max(member_types, key=lambda t: _rank.get(t, 0))
+    cnt_by = {}
+    for t in member_types:
+        cnt_by[t] = cnt_by.get(t, 0) + 1
+    if len(cnt_by) == 1:
+        t, n = list(cnt_by.items())[0]
+        display = ('单包%s' % _short.get(t, t)) if n == 1 else ('%d包%s' % (n, _short.get(t, t)))
+    else:
+        parts = ['%d包%s' % (n, _short.get(t, t)) for t, n in
+                 sorted(cnt_by.items(), key=lambda x: _rank.get(x[0], 0), reverse=True)]
+        display = "，".join(parts)
+    return display, spu_max, len(member_types)
+
+
+def combo_member_pkg_types(combo_skus):
+    """从组合SKU明细里收集全部成员货品的包裹类型列表。"""
+    types = []
+    for c in (combo_skus or []):
+        for m in (c.get('kit_members') or []):
+            types.append((m or {}).get('package_type') or 'Unknown')
+    return types
+
+
 def detect_multi_package(skus, spu, sku_to_pkg_type=None):
     """检测多包裹: 按颜色分组, 取最大包裹数
     增强版: 同时返回每个包裹的FedEx类型和展示字符串
@@ -428,8 +465,15 @@ def recompute_product(p, invalid, note=None):
         pending_anomaly=bool(pending), anomaly_count=len(records))
 
     sku_to_pkg = {s['sku']: (s.get('package_type') or 'Unknown') for s in clean}
-    mpc, cpd, disp, maxt = detect_multi_package(
-        [s['sku'] for s in clean], spu, sku_to_pkg)
+    # 2026-10-27 需求: SPU 的所有SKU都是「组合SKU」时, 组合自身无尺寸数据(clean 为空) →
+    # 改按成员货品(套件成员)的包裹类型汇总判断, 否则这里会退化成无意义的「单包Unknown」。
+    _member_types = combo_member_pkg_types(combo_skus)
+    if not clean and _member_types:
+        disp, maxt, mpc = combo_member_pkg_display(_member_types)
+        cpd = {}
+    else:
+        mpc, cpd, disp, maxt = detect_multi_package(
+            [s['sku'] for s in clean], spu, sku_to_pkg)
 
     np_ = dict(p)
     np_['skus'] = normal_skus
