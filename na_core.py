@@ -168,7 +168,11 @@ def sku_source_local_path(kind):
 # ---------------------------------------------------------------------------
 # 3. 共享数据源登记表
 # ---------------------------------------------------------------------------
-# target 文件名必须命中新品盘点侧的 glob 规则；kind 指 SKU&SPU 侧数据源
+# target 文件名即 na_data 里的固定留档名（上传时统一改成这个名字）。
+# 注意：target **不一定**能命中下面各卡自己的 glob（如 Temu_A类报表_共享.xlsx
+# 在 POSIX 语义下命中不了 *temu_a*.xlsx，Windows 因 fnmatch 大小写折叠才"看起来"命中）。
+# 因此卡片「当前文件」查询统一走 na_routes._source_file_info()：先 pattern，再退 target 精确名。
+# 新增共享源时请用 fnmatch.fnmatchcase(target, pattern) 自检，别用 fnmatch（本地会骗你）。
 SHARED_SOURCES = [
     {'na_id': 'walmart', 'label': 'Walmart上架链接', 'pattern': '*ItemReport*.csv',
      'target': 'ItemReport_共享.csv', 'kind': 'wm',

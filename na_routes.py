@@ -410,6 +410,29 @@ def _shared_target_name(na_id):
     return next((s['target'] for s in na_core.SHARED_SOURCES if s['na_id'] == na_id), None)
 
 
+def _source_file_info(source):
+    """取某个数据源「当前文件」信息（卡片上显示就绪/未找到就看它）。
+
+    2026-10-29 修复（Temu 上传成功却显示"未找到"）:
+      共享类数据源上传时会被统一改名为 na_core.SHARED_SOURCES 里的固定 target 名，
+      而该 target 不一定能命中 DATA_SOURCES 的 pattern —— 典型如
+      `Temu_A类报表_共享.xlsx` 命中不了 `*temu_a*.xlsx`。
+      Windows 下 fnmatch 会做大小写折叠所以本地测不出来，ECS(Linux) 是大小写敏感的，
+      于是线上就"上传成功、卡片未找到"。
+    处理：pattern 查不到时，对共享类再用 target 精确名查一次（不依赖大小写/通配）。
+    """
+    info = find_current_file(source['pattern'])
+    if info.get('found'):
+        return info
+    if source.get('shared'):
+        tname = _shared_target_name(source['id'])
+        if tname:
+            alt = find_current_file(tname)
+            if alt.get('found'):
+                return alt
+    return info
+
+
 def _cleanup_local_pattern(pattern, keep_name):
     """本地同 pattern 旧文件清理（保留刚上传的这份；云端版在 save_uploaded_file 内已做）。"""
     import fnmatch as _fn
@@ -871,7 +894,7 @@ def index():
     sources_with_files = []
     for s in DATA_SOURCES:
         info = dict(s)
-        info['file'] = find_current_file(s['pattern'])
+        info['file'] = _source_file_info(s)
         if s.get('shared'):
             st = shared_map.get(s['id'], {})
             info['shared_info'] = {
@@ -1318,7 +1341,7 @@ def api_data_sources():
     sources = []
     for s in DATA_SOURCES:
         info = dict(s)
-        info['file'] = find_current_file(s['pattern'])
+        info['file'] = _source_file_info(s)
         if s.get('shared'):
             st = shared_map.get(s['id'], {})
             info['shared_info'] = {
@@ -1395,7 +1418,7 @@ def upload():
             'filename': filename,
             'slim_info': slim_info,
             'cloud_ok': cloud_ok,
-            'cloud_warn': '' if cloud_ok else '云端同步失败: 文件已存本地, 旧数据未删除。请稍后重试上传, 或联系管理员检查 Supabase 配置。',
+            'cloud_warn': '' if cloud_ok else '云端同步失败: 文件已存本地, 旧数据未删除。请稍后重试上传, 或联系管理员检查云端存储配置。',
             'push': push,
         })
     except Exception as e:
