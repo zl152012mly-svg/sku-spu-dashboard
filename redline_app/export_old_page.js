@@ -92,11 +92,13 @@
   const canRead = !!db || !!(appCloud && typeof appCloud.queryUploads === 'function' && appCloud.mode === 'smartpage');
   if (!canRead) {
     window.__RL_EXPORT_RUNNING = false;
-    const msg = '❌ 没找到云表客户端，取不到数据\n\n'
-      + '请确认：你是在 https://workbuddy.link/p/qnbMlfGvsBiwUcU6yzGPoQ 打开的页面，\n'
-      + '而且页面已经显示出数据（能看到 5510 SKU 那种）。\n\n'
-      + '—— 诊断信息 ——\n' + diag.join('\n')
-      + '\npako = ' + (typeof pako);
+    const ti = window.__RL_TARGET_INFO || null;
+    const msg = '❌ 取不到云端数据（脚本找不到云表客户端）\n\n'
+      + '—— 诊断（请把这段截图给 AI）——\n'
+      + '执行窗口: ' + (ti ? ti.how : '(直接粘贴执行，无窗口信息)') + '\n'
+      + diag.join('\n')
+      + '\npako = ' + (typeof pako)
+      + (ti && ti.info ? '\n扫描到的框架:' + ti.info : '');
     console.error('[导出] ' + msg);
     toast(msg, 'err');
     alert(msg);
