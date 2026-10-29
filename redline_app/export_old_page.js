@@ -305,14 +305,41 @@
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  // 不立刻回收：下面的手动保存按钮还要用这个 URL
+  setTimeout(() => URL.revokeObjectURL(url), 30 * 60 * 1000);
+
+  const mb = (text.length / 1024 / 1024).toFixed(2) + ' MB';
+
+  // ---- 保险：页面顶部挂一条手动保存栏（万一 iframe 权限拦了自动下载）----
+  try {
+    const barId = '__rl_save_bar';
+    let bar = document.getElementById(barId);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = barId;
+      bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;'
+        + 'padding:12px 18px;background:#0f172a;color:#fff;text-align:center;'
+        + 'font:14px/1.6 -apple-system,"Microsoft YaHei",sans-serif;'
+        + 'box-shadow:0 4px 16px rgba(0,0,0,.28);';
+      document.body.appendChild(bar);
+    }
+    bar.textContent = '✅ 导出完成（' + sources.length + ' 组 / ' + periods.length + ' 期，' + mb
+      + '）——  没自动下载？点右边这个链接： ';
+    const a2 = document.createElement('a');
+    a2.href = url;
+    a2.download = 'redline_cloud_export.json';
+    a2.textContent = '⬇ 保存 redline_cloud_export.json';
+    a2.style.cssText = 'color:#fff;font-weight:700;text-decoration:underline;margin-left:4px;';
+    if (bar.appendChild) bar.appendChild(a2);
+  } catch (e2) { /* 保底失败不影响主流程 */ }
 
   const summary = '✅ 导出完成，文件已开始下载：\n'
     + '· 数据源 ' + sources.length + ' 组（原始记录 ' + upRecs.length + ' 条）\n'
     + '· 历史期 ' + periods.length + ' 期（原始记录 ' + perRecs.length + ' 条）\n'
     + '· 解压失败 ' + badCount + ' 组\n'
-    + '· 文件大小 ' + (text.length / 1024 / 1024).toFixed(2) + ' MB\n\n'
+    + '· 文件大小 ' + mb + '\n\n'
     + '文件名：redline_cloud_export.json\n'
+    + '⚠ 如果没看到下载：看页面【最顶部】那条黑色横条，点里面的「保存」链接。\n'
     + '下一步：上传到 ECS 的 /root/ 目录，再跑导入命令。';
 
   console.log('%c' + summary, 'color:#16a34a;font-weight:bold');
