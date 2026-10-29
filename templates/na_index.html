@@ -590,18 +590,18 @@ function sharedPanel(s) {
     const si = s.shared_info || {};
     if (si.synced) {
         return '<div class="shared-box">' +
-            '<div class="shared-hd">&#8644; 已共享 · 无需上传</div>' +
-            '<div class="shared-body">来源：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
-            '<div class="shared-body">源文件：<b>' + (si.src_name || '-') + '</b></div>' +
-            '<div class="shared-body">同步于：' + (si.synced_at || '-') + '</div>' +
-            (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">重新同步</button></div>' : '') +
+            '<div class="shared-hd">&#8644; 与 SKU&SPU 清洗看板已同步</div>' +
+            '<div class="shared-body">清洗看板数据源：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
+            '<div class="shared-body">文件：<b>' + (si.src_name || '-') + '</b></div>' +
+            '<div class="shared-body">最近核对：' + (si.synced_at || '-') + '</div>' +
+            (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">重新核对</button></div>' : '') +
             '</div>';
     }
     return '<div class="shared-box warn">' +
-        '<div class="shared-hd">&#9888; 共享源未就绪</div>' +
-        '<div class="shared-body">应来自：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
-        '<div class="shared-body">' + (si.error || '请先在 SKU&SPU 清洗看板上传该表格') + '</div>' +
-        (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">立即同步</button></div>' : '') +
+        '<div class="shared-hd">&#9888; 尚未同步到清洗看板</div>' +
+        '<div class="shared-body">去向：<b>' + (si.src || s.shared_desc || '') + '</b></div>' +
+        '<div class="shared-body">' + (si.error || '可直接在本卡片上传该表格，上传成功后会自动同步到清洗看板') + '</div>' +
+        (isAdmin ? '<div class="shared-actions"><button class="btn tiny" onclick="resyncShared()">从清洗看板取最新</button></div>' : '') +
         '</div>';
 }
 
@@ -650,7 +650,7 @@ function renderCards() {
             <div class="upload-area" id="upload-${s.id}" onclick="document.getElementById('input-${s.id}').click()">
                 <div class="icon">&#128194;</div>
                 <div class="text">点击或拖拽文件上传</div>
-                <div style="font-size:11px;color:#999;margin-top:4px;">${s.shared ? '默认用共享源 · 无需上传；如需提前更新可在此手动覆盖' : ('支持 ' + s.accept)}</div>
+                <div style="font-size:11px;color:#999;margin-top:4px;">${s.shared ? '统一上传入口 · 上传后自动同步到清洗看板（支持 ' + s.accept + '）' : ('支持 ' + s.accept)}</div>
                 <input type="file" id="input-${s.id}" accept="${s.accept}" onchange="uploadFile('${s.id}', this.files[0])">
             </div>
         </div>
@@ -719,6 +719,15 @@ function uploadFile(sourceId, file) {
                     msg += '<br><span style="font-size:12px;color:#856404;">&#9888; ' + data.cloud_warn + '</span>';
                 } else if (data.slim_info && data.slim_info.slimmed) {
                     msg += '<br><span style="font-size:12px;color:#6c757d;">已自动瘦身: ' + data.slim_info.original_mb + 'MB → ' + data.slim_info.slim_mb + 'MB (剥离 ' + data.slim_info.media_count + ' 张图片)</span>';
+                }
+                // 2026-10-29 入口统一: 共享类数据源上传成功后自动反向同步到 SKU&SPU 清洗看板
+                if (data.push && data.push.ok) {
+                    const pr = (data.push.summary && data.push.summary.rows) ? ('，解析 ' + data.push.summary.rows + ' 行') : '';
+                    msg += '<br><span style="font-size:12px;color:#198754;">&#8644; 已自动同步到 SKU&SPU 清洗看板' + pr +
+                           '；到清洗看板点「按当前数据源重算」后生效</span>';
+                } else if (data.push && !data.push.ok && data.push.error) {
+                    msg += '<br><span style="font-size:12px;color:#b02a37;">&#9888; 同步到清洗看板失败：' + escA(data.push.error) +
+                           '<br>（本侧上传已成功；多为文件格式与清洗看板要求不符，修正后重新上传即可）</span>';
                 }
                 area.innerHTML = '<div class="text" style="color:#28a745;">' + msg + '</div>';
                 setTimeout(function() { refreshSources(); }, 1500);

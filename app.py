@@ -133,6 +133,19 @@ except Exception as _na_e:  # 子系统异常不得拖垮主站
     print(_na_tb.format_exc()[-1500:])
     app.config.setdefault('MAX_CONTENT_LENGTH', 250 * 1024 * 1024)
 
+# ---------- 红线价监控模块：蓝图挂载 /redline（Phase 6） ----------
+try:
+    from redline_routes import bp as redline_bp
+    app.register_blueprint(redline_bp)
+    REDLINE_ENABLED = True
+    REDLINE_IMPORT_ERROR = None
+except Exception as _rl_e:  # 子系统异常不得拖垮主站
+    import traceback as _rl_tb
+    REDLINE_ENABLED = False
+    REDLINE_IMPORT_ERROR = '%s: %s' % (type(_rl_e).__name__, _rl_e)
+    print('[app] 红线价监控模块注册失败：%s' % REDLINE_IMPORT_ERROR)
+    print(_rl_tb.format_exc()[-1200:])
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):

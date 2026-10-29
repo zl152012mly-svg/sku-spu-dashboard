@@ -131,6 +131,11 @@ def sku_source_local_path(kind):
         local, fallback = UPLOAD_DIR / 'latest_temu_b.xlsx', 'temu/latest_temu_b'
     elif kind == 'ops':
         local, fallback = UPLOAD_DIR / 'latest_ops.xlsx', 'ops/latest_ops'
+    elif kind == 'admin':
+        # 管理员检查表：清洗侧留档 xlsx/csv 二选一（桥推送后与主看板同格式）
+        local, fallback = UPLOAD_DIR / 'latest_admin.xlsx', 'admin/latest_admin'
+        if not local.exists() and (UPLOAD_DIR / 'latest_admin.csv').exists():
+            local = UPLOAD_DIR / 'latest_admin.csv'
     elif kind == 'ref':
         m = _meta('reference_meta.json')
         if m and m.get('stored'):
@@ -183,6 +188,13 @@ SHARED_SOURCES = [
     {'na_id': 'temu_b', 'label': 'Temu报表(B类·固定COZY店)', 'pattern': '*temu_b*.xlsx',
      'target': 'Temu_B类报表_共享.xlsx', 'kind': 'temu_b',
      'src_desc': 'SKU&SPU 看板 · Temu B 类报表'},
+    # ---- 2026-10-29 入口统一：清洗侧这两类改到系统设置上传，正向同步仅作历史兜底 ----
+    {'na_id': 'admin', 'label': '所有库存货品管理员检查表', 'pattern': '*管理员检查表*.xlsx',
+     'target': '管理员检查表_共享.xlsx', 'kind': 'admin',
+     'src_desc': 'SKU&SPU 看板 · 管理员检查表（品类）'},
+    {'na_id': 'ops', 'label': '产品运营表', 'pattern': '*产品运营表*.xlsx',
+     'target': '产品运营表_共享.xlsx', 'kind': 'ops',
+     'src_desc': 'SKU&SPU 看板 · 产品运营表'},
 ]
 
 _SHARED_MANIFEST = NA_DATA_DIR / '_shared_manifest.json'

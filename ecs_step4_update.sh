@@ -53,9 +53,11 @@ pull auth.py                 auth.py
 pull common_store.py         common_store.py
 pull na_core.py              na_core.py
 pull na_routes.py            na_routes.py
+pull bridge_main.py          bridge_main.py   # 2026-10-29 入口统一: 系统设置→清洗看板反向同步桥
 pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
 pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台
+pull static/app.js           static/app.js
 
 for f in cloud_store process_script new_color_module sku_eval report_script color_dict_seed color_audit new_color_check; do
   pull "na/$f.py" "na/$f.py"
@@ -75,7 +77,7 @@ sleep 5
 
 say "4. 验证结果"
 V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9a-z-]*' | head -1)
-[ -n "$V" ] && ok "版本号: $V  （期望含 20261027-ops）" || bad "取不到版本号，服务可能没起来"
+[ -n "$V" ] && ok "版本号: $V  （期望含 20261029-bridge）" || bad "取不到版本号，服务可能没起来"
 C=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/na/)
 echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件缺失；000/502=服务没起来）"
 K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)

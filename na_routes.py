@@ -289,6 +289,27 @@ DATA_SOURCES = [
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · Temu B 类报表',
         'used_by': ['clean'],
     },
+    # ---- 2026-10-29 入口统一：以下两类此前只有清洗看板能传，现集中到系统设置 ----
+    {
+        'id': 'admin',
+        'name': '所有库存货品管理员检查表',
+        'pattern': '*管理员检查表*.xlsx',
+        'accept': '.xlsx',
+        'desc': 'SKU平台信息管理员检查表（品类回填：唯一SKU/名称 → 品类_3）；'
+                '上传后自动同步到 SKU&SPU 看板，仅集中管理/清洗使用',
+        'shared': True, 'shared_desc': 'SKU&SPU 看板 · 管理员检查表（品类）',
+        'used_by': ['clean'],
+    },
+    {
+        'id': 'ops',
+        'name': '产品运营表',
+        'pattern': '*产品运营表*.xlsx',
+        'accept': '.xlsx',
+        'desc': 'Amazon 店铺运营/运营组查询源（多 sheet，各 sheet 含 SPU/运营/运营组列）；'
+                '上传后自动同步到 SKU&SPU 看板；新品/新色侧运营查询仍优先用款式表',
+        'shared': True, 'shared_desc': 'SKU&SPU 看板 · 产品运营表',
+        'used_by': ['clean'],
+    },
 ]
 
 
@@ -384,6 +405,28 @@ def save_uploaded_file(file, pattern):
     if cloud_ok:
         cloud_store.delete_matching(pattern, cloud_store.BUCKET_UPLOADS, keep_name=filename)
     return filename, slim_info, cloud_ok
+
+
+def _shared_target_name(na_id):
+    """共享类数据源在 na_data 里的固定留档名（与 na_core.SHARED_SOURCES.target 一致）。
+
+    统一固定名的目的：na_data 里该 pattern 永远只有一份文件，
+    避免「_共享.csv」与用户原始文件名并存时 find_file_info 取 sorted[-1] 的歧义。
+    """
+    return next((s['target'] for s in na_core.SHARED_SOURCES if s['na_id'] == na_id), None)
+
+
+def _cleanup_local_pattern(pattern, keep_name):
+    """本地同 pattern 旧文件清理（保留刚上传的这份；云端版在 save_uploaded_file 内已做）。"""
+    import fnmatch as _fn
+    for p in Path(BASE_DIR).glob(pattern):
+        if p.name != keep_name and not p.name.startswith('~$') \
+                and _fn.fnmatch(p.name, pattern):
+            try:
+                p.unlink()
+                print('[upload] 已清理本地旧数据源文件: %s' % p.name)
+            except OSError:
+                pass
 
 
 def run_scripts():
@@ -1331,13 +1374,35 @@ def upload():
     if not source:
         return jsonify({'success': False, 'error': f'未知数据源: {source_id}'})
     try:
+        original_name = file.filename
+        is_shared = bool(source.get('shared'))
+        # 2026-10-29 入口统一: 共享类数据源固定存「_共享」名（该 pattern 仅此一份），
+        # 并在上传成功后自动推送到 SKU&SPU 清洗看板（bridge_main，含同口径解析校验）。
+        if is_shared:
+            _tname = _shared_target_name(source_id)
+            if _tname:
+                file.filename = _tname
         filename, slim_info, cloud_ok = save_uploaded_file(file, source['pattern'])
+        if is_shared:
+            _cleanup_local_pattern(source['pattern'], filename)
+        # 反向同步: 系统设置 → 清洗看板（校验失败/推送失败不影响本侧上传成功）
+        push = None
+        if is_shared:
+            try:
+                import bridge_main
+                push = bridge_main.push_to_main(source_id, str(Path(BASE_DIR) / filename),
+                                                original_name)
+            except Exception as e:
+                push = {'ok': False, 'error': '%s: %s' % (type(e).__name__, e)}
+            print('[upload] 共享源 %s 推送清洗看板: ok=%s %s' %
+                  (source_id, push.get('ok'), push.get('error') or push.get('summary') or ''))
         return jsonify({
             'success': True,
             'filename': filename,
             'slim_info': slim_info,
             'cloud_ok': cloud_ok,
             'cloud_warn': '' if cloud_ok else '云端同步失败: 文件已存本地, 旧数据未删除。请稍后重试上传, 或联系管理员检查 Supabase 配置。',
+            'push': push,
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

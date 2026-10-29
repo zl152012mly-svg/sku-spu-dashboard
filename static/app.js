@@ -234,10 +234,16 @@ document.addEventListener('DOMContentLoaded', () => {
   bindUploadUI();
   bindMissingPanel();
   $$('#btn-download').onclick = () => { authedDownload('/api/download'); };
-  $$('#btn-new').onclick = () => { refreshStatus().then(showUploadPanel); };
+  // 2026-10-29 入口统一: 数据源全部改到【系统设置 → 数据源管理】上传
+  $$('#btn-new').onclick = () => { goConsoleUpload(); };
   $$('#btn-reset').onclick = resetFilters;
-  $$('#btn-ref-change').onclick = () => { refreshStatus().then(showUploadPanel); };
+  $$('#btn-ref-change').onclick = () => { goConsoleUpload(); };
   $$('#btn-rebuild').onclick = () => rebuild($$('#refbar-text'));
+  // 引导卡: 去系统设置上传 / 按当前数据源重算
+  const gu = $$('#btn-guide-upload');
+  if (gu) gu.onclick = () => { goConsoleUpload(); };
+  const gr = $$('#btn-guide-rebuild');
+  if (gr) gr.onclick = () => { rebuild($$('#guide-msg')); };
   // 明细导出：全部 / 按当前筛选结果
   $$('#btn-dl-all').onclick = () => exportCsv(ROWS, 'SKU平台信息_清洗明细_全部');
   $$('#btn-dl-filtered').onclick = exportFiltered;
@@ -404,10 +410,12 @@ return;
 function renderRawInfo() {
   const box = $$('#raw-info');
   const rebuildBtn = $$('#btn-rebuild-raw');
+  const guideRebuild = $$('#btn-guide-rebuild');
   if (!box) return;
   if (!RAW) {
-    box.innerHTML = '<span class="warn">未上传原始报表</span>　—— 上传后会同步为所有用户当前生效的原始数据源。';
+    box.innerHTML = '<span class="warn">未上传原始报表</span>　—— 请到【系统设置 → 数据源管理】上传「套件成员货品」（即原始表）。';
     if (rebuildBtn) rebuildBtn.disabled = true;
+    if (guideRebuild) guideRebuild.disabled = true;
     return;
   }
   const s = RAW.summary || {};
@@ -415,6 +423,7 @@ function renderRawInfo() {
     `<span class="ok">当前生效</span>：<b>${escHtml(RAW.filename || 'latest_raw.csv')}</b>　上传于 ${escHtml(RAW.uploaded_at || '—')}<br>` +
     `原始记录 ${s.rows || 0} 行　｜　字段 ${s.columns || '—'} 列`;
   if (rebuildBtn) rebuildBtn.disabled = false;
+  if (guideRebuild) guideRebuild.disabled = false;
 }
 
 function bindUploadUI() {
@@ -709,6 +718,18 @@ function loadState(msgEl, doneNote) {
 }
 
 /* ---------- 视图切换 ---------- */
+// 2026-10-29 入口统一: 跳转【系统设置 → 数据源管理】上传数据源。
+// 工作台嵌入时: postMessage 同步左侧导航高亮(console 已监听 na-console-nav/view=dm), iframe 自行导航;
+// 独立访问时: 直接整页跳转 /na/?view=dm。
+function goConsoleUpload() {
+  if (window.parent && window.parent !== window) {
+    try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
+    location.href = '/na/?view=dm&embed=1';
+  } else {
+    location.href = '/na/?view=dm';
+  }
+}
+
 function showUploadPanel() {
   $$('#dashboard').classList.add('hide');
   $$('#upload-zone').classList.remove('hide');
@@ -730,7 +751,8 @@ function renderPersistHint() {
         const cloudWarning = st.shared_storage ? '' :
           '<span class="warn">共享云存储未启用：上传文件在服务重启后无法恢复。</span><br>';
         el.innerHTML = cloudWarning + `已有最近一次数据：<b>${escHtml(st.filename || '—')}</b>，生成于 ${escHtml(st.uploaded_at || '—')}，` +
-          `共 ${st.stats && st.stats.total || 0} 行。上传新数据会<b>直接覆盖</b>。` +
+          `共 ${st.stats && st.stats.total || 0} 行。新数据源请到【系统设置 → 数据源管理】上传，` +
+          `同步到这里后点「按当前数据源重算」生效。` +
           `<a href="javascript:;" id="lnk-back">返回看板</a>`;
         const lk = $$('#lnk-back');
         if (lk) lk.onclick = () => {
@@ -751,7 +773,7 @@ function renderPersistHint() {
         };
         el.classList.remove('hide');
       } else {
-        el.innerHTML = '暂无已保存数据，请先上传原始报表。';
+        el.innerHTML = '暂无已保存数据。请先到【系统设置 → 数据源管理】上传数据源，再回到本页点「按当前数据源重算」。';
         el.classList.remove('hide');
       }
     })

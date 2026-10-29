@@ -13,21 +13,41 @@
   <header class="top">
     <div>
       <h1>SKU&SPU 清洗看板</h1>
-      <div class="sub">上传原始「SKU平台信息套件成员货品体现」表格 → 自动清洗 / 打标 / 转单扩展 / 包裹类型判定 → 看板 + 下载</div>
+      <div class="sub">数据源统一在【系统设置 → 数据源管理】上传 → 自动清洗 / 打标 / 转单扩展 / 包裹类型判定 → 看板 + 下载</div>
     </div>
     <div class="toolbar">
       <span id="status-bar"></span>
-      <button class="btn ghost" id="btn-new">重新上传</button>
+      <button class="btn ghost" id="btn-new">上传数据源</button>
       <button class="btn" id="btn-download" disabled>下载清洗结果 CSV</button>
       <a class="btn ghost" href="/console" title="打开统一工作台">工作台 ›</a>
       <span id="download-status" role="status" aria-live="polite"></span>
     </div>
   </header>
 
-  <!-- 上传区 -->
+  <!-- 上传区（2026-10-29 入口统一：数据源全部改到【系统设置 → 数据源管理】上传，本页只作引导与重算） -->
   <section id="upload-zone">
     <div id="persist-hint" class="persist-hint"></div>
-    <div class="steps">
+
+    <!-- 引导卡：替代旧的多步上传面板（旧步骤区 DOM 保留隐藏，兼容既有脚本绑定） -->
+    <div id="upload-guide" class="step">
+      <div class="step-hd"><span class="no">📦</span><h2>数据源已统一在「系统设置 → 数据源管理」上传维护</h2></div>
+      <div class="ref-box">
+        <div class="ref-info">
+          本页不再直接上传文件。转单表、领星清单、Walmart 报表、管理员检查表、原始表、Temu 报表、
+          产品运营表等<b>全部数据源</b>都请到 <b>工作台 → 系统设置</b> 上传；上传成功后会
+          <b>自动同步到本看板</b>，回到这里点「按当前数据源重算」即可生效。
+        </div>
+        <div class="ref-actions">
+          <button class="btn" id="btn-guide-upload">去系统设置上传</button>
+          <button class="btn" id="btn-guide-rebuild">按当前数据源重算</button>
+        </div>
+        <div class="hint">提示：系统设置上传成功后，本看板顶部会出现黄色「数据源已更新」提示条；点右上角「按当前数据源重算」即可刷新看板（大文件重算需要一些时间）。</div>
+        <div id="guide-msg" class="msg"></div>
+      </div>
+    </div>
+
+    <!-- 旧多步上传面板：DOM 保留（兼容既有脚本绑定），不再展示 -->
+    <div class="steps hide">
 
       <!-- 步骤 1：转单表 -->
       <div class="step" id="step-ref">
@@ -144,7 +164,7 @@
       转单表/领星清单/walmart 报表已更新，但当前看板仍是用旧版生成的 —— 点「按当前数据源重算」即可刷新（无需重新上传原始表）。
     </div>
     <div id="ds-stale" class="stale hide">
-      可选数据源（领星清单 / walmart 报表）已更新，但当前看板仍是旧版 —— 点「按当前数据源重算」即可刷新。
+      数据源已更新（系统设置上传的新文件已自动同步到本看板），但当前看板仍是旧版生成的 —— 点「按当前数据源重算」即可刷新。
     </div>
 
     <div class="cards" id="cards"></div>
@@ -275,7 +295,7 @@
 <script src="/static/libs/jquery.min.js"></script>
 <script src="/static/libs/datatables.min.js"></script>
 <script src="/static/libs/echarts.min.js"></script>
-<script src="/static/app.js?v=20261027-ops"></script>
+<script src="/static/app.js?v=20261029-bridge"></script>
 <script>
 // 嵌入模式 (在 /console 框架内): 隐藏顶部工具条，使看板铺满内容区
 (function(){
