@@ -38,7 +38,7 @@
           <b>自动同步到本看板</b>，回到这里点「按当前数据源重算」即可生效。
         </div>
         <div class="ref-actions">
-          <button class="btn" id="btn-guide-upload">去系统设置上传</button>
+          <button class="btn" id="btn-guide-upload" onclick="goConsoleUpload()">去系统设置上传</button>
           <button class="btn" id="btn-guide-rebuild">按当前数据源重算</button>
         </div>
         <div class="hint">提示：系统设置上传成功后，本看板顶部会出现黄色「数据源已更新」提示条；点右上角「按当前数据源重算」即可刷新看板（大文件重算需要一些时间）。</div>
@@ -304,6 +304,18 @@
     if (h) h.style.display = 'none';
   }
 })();
+// 2026-10-29 兜底: 若 app.js 版本错配(旧缓存/未更新)未定义 goConsoleUpload,
+// 在此内联定义, 保证「去系统设置上传」按钮(内联 onclick)始终可用。
+if (typeof window.goConsoleUpload !== 'function') {
+  window.goConsoleUpload = function(){
+    if (window.parent && window.parent !== window) {
+      try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
+      location.href = '/na/?view=dm&embed=1';
+    } else {
+      location.href = '/na/?view=dm';
+    }
+  };
+}
 </script>
 </body>
 </html>

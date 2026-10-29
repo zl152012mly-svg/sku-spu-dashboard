@@ -193,7 +193,8 @@ DATA_SOURCES = [
         'name': '增长产品清单',
         'pattern': '增长产品清单*.xlsx',
         'accept': '.xlsx',
-        'desc': '增长产品, 含sofa/dining/RBAC三个sheet (上传后自动瘦身)',
+        'desc': '增长产品, 含sofa/dining/RBAC三个sheet (上传后自动瘦身剥离产品图)。'
+                '⚠️ 原始版体积大(几十MB含图片), 上传易中断——建议先删掉图片/冗余列再传',
         'used_by': ['na'],   # 用途: 新品跟进
     },
     {
@@ -289,7 +290,7 @@ DATA_SOURCES = [
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · Temu B 类报表',
         'used_by': ['clean'],
     },
-    # ---- 2026-10-29 入口统一：以下两类此前只有清洗看板能传，现集中到系统设置 ----
+    # ---- 2026-10-29 入口统一：以下数据源此前只有清洗看板能传，现集中到系统设置 ----
     {
         'id': 'admin',
         'name': '所有库存货品管理员检查表',
@@ -300,16 +301,9 @@ DATA_SOURCES = [
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 管理员检查表（品类）',
         'used_by': ['clean'],
     },
-    {
-        'id': 'ops',
-        'name': '产品运营表',
-        'pattern': '*产品运营表*.xlsx',
-        'accept': '.xlsx',
-        'desc': 'Amazon 店铺运营/运营组查询源（多 sheet，各 sheet 含 SPU/运营/运营组列）；'
-                '上传后自动同步到 SKU&SPU 看板；新品/新色侧运营查询仍优先用款式表',
-        'shared': True, 'shared_desc': 'SKU&SPU 看板 · 产品运营表',
-        'used_by': ['clean'],
-    },
+    # 注: 产品运营表不设独立上传卡(2026-10-29 用户确认维持方案A合并) ——
+    #     运营/运营组查询沿用「款式表」尾部「AMZ组」「综合组-AMZ」sheet, 一次上传双用;
+    #     清洗侧若有历史单独上传的 ops 文件, 仍优先生效(na_core/bridge 保留 ops 通道)。
 ]
 
 

@@ -33,21 +33,21 @@
     </div>
     <div class="nav-menu" id="navMenu">
       {% if is_admin %}
-      <div class="nav-item active" data-src="/?embed=1&v=c5" onclick="go(this)">
+      <div class="nav-item active" data-src="/?embed=1&v=c6" onclick="go(this)">
         <span class="ico">🧹</span><span>SKU&SPU数据清洗</span>
       </div>
       <div class="nav-item" data-src="/redline/?embed=1&v=r1" onclick="go(this)">
         <span class="ico">📉</span><span>红线价监控</span>
       </div>
       {% endif %}
-      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c5" onclick="go(this)">
+      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c6" onclick="go(this)">
         <span class="ico">📦</span><span>新品上架跟进</span>
       </div>
-      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c5" onclick="go(this)">
+      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c6" onclick="go(this)">
         <span class="ico">🎨</span><span>新色上架跟进</span>
       </div>
       {% if is_admin %}
-      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c5" onclick="go(this)">
+      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c6" onclick="go(this)">
         <span class="ico">⚙️</span><span>系统设置</span>
       </div>
       {% endif %}
@@ -58,7 +58,7 @@
     </div>
   </div>
   <div class="content">
-    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c5{% else %}/na/?view=xp&embed=1&v=c5{% endif %}"></iframe>
+    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c6{% else %}/na/?view=xp&embed=1&v=c6{% endif %}"></iframe>
   </div>
 </div>
 <script>

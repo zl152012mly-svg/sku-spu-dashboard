@@ -736,13 +736,17 @@ function uploadFile(sourceId, file) {
                 area.innerHTML = origHTML;
             }
         } catch (e) {
-            alert('上传失败: 服务器返回无效响应 (HTTP ' + xhr.status + ')\n\n可能是服务器正在冷启动, 请等待 30 秒后重试');
+            alert('上传失败: 服务器返回无效响应 (HTTP ' + xhr.status + ')\n\n可能是服务器正在重启, 请等待 30 秒后重试');
             area.innerHTML = origHTML;
         }
     };
 
     xhr.onerror = function() {
-        alert('上传失败: 网络错误\n\n可能原因:\n1. 服务器正在冷启动 (Render 免费版 15 分钟无访问会休眠, 唤醒需约 30 秒)\n2. 网络连接中断\n\n请等待 30 秒后重试');
+        alert('上传失败: 网络错误\n\n可能原因:\n'
+            + '1. 文件过大上传中被中断（本次约 ' + sizeMB + ' MB）——大表格建议先删掉图片列/冗余列再传\n'
+            + '2. 网络连接中断，或公司网络限制大文件上传\n'
+            + '3. 服务器正在重启，请等待 30 秒后重试\n\n'
+            + '提示: 系统部署在阿里云服务器，上传大文件请尽量在公司网络空闲时段进行');
         area.innerHTML = origHTML;
     };
 
@@ -773,7 +777,7 @@ function refreshSources(manual, attempt) {
             }
         })
         .catch(function() {
-            if (tip) tip.textContent = '状态刷新失败(服务可能冷启动中), 请稍后重试';
+            if (tip) tip.textContent = '状态刷新失败(服务可能正在重启), 请稍后重试';
             if (!manual && attempt < 2) {
                 setTimeout(function() { refreshSources(false, attempt + 1); }, 2000);
             }

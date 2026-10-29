@@ -189,12 +189,11 @@ SHARED_SOURCES = [
      'target': 'Temu_B类报表_共享.xlsx', 'kind': 'temu_b',
      'src_desc': 'SKU&SPU 看板 · Temu B 类报表'},
     # ---- 2026-10-29 入口统一：清洗侧这两类改到系统设置上传，正向同步仅作历史兜底 ----
+    # 注: ops 不进 SHARED_SOURCES —— 产品运营表维持方案A(款式表尾部 sheet 兼用),
+    #     系统设置不设独立上传卡; 此处保留 kind 通道供清洗侧历史 ops 文件正向兜底。
     {'na_id': 'admin', 'label': '所有库存货品管理员检查表', 'pattern': '*管理员检查表*.xlsx',
      'target': '管理员检查表_共享.xlsx', 'kind': 'admin',
      'src_desc': 'SKU&SPU 看板 · 管理员检查表（品类）'},
-    {'na_id': 'ops', 'label': '产品运营表', 'pattern': '*产品运营表*.xlsx',
-     'target': '产品运营表_共享.xlsx', 'kind': 'ops',
-     'src_desc': 'SKU&SPU 看板 · 产品运营表'},
 ]
 
 _SHARED_MANIFEST = NA_DATA_DIR / '_shared_manifest.json'
