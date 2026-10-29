@@ -968,6 +968,8 @@
           <span id="priceFixSummary" class="hint-note" style="margin:0;">暂无人工填价记录</span>
           <button id="resyncPriceFixBtn" class="btn btn-primary">同步到云端</button>
           <button id="exportPriceFixBtn" class="btn btn-primary">导出台账</button>
+          <button id="importPriceFixBtn" class="btn btn-primary">导入台账CSV</button>
+          <input type="file" id="importPriceFixFile" accept=".csv,.txt,.xlsx,.xls" style="display:none;">
         </div>
         <div class="table-wrap">
           <table id="priceFixTable">
@@ -3815,6 +3817,120 @@ function exportPriceFixData() {
   });
 }
 
+/* ---- 导入人工填价台账（CSV / XLSX）--------------------------------------
+ * 场景：从旧资料库页面「导出台账」拿到的 CSV，导入到本系统，免去逐条手敲。
+ * 兼容点：
+ *   - 只认表头文字，不依赖列顺序；表头允许出现在前 8 行内（上面有标题行也能认）
+ *   - 平台列兼容中文标签（Amazon/Walmart/Temu）与内部代码（AMAZON/...）
+ *   - 幂等：同 (平台,店铺,SKU) 覆盖更新，不会重复堆叠
+ *   - 导入后立刻重算（静默），并写回本机 + 云端
+ * ---------------------------------------------------------------------- */
+function priceFixPlatformFromLabel(v) {
+  const s = clean(v);
+  if (!s) return '';
+  if (PLATFORM_LABEL[s]) return s;                                  // 传的就是代码
+  const hit = Object.keys(PLATFORM_LABEL).filter(k => clean(PLATFORM_LABEL[k]) === s)[0];
+  return hit || '';
+}
+
+function importPriceFixRows(rows) {
+  if (!rows || !rows.length) return { error: '文件是空的' };
+  let hIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 8); i++) {
+    const cells = (rows[i] || []).map(c => String(c == null ? '' : c));
+    if (cells.some(c => /sku/i.test(c))) { hIdx = i; break; }
+  }
+  if (hIdx < 0) return { error: '找不到表头（至少要有一列含 SKU）' };
+  const H = (rows[hIdx] || []).map(c => clean(c));
+  const findCol = re => { for (let i = 0; i < H.length; i++) { if (re.test(H[i])) return i; } return -1; };
+  const iSku = findCol(/SKU/);
+  const iPlat = findCol(/^平台$|PLATFORM/);
+  const iStore = findCol(/^店铺$|STORE/);
+  const iPrice = findCol(/人工填价|填价|^价格$|PRICE/);
+  const iAt = findCol(/填入时间|^时间$|^AT$/);
+  if (iSku < 0 || iPrice < 0) return { error: '缺少必要的列：上架SKU / 人工填价' };
+
+  if (!state.priceFix) state.priceFix = {};
+  let added = 0, updated = 0, skipped = 0;
+  const reasons = {};
+  const bump = k => { reasons[k] = (reasons[k] || 0) + 1; };
+
+  for (let r = hIdx + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const sku = clean(row[iSku]);
+    if (!sku) { skipped++; continue; }
+    const plat = iPlat >= 0 ? priceFixPlatformFromLabel(row[iPlat]) : '';
+    if (!plat) { skipped++; bump('平台无法识别'); continue; }
+    const store = iStore >= 0 ? clean(row[iStore]) : '';
+    const price = toNum(row[iPrice]);
+    if (price === null || price <= 0) { skipped++; bump('价格无效/为空'); continue; }
+    const key = priceFixKey(plat, store, sku);
+    const had = state.priceFix[key];
+    state.priceFix[key] = {
+      price: +price.toFixed(2),
+      platform: plat,
+      store: store,
+      sku: sku,
+      at: (iAt >= 0 && String(row[iAt] == null ? '' : row[iAt]).trim()) || new Date().toISOString(),
+      note: ''
+    };
+    if (had) updated++; else added++;
+  }
+  return { added, updated, skipped, reasons };
+}
+
+async function importPriceFixFromFile(file) {
+  if (!file) return;
+  const name = file.name || '';
+  const isText = /\.(csv|txt)$/i.test(name);
+  let rows;
+  try {
+    rows = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('读取文件失败'));
+      fr.onload = () => {
+        try {
+          const wb = isText
+            ? XLSX.read(String(fr.result || '').replace(/^\uFEFF/, ''), { type: 'string' })
+            : XLSX.read(new Uint8Array(fr.result), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          resolve(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }));
+        } catch (e) { reject(e); }
+      };
+      if (isText) fr.readAsText(file, 'UTF-8');
+      else fr.readAsArrayBuffer(file);
+    });
+  } catch (e) {
+    toast('⚠ 读取文件失败：' + (e && e.message || e));
+    return;
+  }
+
+  const r = importPriceFixRows(rows);
+  if (r.error) { toast('⚠ 导入失败：' + r.error); return; }
+  if (!r.added && !r.updated) {
+    toast('⚠ 没有可导入的记录（跳过 ' + r.skipped + ' 条）');
+    return;
+  }
+
+  savePriceFixLocal();
+  if (Cloud.available) cloudSave(SRC_PRICEFIX, '', 'pricefix', undefined, true);
+  try { renderPriceFixList(); } catch (e) { console.error('renderPriceFixList', e); }
+  doCalc({ skipHistory: true, silent: true });
+
+  let msg = '✓ 台账已导入：新增 ' + r.added + ' 条，更新 ' + r.updated + ' 条';
+  if (r.skipped) msg += '，跳过 ' + r.skipped + ' 条';
+  msg += '；台账现有 ' + priceFixCount() + ' 条';
+  toast(msg);
+  console.log('[导入台账]', r);
+}
+
+function importPriceFixData() {
+  const inp = $('importPriceFixFile');
+  if (!inp) { toast('⚠ 找不到文件输入框'); return; }
+  inp.value = '';
+  inp.click();
+}
+
 /* ---- 人工填价交互 ---- */
 async function savePriceFromInput(input) {
   const sku = input.dataset.sku, platform = input.dataset.platform, store = input.dataset.store;
@@ -4163,6 +4279,14 @@ if (priceFixBodyEl) {
 }
 const exportPriceFixBtn = $('exportPriceFixBtn');
 if (exportPriceFixBtn) exportPriceFixBtn.addEventListener('click', exportPriceFixData);
+// 导入台账 CSV：从旧页面「导出台账」拿到的文件，一键搬过来
+const importPriceFixBtn = $('importPriceFixBtn');
+if (importPriceFixBtn) importPriceFixBtn.addEventListener('click', importPriceFixData);
+const importPriceFixFile = $('importPriceFixFile');
+if (importPriceFixFile) importPriceFixFile.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) importPriceFixFromFile(f);
+});
 // 手动重推到共享空间：云端字段选项缺失等情况导致保存失败时可一键补推
 const resyncPriceFixBtn = $('resyncPriceFixBtn');
 if (resyncPriceFixBtn) resyncPriceFixBtn.addEventListener('click', async () => {
