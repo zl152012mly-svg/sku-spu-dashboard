@@ -46,6 +46,7 @@
   }
 
   // 防重复执行：控制台里误粘两次会跑两遍、下载两个文件
+  window.__RL_LOADED = true;   // 供「一行加载器」的心跳检测用
   if (window.__RL_EXPORT_RUNNING) {
     toast('⏳ 导出已经在运行了，请看这里的进度（别重复粘贴）');
     return;
