@@ -24,19 +24,51 @@
   const DB_UP = 'o8eueNCSALEFaEvwEOrsLp';   // 红线价-上传数据
   const DB_PER = 'qYAZ8rShRGqSLyWLQbtWXP';  // 红线价-历史期
 
+  // ---- 页面右下角提示条：让不熟悉控制台的人也能看到「有反应」 ----
+  function toast(text, kind) {
+    try {
+      const id = '__rl_exp_toast';
+      let el = document.getElementById(id);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = id;
+        el.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2147483647;'
+          + 'max-width:520px;max-height:70vh;overflow:auto;'
+          + 'padding:14px 16px;border-radius:12px;white-space:pre-wrap;'
+          + 'font:14px/1.65 -apple-system,"Microsoft YaHei",sans-serif;color:#fff;'
+          + 'box-shadow:0 10px 30px rgba(0,0,0,.22);background:#2563eb;';
+        document.body.appendChild(el);
+      }
+      el.style.background = kind === 'ok' ? '#16a34a' : (kind === 'err' ? '#dc2626' : '#2563eb');
+      el.textContent = text;
+      return el;
+    } catch (e) { return null; }
+  }
+
+  // 防重复执行：控制台里误粘两次会跑两遍、下载两个文件
+  if (window.__RL_EXPORT_RUNNING) {
+    toast('⏳ 导出已经在运行了，请看这里的进度（别重复粘贴）');
+    return;
+  }
+  window.__RL_EXPORT_RUNNING = true;
+
   const db = (window.__SMART_PAGE__ && window.__SMART_PAGE__.database) || null;
   if (!db) {
+    window.__RL_EXPORT_RUNNING = false;
     console.error('[导出] 没检测到资料库 SDK。请确认：① 当前就是 workbuddy.link/p/ 公开页；② 页面已正常加载出数据。');
+    toast('❌ 没检测到资料库 SDK\n\n请在 workbuddy.link/p/ 这个公开页面上执行本脚本\n（不要在编辑器预览页、也不要在新系统 8092 页面执行）', 'err');
     alert('没检测到资料库 SDK —— 请在 workbuddy.link/p/ 这个公开页面上执行本脚本。');
     return;
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  toast('⏳ 已启动，正在连接云端数据库…');
 
   async function queryAll(databaseId, name) {
     const all = [];
     let cursor = '';
     for (let page = 1; page <= 500; page++) {
+      if (page === 1 || page % 3 === 0) toast('⏳ 正在读取「' + name + '」…\n已读 ' + all.length + ' 条记录，请稍等（不要关页面）');
       const res = await db.query({ databaseId, pageSize: 200, startCursor: cursor || undefined });
       const rs = (res && res.results) || [];
       all.push.apply(all, rs);
@@ -183,7 +215,7 @@
     const msg = '有 ' + badCount + ' 组数据解压失败（见控制台表格里「解压」列）。\n'
       + '这说明云端确实存在拼接错乱/残缺记录。\n'
       + '建议：先把这张表格截图给 AI 看，再决定是否导入（失败组会被跳过，不影响其他组）。\n\n仍要继续下载吗？';
-    if (!confirm(msg)) return;
+    if (!confirm(msg)) { window.__RL_EXPORT_RUNNING = false; return; }
   }
 
   const payload = {
@@ -213,13 +245,26 @@
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 8000);
 
-  const summary = '导出完成：\n'
+  const summary = '✅ 导出完成，文件已开始下载：\n'
     + '· 数据源 ' + sources.length + ' 组（原始记录 ' + upRecs.length + ' 条）\n'
     + '· 历史期 ' + periods.length + ' 期（原始记录 ' + perRecs.length + ' 条）\n'
-    + '· 失败 ' + badCount + ' 组\n'
+    + '· 解压失败 ' + badCount + ' 组\n'
     + '· 文件大小 ' + (text.length / 1024 / 1024).toFixed(2) + ' MB\n\n'
     + '文件名：redline_cloud_export.json\n'
-    + '下一步：上传到 ECS /root/ 后执行导入命令。';
+    + '下一步：把它上传到 ECS 的 /root/ 目录，再跑导入命令。';
   console.log('%c' + summary, 'color:#16a34a;font-weight:bold');
+  window.__RL_EXPORT_RUNNING = false;
+  toast(summary, 'ok');
   alert(summary);
-})();
+})().catch((e) => {
+  window.__RL_EXPORT_RUNNING = false;
+  console.error('[导出] 出错：', e);
+  try {
+    const d = document.getElementById('__rl_exp_toast');
+    if (d) {
+      d.style.background = '#dc2626';
+      d.textContent = '❌ 导出出错：' + (e && e.message ? e.message : e)
+        + '\n\n请把控制台里红色的报错截图发给 AI。';
+    }
+  } catch (_) {}
+});
