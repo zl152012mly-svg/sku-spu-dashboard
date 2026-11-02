@@ -538,8 +538,15 @@
   /* 首屏加载遮罩：避免「空白 / 全部未上传」被误判为没数据 */
   #rdLoading { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(241,245,249,.92); }
   #rdLoading.on { display: flex; }
-  #rdLoading .box { text-align: center; color: #1e293b; font-size: 14px; }
+  #rdLoading .box { text-align: center; color: #1e293b; font-size: 14px; max-width: 460px; padding: 0 20px; }
   #rdLoading .spin { width: 34px; height: 34px; margin: 0 auto 12px; border: 3px solid #cbd5e1; border-top-color: #2563eb; border-radius: 50%; animation: rdspin .8s linear infinite; }
+  #rdLoading .rlerr { display: none; margin-top: 10px; color: #b91c1c; font-size: 13px; line-height: 1.6; word-break: break-all; }
+  #rdLoading.fail .spin { display: none; }
+  #rdLoading.fail .rlerr { display: block; }
+  #rdLoading .rlbtns { display: none; gap: 8px; justify-content: center; margin-top: 14px; }
+  #rdLoading.has-btns .rlbtns { display: flex; }
+  #rdLoading .rlbtns button { padding: 6px 14px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #1e293b; font-size: 13px; cursor: pointer; }
+  #rdLoading .rlbtns button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   @keyframes rdspin { to { transform: rotate(360deg); } }
 
   /* ===== Sticky 筛选 + 表头 ===== */
@@ -699,7 +706,7 @@
 </style>
 </head>
 <body>
-<div id="rdLoading"><div class="box"><div class="spin"></div><div id="rdLoadingText">正在加载数据…</div></div></div>
+<div id="rdLoading"><div class="box"><div class="spin"></div><div id="rdLoadingText">正在加载数据…</div><div class="rlerr" id="rdLoadingErr"></div><div class="rlbtns"><button type="button" class="primary" id="rdRetry">重新加载</button><button type="button" id="rdSkip">先用本机缓存</button></div></div></div>
 <div id="cdnWarn" style="display:none; background:#fff3cd; color:#7a5b00; padding:10px 24px; font-size:13px; text-align:center;">
   ⚠️ 检测到外部组件（Excel解析/图表库）加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新页面
 </div>
@@ -1161,7 +1168,7 @@ const SRC_REDLINE = '红线价表', SRC_MAPPING = 'SKU平台信息表', SRC_AMAZ
  * 未注入时（本地 / 旧页面）按 admin 处理，行为不变。 */
 const RL_ROLE = String((window.REDLINE_ROLE || 'admin')).toLowerCase();
 const RL_IS_ADMIN = RL_ROLE === 'admin';
-const RL_ALLOWED_MODULES = { dashboard: 1, detail: 1, history: 1 };
+const RL_ALLOWED_MODULES = { dashboard: 1, detail: 1, history: 1, abnormal: 1 };
 
 const Cloud = {
   mode: 'smartpage',          // 实际在本块之后按运行环境判定（smartpage / rest / none）
@@ -1170,8 +1177,9 @@ const Cloud = {
   available: false,           // 定义后按 mode 重算
   queryUploads: async function () {
     if (this.mode === 'rest') {
-      const arr = await fetch(this.apiBase + '/sources').then(function (r) { return r.json(); });
-      return arr || [];
+      const arr = await this._fetch('/sources', null, 20000);
+      if (!Array.isArray(arr)) throw new Error('数据源列表格式异常' + (arr && arr.msg ? '：' + arr.msg : ''));
+      return arr;
     }
     if (!this.db) return [];
     const all = [];
@@ -1186,8 +1194,9 @@ const Cloud = {
   },
   queryPeriods: async function () {
     if (this.mode === 'rest') {
-      const arr = await fetch(this.apiBase + '/periods').then(function (r) { return r.json(); });
-      return arr || [];
+      const arr = await this._fetch('/periods', null, 20000);
+      if (!Array.isArray(arr)) throw new Error('期次列表格式异常' + (arr && arr.msg ? '：' + arr.msg : ''));
+      return arr;
     }
     if (!this.db) return [];
     const all = [];
@@ -1235,11 +1244,26 @@ const Cloud = {
     return r[cn[key]];
   },
   _id: function (r) { return r._id !== undefined ? r._id : r.id; },
-  _restPost: function (url, body) {
-    return fetch(this.apiBase + url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(function (r) {
-      if (!r.ok) throw new Error('REST ' + url + ' -> ' + r.status);
+  /* 带超时的 fetch。浏览器原生 fetch 没有默认超时：后端（gunicorn workers=1）一旦被
+     某个大请求卡住，前端就会「永远转圈」—— 线上「一直显示正在读取云端数据源」就是这个
+     形态。超时后抛 Error，交由 cloudLoadAll / boot 的 catch 走失败态 UI。 */
+  _fetch: function (url, opts, timeoutMs) {
+    const ms = timeoutMs || 20000;
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = setTimeout(function () { try { if (ctrl) ctrl.abort(); } catch (e) {} }, ms);
+    const o = Object.assign({}, opts || {}, ctrl ? { signal: ctrl.signal } : {});
+    return fetch(this.apiBase + url, o).then(function (r) {
+      clearTimeout(timer);
+      if (!r.ok) { const err = new Error('HTTP ' + r.status); err.status = r.status; throw err; }
       return r.json();
+    }).catch(function (e) {
+      clearTimeout(timer);
+      if (e && e.name === 'AbortError') { const err = new Error('请求超时（' + (ms >= 1000 ? Math.round(ms / 1000) + ' 秒' : ms + ' 毫秒') + '无响应）'); err.timeout = true; throw err; }
+      throw e;
     });
+  },
+  _restPost: function (url, body, timeoutMs) {
+    return this._fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, timeoutMs || 60000);
   },
   // 保存一个数据源（覆盖语义：删除同源同店同文件旧记录 → 写入新记录；fileId 用于区分多个 Temu 文件）
   // 全部保存/删除走同一条 promise 链串行执行：并发上传时两次「查→删→写」交错会漏删旧记录，
@@ -1544,15 +1568,25 @@ async function cloudLoadAll() {
       const g = restoreGroupRecords(groups[key]);
       if (!g.obj) { console.error('云端数据解压失败，跳过该数据源', key); return; }
       const parts = key.split('\u0001');
-      restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || '');
+      // 单个数据源坏掉不该拖垮整页：解压成功但字段异常时隔离掉，其余照常恢复
+      try { restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || ''); }
+      catch (e) { console.error('数据源恢复失败，已跳过', key, e); }
       if (g.multi) healGroups.push({ src: parts[0], store: parts[1] || '', fileId: parts[2] || '', obj: g.obj });
     });
-    // 自愈：把残留多代的组用最新代数据重写一遍（saveSource 会删同组全部旧记录），云端自动清脏
-    if (healGroups.length && RL_IS_ADMIN) {   // 运营无写权限，跳过自愈重写
-      console.info('检测到云端重复记录，自动清理 ' + healGroups.length + ' 组');
-      for (const h of healGroups) await Cloud.saveSource(h.src, h.store, h.obj, h.fileId || undefined);
+    /* 自愈：残留多代的组用最新代重写（saveSource 会删同组全部旧记录）。
+       写回要打多次大请求，绝不能卡在首屏关键路径上 —— 改为计算完成后再后台串行跑，
+       否则「读」阶段会被写拖住，正是线上长时间停在「正在读取云端数据源…」的原因之一。 */
+    if (healGroups.length && RL_IS_ADMIN) {
+      console.info('检测到云端重复记录，稍后自动清理 ' + healGroups.length + ' 组');
+      setTimeout(async () => {
+        for (const h of healGroups) {
+          try { await Cloud.saveSource(h.src, h.store, h.obj, h.fileId || undefined); }
+          catch (e) { console.warn('自愈回写失败（忽略）', h.src, e); }
+        }
+      }, 2500);
     }
     // 历史期（最多4期，按期次分块拼接；同样防多代残留）
+    setLoadingText('正在读取历史期次…');
     const periods = await Cloud.queryPeriods();
     const pg = {};
     periods.forEach(r => { const k = Cloud._f(r, 'period') || 0; (pg[k] = pg[k] || []).push(r); });
@@ -1563,7 +1597,9 @@ async function cloudLoadAll() {
       const first = g.recs[0] || {};
       return { id: Number(k), date: Cloud._f(first, 'date') || '', label: Cloud._f(first, 'label') || '', rows: (g.obj && g.obj.rows) || [] };
     }).sort((a, b) => b.id - a.id);
-    if (periodsMulti && _periods.length && Cloud.available && RL_IS_ADMIN) await Cloud.syncPeriods(_periods); // 清理历史期脏记录（仅 admin）
+    if (periodsMulti && _periods.length && Cloud.available && RL_IS_ADMIN) {
+      setTimeout(() => { Cloud.syncPeriods(_periods).catch(() => {}); }, 3000);   // 同样移出关键路径
+    }
     // 云端为空时回退到本地存储（防止云端同步尚未完成或失败时丢失已保存的期）
     if (!_periods.length) {
       try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); } catch (e) { _periods = []; }
@@ -1578,9 +1614,9 @@ async function cloudLoadAll() {
       }
     }
     renderPeriodPanel();
-    // 数据齐全 → 自动计算
+    // 数据齐全 → 自动计算（等算完再撤遮罩，否则会出现「数据已到但表格还空着」的错觉）
     setLoadingText('正在计算红线价…');
-    if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) doCalc();
+    if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) await doCalc();
   } finally {
     _cloudRestoring = false;
   }
@@ -1596,10 +1632,59 @@ function bannerText(msg, cloudOn) {
 }
 
 const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600); };
-/* 首屏加载遮罩：避免云端数据未到位时把页面「空白 / 全部未上传」误判成没数据 */
-function showLoading(text) { const el = $('rdLoading'); if (!el) return; const t = $('rdLoadingText'); if (t && text) t.textContent = text; el.classList.add('on'); }
-function setLoadingText(text) { const t = $('rdLoadingText'); if (t && text) t.textContent = text; }
-function hideLoading() { const el = $('rdLoading'); if (el) el.classList.remove('on'); }
+/* 首屏加载遮罩：避免云端数据未到位时把页面「空白 / 全部未上传」误判成没数据。
+   线上出现过「一直显示正在读取云端数据源…」——原生 fetch 无超时 + 写回堵在读阶段，
+   页面被永久盖住且没有任何出口。现在：① 秒数实时可见（能判断卡在哪段）
+   ② 20s 起给「先用本机缓存」出口 ③ 失败/超时进入 fail 态，给「重新加载」。 */
+let _rlLoadBase = '', _rlLoadTimer = null, _rlLoadStart = 0, _rlLoadDone = false;
+function _rlRenderLoadText() {
+  const t = $('rdLoadingText');
+  if (!t) return;
+  const sec = Math.floor((Date.now() - _rlLoadStart) / 1000);
+  t.textContent = _rlLoadBase + (sec >= 2 ? '（已 ' + sec + ' 秒）' : '');
+  const el = $('rdLoading');
+  if (el && sec >= 20 && !el.classList.contains('fail')) el.classList.add('has-btns');
+}
+function showLoading(text) {
+  const el = $('rdLoading');
+  if (!el) return;
+  _rlLoadDone = false;
+  _rlLoadStart = Date.now();
+  _rlLoadBase = text || '正在加载数据…';
+  el.classList.remove('fail');
+  el.classList.add('on');
+  const e2 = $('rdLoadingErr'); if (e2) e2.textContent = '';
+  clearInterval(_rlLoadTimer);
+  _rlRenderLoadText();
+  _rlLoadTimer = setInterval(_rlRenderLoadText, 1000);
+}
+function setLoadingText(text) { if (text) _rlLoadBase = text; _rlRenderLoadText(); }
+function hideLoading() {
+  _rlLoadDone = true;
+  clearInterval(_rlLoadTimer); _rlLoadTimer = null;
+  const el = $('rdLoading');
+  if (el) { el.classList.remove('on'); el.classList.remove('fail'); el.classList.remove('has-btns'); }
+}
+// 失败/超时态：保留遮罩（避免看起来像「没有数据」），但把原因和出口给出来
+function failLoading(msg) {
+  clearInterval(_rlLoadTimer); _rlLoadTimer = null;
+  const el = $('rdLoading');
+  if (!el) return;
+  el.classList.add('on', 'fail', 'has-btns');
+  const e2 = $('rdLoadingErr');
+  if (e2) e2.textContent = msg || '云端数据加载失败';
+  const t = $('rdLoadingText');
+  if (t) t.textContent = '云端数据没能加载完成';
+}
+(function bindLoadingActions() {
+  const r = $('rdRetry'), s = $('rdSkip');
+  if (r) r.addEventListener('click', () => { try { location.reload(); } catch (e) {} });
+  if (s) s.addEventListener('click', () => {
+    hideLoading();
+    try { toast('已跳过云端加载，当前显示本机缓存数据'); } catch (e) {}
+    try { applyRoleRestrictions(); } catch (e) {}
+  });
+})();
 const clean = s => (s === null || s === undefined) ? '' : String(s).replace(/^\s+|\s+$/g, '').toUpperCase();
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -3240,13 +3325,19 @@ function applyRoleRestrictions() {
       el.setAttribute('aria-hidden', 'true');
     }
   });
-  ['upload', 'abnormal'].forEach(m => {
+  // 只有「数据上传」整块不可见；异常模块对运营开放为**只读**
+  ['upload'].forEach(m => {
     const el = document.getElementById('module-' + m);
     if (el) { el.classList.remove('active'); el.classList.add('rl-hide'); el.style.setProperty('display', 'none', 'important'); }
   });
+  // 写操作入口一律隐藏（后端 _admin_only 也会拦，但别让运营点了才报 403）
+  ['resyncPriceFixBtn', 'importPriceFixBtn', 'importPriceFixFile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.setProperty('display', 'none', 'important');
+  });
 }
 function switchModule(name) {
-  // 运营（sub）只能看看板 / SKU明细 / 趋势分析，其余模块直接忽略
+  // 运营（sub）只能看看板 / SKU明细 / 趋势分析 / 异常（只读），其余模块直接忽略
   if (!RL_IS_ADMIN && !RL_ALLOWED_MODULES[name]) return;
   // 更新导航高亮
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module === name));
@@ -3324,6 +3415,7 @@ function pushPeriod(label, rows) {
 }
 /* 撤回某期历史：本机删除 + 云端重写（syncPeriods 会先清空历史期记录再回写剩余期） */
 function removePeriod(idx) {
+  if (!RL_IS_ADMIN) { toast('⚠ 运营账号只读，不能撤回历史期'); return; }
   const p = _periods[idx];
   if (!p) return;
   _periods.splice(idx, 1);
@@ -3364,7 +3456,7 @@ function renderPeriodPanel() {
   if (!_periods.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${i === 0 ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>
+    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -3441,7 +3533,7 @@ function renderPriceFixList() {
           <td><b>${fmtMoney(f.price)}</b></td>
           <td>${fmtTime(f.at)}</td>
           <td>${actTxt}</td>
-          <td><button class="btn-mini" data-act="clear" data-key="${esc(f.key)}">清除</button></td>
+          <td>${RL_IS_ADMIN ? `<button class="btn-mini" data-act="clear" data-key="${esc(f.key)}">清除</button>` : '<span class="hint-note" style="margin:0;">—</span>'}</td>
         </tr>`;
       }).join('')
     : '<tr><td colspan="7" class="empty">暂无人工填价记录</td></tr>';
@@ -3463,13 +3555,17 @@ function renderAbnormal() {
           const info = parseAbnormalDetail(r.priceDetail);
           const cur = getPriceFix(r.platform, r.store, r.sku);
           const extra = r.priceDetail && /人工填价/.test(String(r.priceDetail)) ? ' <span class="tag-manual">人工</span>' : '';
+          // 运营（只读）：不渲染输入框，避免看着能填、填了 403
+          const fixCell = RL_IS_ADMIN
+            ? `<input class="price-input" type="text" inputmode="decimal" placeholder="填入实际售价" value="${cur && cur.price != null ? cur.price : ''}"
+            data-sku="${esc(r.sku)}" data-platform="${esc(r.platform)}" data-store="${esc(r.store)}" title="填入后回车即保存并重新计算">
+          ${cur ? `<button class="btn-mini" data-act="clear" data-key="${esc(priceFixKey(r.platform, r.store, r.sku))}" style="margin-left:6px;">清除</button>` : ''}`
+            : (cur && cur.price != null ? `<b>${fmtMoney(cur.price)}</b> <span class="hint-note" style="margin:0;">（人工）</span>` : '<span class="hint-note" style="margin:0;">—</span>');
           return `<tr>
         <td>${esc(r.sku)}</td><td>${PLATFORM_LABEL[r.platform] || esc(r.platform)}</td><td>${esc(r.store)}</td>
         <td>${esc(info.reason)}${extra}</td><td>${esc(info.raw)}</td>
         <td>${esc(r.srcStatus || '—')}</td>
-        <td><input class="price-input" type="text" inputmode="decimal" placeholder="填入实际售价" value="${cur && cur.price != null ? cur.price : ''}"
-            data-sku="${esc(r.sku)}" data-platform="${esc(r.platform)}" data-store="${esc(r.store)}" title="填入后回车即保存并重新计算">
-          ${cur ? `<button class="btn-mini" data-act="clear" data-key="${esc(priceFixKey(r.platform, r.store, r.sku))}" style="margin-left:6px;">清除</button>` : ''}</td>
+        <td>${fixCell}</td>
       </tr>`;
         }).join('')
       : '<tr><td colspan="7" class="empty">无价格异常数据</td></tr>';
@@ -4031,6 +4127,7 @@ async function importPriceFixFromFile(file) {
 }
 
 function importPriceFixData() {
+  if (!RL_IS_ADMIN) { toast('⚠ 运营账号只读，不能导入台账'); return; }
   const inp = $('importPriceFixFile');
   if (!inp) { toast('⚠ 找不到文件输入框'); return; }
   inp.value = '';
@@ -4039,6 +4136,7 @@ function importPriceFixData() {
 
 /* ---- 人工填价交互 ---- */
 async function savePriceFromInput(input) {
+  if (!RL_IS_ADMIN) { toast('⚠ 运营账号只读，不能修改人工填价'); return; }
   const sku = input.dataset.sku, platform = input.dataset.platform, store = input.dataset.store;
   const rawVal = String(input.value == null ? '' : input.value).trim();
   const key = priceFixKey(platform, store, sku);
@@ -4059,6 +4157,7 @@ async function savePriceFromInput(input) {
 }
 
 async function clearPriceFix(key) {
+  if (!RL_IS_ADMIN) { toast('⚠ 运营账号只读，不能清除人工填价'); return; }
   if (!state.priceFix[key]) return;
   delete state.priceFix[key];
   cloudSave(SRC_PRICEFIX, '', 'pricefix', undefined, true);
@@ -4093,7 +4192,7 @@ function renderTrendInit() {
   const list = $('trendPeriodList');
   if (!_periods.length) { list.innerHTML = '<span class="upload-hint">暂无历史数据。请先在数据上传页点击「调整分析」保存上期数据。</span>'; return; }
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${_selectedPeriods.includes(i) ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>
+    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -4503,16 +4602,35 @@ function waitLibs(timeoutMs) {
   // 角色限制「立刻」生效：不等数据加载完成，避免运营在慢加载期间看到全部模块
   applyRoleRestrictions();
   if (!RL_IS_ADMIN) switchModule('dashboard');
-  // 遮罩兜底：网络挂起等极端情况下 90s 后强制解除，避免页面被永久盖住
-  if (Cloud.available) { showLoading('正在从云端加载数据…'); setTimeout(hideLoading, 90000); }
+  // 遮罩兜底：60s 还没完成 → 进入失败态（有「重新加载 / 先用本机缓存」出口），不再无限转圈
+  if (Cloud.available) {
+    showLoading('正在从云端加载数据…');
+    setTimeout(() => {
+      const el = $('rdLoading');
+      if (el && el.classList.contains('on') && !el.classList.contains('fail')) {
+        failLoading('云端响应超过 60 秒仍未完成，后端可能繁忙。可点「重新加载」再试，或先看本机缓存。');
+      }
+    }, 60000);
+  }
   const libsOk = await waitLibs(15000);
+  // 外部组件没加载成功 → 云端数据根本没法解压，与其空转不如直接说清楚（过去这里会白屏/空表）
+  if (Cloud.available && !libsOk) {
+    try { const w = document.getElementById('cdnWarn'); if (w) w.style.display = 'block'; } catch (e) {}
+    failLoading('外部组件（pako / xlsx / echarts）加载失败，无法解析云端数据。\n请确认本机网络能访问 unpkg.com 或 jsdelivr.net，然后点「重新加载」。');
+    loadPeriods(); loadHistory();
+    applyRoleRestrictions();
+    if (!RL_IS_ADMIN) switchModule('dashboard');
+    return;
+  }
   if (Cloud.available) {
     bannerText(RL_IS_ADMIN
       ? '☁️ 云端共享模式：数据实时保存到共享空间，多人可同时查看和编辑同一份数据'
       : '☁️ 云端共享模式：数据只读，实时同步管理员上传的最新数据', true);
-    try { await cloudLoadAll(); }
-    catch (e) { console.error('云端加载失败', e); toast('⚠ 云端数据加载失败：' + e.message); }
-    finally { hideLoading(); }
+    try { await cloudLoadAll(); hideLoading(); }
+    catch (e) {
+      console.error('云端加载失败', e);
+      failLoading('云端数据加载失败：' + ((e && e.message) || e) + '\n（后端单进程 worker，若有别人正在上传大文件，稍等后点「重新加载」即可）');
+    }
     // 存量 Walmart 全列记录：静默回写裁剪版（只跑一次；下次带 cols 元信息就不再触发）
     if (RL_IS_ADMIN && _wmtNeedsShrink) {
       _wmtNeedsShrink = false;
