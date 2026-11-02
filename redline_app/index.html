@@ -435,12 +435,6 @@
   .filters label { font-size: 12.5px; color: var(--muted); }
   .filters select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font-size: 13px; }
   .filters input[type=search] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 220px; }
-  .chips { display: flex; gap: 6px; }
-  .chip { padding: 5px 12px; border-radius: 20px; font-size: 12.5px; cursor: pointer; border: 1px solid var(--border); background: #fff; user-select: none; }
-  .chip.active { border-color: transparent; }
-  .chip.red.active { background: var(--red); color: #fff; } .chip.yellow.active { background: var(--yellow); color: #fff; }
-  .chip.green.active { background: var(--green); color: #fff; } .chip.orange.active { background: var(--orange); color: #fff; }
-  .chip.gray.active { background: var(--gray); color: #fff; } .chip.purple.active { background: #7c3aed; color: #fff; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { background: #f0f3f9; text-align: left; padding: 9px 10px; font-weight: 600; white-space: nowrap; border-bottom: 2px solid var(--border); }
@@ -883,17 +877,10 @@
       <div class="module-title">📋 SKU明细表</div>
       <div class="sticky-filters">
         <div class="filters">
-          <div class="chips" id="statusChips">
-            <span class="chip purple active" data-s="abnormal">价格异常</span>
-            <span class="chip red active" data-s="breach">破线</span>
-            <span class="chip orange active" data-s="missing">缺红线价</span>
-            <span class="chip gray active" data-s="nobom">无映射</span>
-            <span class="chip yellow active" data-s="warning">临界</span>
-            <span class="chip green active" data-s="normal">正常</span>
-            <span class="chip all" id="chipAllStatus" title="一键把 6 个状态全部打开（= 不按状态筛选）">↺ 全部状态</span>
-          </div>
+          <div class="fgroup"><label>状态</label><div class="ms" id="msStatus" data-ph="全部状态"><button type="button" class="ms-btn"><span class="ms-label">全部状态</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
           <div class="fgroup"><label>平台</label><div class="ms" id="msPlatform" data-ph="全部平台"><button type="button" class="ms-btn"><span class="ms-label">全部平台</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
           <div class="fgroup"><label>店铺</label><div class="ms" id="msStore" data-ph="全部店铺"><button type="button" class="ms-btn"><span class="ms-label">全部店铺</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
+          <div class="fgroup"><label>链接状态</label><div class="ms" id="msLinkStatus" data-ph="全部链接状态"><button type="button" class="ms-btn"><span class="ms-label">全部链接状态</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
           <div class="fgroup"><label>运营</label><div class="ms" id="msOp" data-ph="全部运营"><button type="button" class="ms-btn"><span class="ms-label">全部运营</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
           <div class="fgroup"><label>运营组</label><div class="ms" id="msOg" data-ph="全部运营组"><button type="button" class="ms-btn"><span class="ms-label">全部运营组</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div></div>
           <input type="search" id="fSearch" placeholder="搜索上架SKU / 库存SKU…">
@@ -1412,6 +1399,16 @@ function restoreSource(src, store, obj, fileId) {
       state.redLine.aoa = obj.aoa || [];
       state.redLine.headers = obj.headers || [];
       state.redLine.config = obj.config || { skuCol: 0, sellerCol: 3, temuUsCol: 4, temuNewCol: 5, xuanDdpCol: -1, biaoDdpCol: -1, startRow: 2 };
+      /* 老记录（DDP 自动识别是后加的功能）里没有 biaoDdpCol/xuanDdpCol 这两个键 →
+         恢复后值为 undefined，整张表的「标准DDP / 选用DDP / DDP趋势」会静默变成空，
+         且不报任何错。这里补跑一次自动识别。
+         只补「键缺失」，不动用户显式选的 -1（= 该表确实没有此列）。 */
+      const _cfg = state.redLine.config;
+      if (_cfg.biaoDdpCol === undefined || _cfg.xuanDdpCol === undefined) {
+        autoMapDdpCols(state.redLine);
+        if (_cfg.biaoDdpCol === undefined) _cfg.biaoDdpCol = -1;
+        if (_cfg.xuanDdpCol === undefined) _cfg.xuanDdpCol = -1;
+      }
       applyRedLine();
       renderRedLineConfig();
     } else if (src === SRC_MAPPING) {
@@ -2948,8 +2945,19 @@ function msSetOptions(id, opts) {
 // 初始化全部多选筛选（onChange 绑到各自的渲染函数）
 function initMultiSelects() {
   const detail = () => { _pg.page = 1; renderTable(); };
+  // 状态：固定 6 项（空选 = 不按状态过滤）
+  msInit('msStatus', detail);
+  msSetOptions('msStatus', [
+    { value: 'abnormal', label: '价格异常' },
+    { value: 'breach', label: '破线' },
+    { value: 'missing', label: '缺红线价' },
+    { value: 'nobom', label: '无映射' },
+    { value: 'warning', label: '临界' },
+    { value: 'normal', label: '正常' },
+  ]);
   msInit('msPlatform', detail);
   msInit('msStore', detail);
+  msInit('msLinkStatus', detail);
   msInit('msOp', detail);
   msInit('msOg', detail);
   msInit('msStoreAbnormal', () => renderAbnormal());
@@ -2965,13 +2973,22 @@ function initMultiSelects() {
   }
 }
 
-let curStatus = ['abnormal', 'breach', 'warning', 'normal', 'missing', 'nobom'];
+const ALL_STATUS = ['abnormal', 'breach', 'missing', 'nobom', 'warning', 'normal'];
+// 状态筛选：空选 = 不按状态过滤（与平台/店铺/链接状态下拉口径一致）
+function activeStatuses() {
+  const s = msGet('msStatus');
+  return s.length ? s : ALL_STATUS.slice();
+}
 function renderFilters(rows) {
   const plats = [...new Set(rows.map(r => r.platform))];
   const stores = [...new Set(rows.map(r => r.platform + '|' + r.store))].map(k => k.split('|')).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));
   // 多选下拉：平台 / 店铺（保留已勾选值，失效项自动丢弃）
   msSetOptions('msPlatform', plats.map(p => ({ value: p, label: PLATFORM_LABEL[p] || p })));
   msSetOptions('msStore', stores.map(s => ({ value: s[0] + '|' + s[1], label: (PLATFORM_LABEL[s[0]] || s[0]) + ' · ' + s[1] })));
+  // 链接状态下拉：清单里的实际值（空值单独一项）
+  const links = [...new Set(rows.map(r => String(r.linkStatus == null ? '' : r.linkStatus).trim()))]
+    .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'zh-Hans-CN')));
+  msSetOptions('msLinkStatus', links.map(v => ({ value: v, label: v === '' ? '（空 / 无状态）' : v })));
   // 运营 / 运营组下拉
   const ops = [...new Set(rows.map(r => r.operator))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'zh-Hans-CN'));
   const ogs = [...new Set(rows.map(r => r.operatorGroup))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'zh-Hans-CN'));
@@ -2984,12 +3001,15 @@ function renderFilters(rows) {
 
 function filteredRows() {
   const rows = state.result.rows;
+  const fst = activeStatuses();
   const fp = msGet('msPlatform'), fs = msGet('msStore'), q = clean($('fSearch').value);
+  const fl = msGet('msLinkStatus');
   const fop = msGet('msOp'), fog = msGet('msOg');
   return rows.filter(r => {
-    if (!curStatus.includes(r.status)) return false;
+    if (fst.indexOf(r.status) < 0) return false;
     if (fp.length && fp.indexOf(r.platform) < 0) return false;
     if (fs.length && fs.indexOf(r.platform + '|' + r.store) < 0) return false;
+    if (fl.length && fl.indexOf(String(r.linkStatus == null ? '' : r.linkStatus).trim()) < 0) return false;
     if (fop.length && fop.indexOf(r.operator) < 0) return false;
     if (fog.length && fog.indexOf(r.operatorGroup) < 0) return false;
     if (q) {
@@ -3155,23 +3175,8 @@ function bindExpand() {
 /* ================= 筛选事件 ================= */
 function bindFilters() {
   const resetAndRender = () => { _pg.page = 1; renderTable(); };
-  const chipSel = '#statusChips .chip[data-s]';
-  document.querySelectorAll(chipSel).forEach(chip => {
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('active');
-      curStatus = [...document.querySelectorAll(chipSel + '.active')].map(c => c.dataset.s);
-      resetAndRender();
-    });
-  });
-  // 一键恢复「全部状态」：状态筛选是多选开关，容易只剩一两个而不知情（导出会跟着变少）
-  const allBtn = $('chipAllStatus');
-  if (allBtn) allBtn.addEventListener('click', () => {
-    document.querySelectorAll(chipSel).forEach(c => c.classList.add('active'));
-    curStatus = [...document.querySelectorAll(chipSel + '.active')].map(c => c.dataset.s);
-    resetAndRender();
-    toast('✓ 已恢复全部 6 个状态：显示 ' + filteredRows().length.toLocaleString() + ' 条');
-  });
-  ['fSearch'].forEach(id => $(id).addEventListener('input', resetAndRender));
+  // 状态 / 链接状态改用 .ms 多选下拉（onChange 已在 initMultiSelects 绑定），这里只留搜索框
+  ['fSearch'].forEach(id => { const el = $(id); if (el) el.addEventListener('input', resetAndRender); });
 }
 
 /* ================= 导出 ================= */
@@ -3518,15 +3523,16 @@ const PUBLIC_PAGE_URL = 'https://workbuddy.link/p/qnbMlfGvsBiwUcU6yzGPoQ';
 // 明细导出的「当前筛选」文字描述（用于弹窗里说明为什么只有 N 行）
 function describeDetailScope() {
   const parts = [];
-  const all = ['abnormal', 'breach', 'warning', 'normal', 'missing', 'nobom'];
-  const picked = (curStatus || []).filter(s => all.indexOf(s) >= 0);
-  if (picked.length && picked.length < all.length) {
+  // 状态下拉：空选 = 全部（activeStatuses 已归一化为全 6 项），故长度小于全集才说明用户在筛
+  const picked = activeStatuses().filter(s => ALL_STATUS.indexOf(s) >= 0);
+  if (picked.length && picked.length < ALL_STATUS.length) {
     parts.push('状态：' + picked.map(s => (STATUS_META[s] && STATUS_META[s].label) || s).join(' / '));
   }
   const brief = (arr, fmt) => (arr.length <= 3 ? arr.map(fmt) : arr.slice(0, 3).map(fmt).concat(['…等 ' + arr.length + ' 项']));
   try {
     const fp = msGet('msPlatform'); if (fp.length) parts.push('平台：' + brief(fp, p => PLATFORM_LABEL[p] || p).join('/'));
     const fs = msGet('msStore'); if (fs.length) parts.push('店铺：' + brief(fs, s => String(s).split('|')[1] || s).join('/'));
+    const fl = msGet('msLinkStatus'); if (fl.length) parts.push('链接状态：' + brief(fl, x => x || '（空）').join('/'));
     const fop = msGet('msOp'); if (fop.length) parts.push('运营：' + brief(fop, x => x).join('/'));
     const fog = msGet('msOg'); if (fog.length) parts.push('运营组：' + brief(fog, x => x).join('/'));
   } catch (e) { /* 忽略 */ }
