@@ -4425,7 +4425,9 @@ function waitLibs(timeoutMs) {
 (async () => {
   const libsOk = await waitLibs(15000);
   if (Cloud.available) {
-    bannerText('☁️ 云端共享模式：数据实时保存到共享空间，多人可同时查看和编辑同一份数据', true);
+    bannerText(RL_IS_ADMIN
+      ? '☁️ 云端共享模式：数据实时保存到共享空间，多人可同时查看和编辑同一份数据'
+      : '☁️ 云端共享模式：数据只读，实时同步管理员上传的最新数据', true);
     try { await cloudLoadAll(); }
     catch (e) { console.error('云端加载失败', e); toast('⚠ 云端数据加载失败：' + e.message); }
   } else {
