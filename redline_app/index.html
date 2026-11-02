@@ -4453,7 +4453,8 @@ function waitLibs(timeoutMs) {
   // 角色限制「立刻」生效：不等数据加载完成，避免运营在慢加载期间看到全部模块
   applyRoleRestrictions();
   if (!RL_IS_ADMIN) switchModule('dashboard');
-  if (Cloud.available) showLoading('正在从云端加载数据…');
+  // 遮罩兜底：网络挂起等极端情况下 90s 后强制解除，避免页面被永久盖住
+  if (Cloud.available) { showLoading('正在从云端加载数据…'); setTimeout(hideLoading, 90000); }
   const libsOk = await waitLibs(15000);
   if (Cloud.available) {
     bannerText(RL_IS_ADMIN
