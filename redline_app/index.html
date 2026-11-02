@@ -537,6 +537,16 @@
   #module-abnormal.w-module.active,
   #module-detail.w-module.active, #module-history.w-module.active { display: block !important; }
   .module-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+  /* 店铺列固定宽度：以 US-AMAZON-HOME NEST-KH 为标准，超长（Temu 多站点）省略，鼠标悬停看全称 */
+  .store-clip { max-width: 185px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 运营无权模块：硬隐藏，优先于任何 display 声明 */
+  .rl-hide { display: none !important; }
+  /* 首屏加载遮罩：避免「空白 / 全部未上传」被误判为没数据 */
+  #rdLoading { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(241,245,249,.92); }
+  #rdLoading.on { display: flex; }
+  #rdLoading .box { text-align: center; color: #1e293b; font-size: 14px; }
+  #rdLoading .spin { width: 34px; height: 34px; margin: 0 auto 12px; border: 3px solid #cbd5e1; border-top-color: #2563eb; border-radius: 50%; animation: rdspin .8s linear infinite; }
+  @keyframes rdspin { to { transform: rotate(360deg); } }
 
   /* ===== Sticky 筛选 + 表头 ===== */
   .sticky-filters {
@@ -695,6 +705,7 @@
 </style>
 </head>
 <body>
+<div id="rdLoading"><div class="box"><div class="spin"></div><div id="rdLoadingText">正在加载数据…</div></div></div>
 <div id="cdnWarn" style="display:none; background:#fff3cd; color:#7a5b00; padding:10px 24px; font-size:13px; text-align:center;">
   ⚠️ 检测到外部组件（Excel解析/图表库）加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新页面
 </div>
@@ -1373,7 +1384,13 @@ function restoreSource(src, store, obj, fileId) {
       applyRedLine();
       renderRedLineConfig();
     } else if (src === SRC_MAPPING) {
-      if (obj.csvText) {
+      // 云端已保存解析结果（raw/headers）：直接用，避免每次打开都 XLSX 重解析 6 万行 CSV
+      // ——这是首屏空白/「全部未上传」等待过久的主因（旧逻辑只要有 csvText 就重解析）
+      if (obj.raw && obj.raw.length) {
+        state.mapping.raw = obj.raw;
+        state.mapping.headers = (obj.headers && obj.headers.length) ? obj.headers : Object.keys(obj.raw[0] || {});
+        state.mapping.csvText = obj.csvText || null;
+      } else if (obj.csvText) {
         const wb = XLSX.read(obj.csvText, { type: 'string' });
         const { rows, headers } = sheetToRows(wb);
         state.mapping.csvText = obj.csvText; state.mapping.raw = rows; state.mapping.headers = headers;
@@ -1477,6 +1494,7 @@ function restoreGroupRecords(recs) {
 }
 async function cloudLoadAll() {
   _cloudRestoring = true;
+  setLoadingText('正在读取云端数据源…');
   const healGroups = []; // 检测到多代残留的组：恢复后用最新代重写，清掉云端脏记录
   try {
     const uploads = await Cloud.queryUploads();
@@ -1525,6 +1543,7 @@ async function cloudLoadAll() {
     }
     renderPeriodPanel();
     // 数据齐全 → 自动计算
+    setLoadingText('正在计算红线价…');
     if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) doCalc();
   } finally {
     _cloudRestoring = false;
@@ -1541,6 +1560,10 @@ function bannerText(msg, cloudOn) {
 }
 
 const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600); };
+/* 首屏加载遮罩：避免云端数据未到位时把页面「空白 / 全部未上传」误判成没数据 */
+function showLoading(text) { const el = $('rdLoading'); if (!el) return; const t = $('rdLoadingText'); if (t && text) t.textContent = text; el.classList.add('on'); }
+function setLoadingText(text) { const t = $('rdLoadingText'); if (t && text) t.textContent = text; }
+function hideLoading() { const el = $('rdLoading'); if (el) el.classList.remove('on'); }
 const clean = s => (s === null || s === undefined) ? '' : String(s).replace(/^\s+|\s+$/g, '').toUpperCase();
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -3034,7 +3057,7 @@ function renderRow(r) {
       <td>${opSel(r, 'operatorGroup')}</td>
       <td style="font-weight:600;">${r.sku}</td>
       <td>${PLATFORM_LABEL[r.platform] || r.platform}</td>
-      <td>${r.store}</td>
+      <td><div class="store-clip" title="${esc(r.store)}">${r.store}</div></td>
       <td>${r.linkStatus || '—'}</td>
       <td>${r.biaoDdp === null || r.biaoDdp === undefined ? '—' : fmtMoney(r.biaoDdp)}</td>
       <td>${r.xuanDdp === null || r.xuanDdp === undefined ? '—' : fmtMoney(r.xuanDdp)}</td>
@@ -3162,11 +3185,15 @@ function startModuleGuard(name) {
 function applyRoleRestrictions() {
   if (RL_IS_ADMIN) return;
   document.querySelectorAll('.nav-item[data-module]').forEach(el => {
-    if (!RL_ALLOWED_MODULES[el.dataset.module]) el.style.display = 'none';
+    if (!RL_ALLOWED_MODULES[el.dataset.module]) {
+      el.classList.add('rl-hide');
+      el.style.setProperty('display', 'none', 'important');
+      el.setAttribute('aria-hidden', 'true');
+    }
   });
   ['upload', 'abnormal'].forEach(m => {
     const el = document.getElementById('module-' + m);
-    if (el) { el.classList.remove('active'); el.style.setProperty('display', 'none', 'important'); }
+    if (el) { el.classList.remove('active'); el.classList.add('rl-hide'); el.style.setProperty('display', 'none', 'important'); }
   });
 }
 function switchModule(name) {
@@ -4423,6 +4450,10 @@ function waitLibs(timeoutMs) {
 }
 // 云端优先：资料库环境 → 加载共享数据；否则本地模式
 (async () => {
+  // 角色限制「立刻」生效：不等数据加载完成，避免运营在慢加载期间看到全部模块
+  applyRoleRestrictions();
+  if (!RL_IS_ADMIN) switchModule('dashboard');
+  if (Cloud.available) showLoading('正在从云端加载数据…');
   const libsOk = await waitLibs(15000);
   if (Cloud.available) {
     bannerText(RL_IS_ADMIN
@@ -4430,6 +4461,7 @@ function waitLibs(timeoutMs) {
       : '☁️ 云端共享模式：数据只读，实时同步管理员上传的最新数据', true);
     try { await cloudLoadAll(); }
     catch (e) { console.error('云端加载失败', e); toast('⚠ 云端数据加载失败：' + e.message); }
+    finally { hideLoading(); }
   } else {
     bannerText(libsOk ? '⚠️ 本地模式：数据仅保存在当前浏览器。发布到「资料库」后自动切换为云端共享模式' : '⚠️ 外部组件加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新', false);
     loadPeriods();
@@ -4439,6 +4471,9 @@ function waitLibs(timeoutMs) {
     if (Object.keys(localFix).length) { state.priceFix = localFix; renderPriceFixList(); }
   }
   if (!libsOk) { const w = document.getElementById('cdnWarn'); if (w) w.style.display = 'block'; }
+  // 数据到位后再收敛一次权限 + 定位默认模块
+  applyRoleRestrictions();
+  if (!RL_IS_ADMIN) switchModule('dashboard');
   // 延迟确保平台初始化完成后再强制显示上传模块
   setTimeout(() => {
     // 修复 platform 嵌套：把模块从嵌套结构中移到 .content 下（platform 嵌套发生在初始化时，此后不再干预）
