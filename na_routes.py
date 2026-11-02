@@ -200,10 +200,12 @@ DATA_SOURCES = [
     {
         'id': 'style',
         'name': '款式表',
-        'pattern': '款式表.xlsx',
+        'pattern': '款式表*.xlsx',
         'accept': '.xlsx',
-        'desc': '上架汇总-US, 蓝色=待上架新品',
-        'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进 (故意不与清洗共用)
+        'desc': '上架汇总-US, 蓝色=待上架新品；尾部「AMZ组」「综合组-AMZ」sheet 兼作'
+                '清洗看板产品运营表（方案A），上传后自动同步',
+        'shared': True, 'shared_desc': 'SKU&SPU 看板 · 产品运营表（方案A：款式表兼作运营源）',
+        'used_by': ['na', 'nc', 'clean'],   # 用途: 新品跟进 + 新色跟进 + 数据清洗(运营查询)
     },
     {
         'id': 'sku_dims',
@@ -301,9 +303,10 @@ DATA_SOURCES = [
         'shared': True, 'shared_desc': 'SKU&SPU 看板 · 管理员检查表（品类）',
         'used_by': ['clean'],
     },
-    # 注: 产品运营表不设独立上传卡(2026-10-29 用户确认维持方案A合并) ——
+    # 注: 产品运营表不设独立上传卡 —— 方案A（2026-10-27 用户确认, 2026-11-02 落地桥接）:
     #     运营/运营组查询沿用「款式表」尾部「AMZ组」「综合组-AMZ」sheet, 一次上传双用;
-    #     清洗侧若有历史单独上传的 ops 文件, 仍优先生效(na_core/bridge 保留 ops 通道)。
+    #     款式表上传时经 bridge_main(na_id='style'→ops 通道) 直推清洗看板 latest_ops.xlsx,
+    #     清洗侧若有历史单独上传的 ops 文件, 会被新一次款式表上传覆盖(以款式表为准)。
 ]
 
 

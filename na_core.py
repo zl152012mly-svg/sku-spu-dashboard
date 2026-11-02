@@ -198,6 +198,13 @@ SHARED_SOURCES = [
     {'na_id': 'admin', 'label': '所有库存货品管理员检查表', 'pattern': '*管理员检查表*.xlsx',
      'target': '管理员检查表_共享.xlsx', 'kind': 'admin',
      'src_desc': 'SKU&SPU 看板 · 管理员检查表（品类）'},
+    # ---- 2026-11-02 方案A落地: 款式表兼作清洗看板「产品运营表」 ----
+    # 款式表上传时统一固定名 款式表.xlsx（process_script.regenerate_style_json 按此名读），
+    # 并经 bridge_main 推送为清洗侧运营源（na_id='style' → 复用 ops 通道写 latest_ops.xlsx）。
+    # forward=False: 正向同步(清洗→新品)跳过此源 —— 清洗侧没有"款式表"数据源，只有运营查询沿用。
+    {'na_id': 'style', 'label': '款式表', 'pattern': '款式表*.xlsx',
+     'target': '款式表.xlsx', 'kind': 'style', 'forward': False,
+     'src_desc': 'SKU&SPU 看板 · 产品运营表（方案A：款式表兼作运营源）'},
 ]
 
 _SHARED_MANIFEST = NA_DATA_DIR / '_shared_manifest.json'
@@ -254,6 +261,12 @@ def sync_shared_sources(force=False):
     for s in SHARED_SOURCES:
         item = {'na_id': s['na_id'], 'label': s['label'], 'target': s['target'],
                 'ok': False, 'msg': '', 'bytes': 0}
+        if s.get('forward') is False:
+            # 反向同步源（款式表）: 上传时由 bridge_main 直推清洗看板，正向无需拉取
+            item['ok'] = True
+            item['msg'] = '反向同步源（上传时直推清洗看板），无需正向拉取'
+            results.append(item)
+            continue
         try:
             src = sku_source_local_path(s['kind'])
             if not src or not Path(src).exists():

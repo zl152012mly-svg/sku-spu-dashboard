@@ -258,7 +258,7 @@ def _update_ds_meta(kind, entry, temu_entry=None):
 def push_to_main(na_id, src_path, original_name):
     """把 na_data 里已上传的共享数据源推送到清洗看板存储。
 
-    na_id: suite / listing / walmart / admin / ops / transfer / temu_a / temu_b
+    na_id: suite / listing / walmart / admin / ops / transfer / temu_a / temu_b / style(→ops)
     src_path: na_data 里刚上传的文件（本地路径）
     original_name: 用户上传时的原始文件名（写进 meta 展示）
 
@@ -267,6 +267,13 @@ def push_to_main(na_id, src_path, original_name):
     """
     res = {'ok': False, 'kind': na_id, 'filename': original_name or '',
            'summary': None, 'cloud_error': '', 'error': ''}
+    # 方案A（2026-11-02）: 款式表兼作清洗看板「产品运营表」——
+    # 复用 ops 通道（validate_ops: load_ops + validate_ops_book 均已兼容款式表尾部
+    # 「AMZ组」「综合组-AMZ」sheet）→ 写 latest_ops.xlsx + ops_meta.json + OBJ_OPS。
+    # 效果: 清洗看板产品运营表直接显示款式表上传记录, 且历史 latest_ops.xlsx 被新上传覆盖
+    #（消除「历史独立运营表永远优先于款式表」的隐性陷阱）。
+    if na_id == 'style':
+        na_id = 'ops'
     src_path = str(src_path)
     if not os.path.exists(src_path):
         res['error'] = '源文件不存在：%s' % src_path

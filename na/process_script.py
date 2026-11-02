@@ -562,11 +562,14 @@ def regenerate_style_json():
     读取: SPU(A) / 新SPU-1(B) / 新SPU-2(C) / 新SPU-3(D) / 运营组(E) / 运营(F)
     + SPU列背景色(蓝色FF0A43FF=待上架)
     """
-    xlsx_path = BASE_DIR / "款式表.xlsx"
+    # 2026-11-02: 改通配查找（find_data_file 已被 na_core 重定向到 na_data/）。
+    # 原来写死 BASE_DIR/"款式表.xlsx"——用户上传「款式表_款.xlsx」这类改名文件时
+    # 会静默跳过 JSON 重新生成，导致「待上架新品(蓝色)」一直是旧数据。
+    xlsx_path = find_data_file("款式表*.xlsx")
     json_path = BASE_DIR / "款式表_完整数据.json"
 
-    if not xlsx_path.exists():
-        print("[WARNING] 款式表.xlsx 未找到, 跳过JSON重新生成")
+    if not xlsx_path or not Path(str(xlsx_path)).exists():
+        print("[WARNING] 款式表*.xlsx 未找到, 跳过JSON重新生成")
         return False
 
     try:
