@@ -1348,12 +1348,43 @@ Cloud.mode = (window.__SMART_PAGE__ && window.__SMART_PAGE__.database) ? 'smartp
 Cloud.available = Cloud.mode !== 'none';
 Cloud.apiBase = window.REDLINE_API_BASE || '/api';
 
+/* Walmart 只存「计算用得到」的列：mapped 指向的列 + ALIAS 能自动识别的列。
+   Walmart ItemReport 有 55 列，计算/展示只用到其中 8 列左右；其余全是白占体积
+   （实测 2.10MB b64 → 127KB，省 93.9%）。保留 ALIAS 命中列，是为了老记录 restore 时
+   仍能自动补齐 comparePrice / promoEnd / priceType / statusReason / publishStatus。 */
+function walmartKeepCols(headers, mapped) {
+  const keep = {};
+  const add = v => { if (typeof v === 'string' && v) keep[v] = 1; };
+  Object.keys(mapped || {}).forEach(k => add(mapped[k]));
+  const A = ALIAS.walmart;
+  ['sku', 'price', 'shipping', 'comparePrice', 'promoEnd', 'priceType', 'statusReason', 'publishStatus', 'op', 'og']
+    .forEach(f => add(pickCol(headers || [], A[f])));
+  return Object.keys(keep);
+}
+function serializeWalmart() {
+  const s = state.walmart;
+  const keep = walmartKeepCols(s.headers, s.mapped);
+  if (!keep.length) return null;   // 没有可用列 → 回退原样，避免存成空表
+  const ks = new Set(keep);
+  const raw = (s.raw || []).map(r => {
+    const o = {};
+    for (const c of keep) { if (r && r[c] !== undefined) o[c] = r[c]; }
+    return o;
+  });
+  return {
+    v: 1,
+    headers: (s.headers || []).filter(h => ks.has(h)),
+    raw, mapped: s.mapped, storeManual: s.storeManual,
+    cols: keep.length, colsTotal: (s.headers || []).length
+  };
+}
+
 /* 数据源序列化（云端存储格式） */
 function serializeSource(kind) {
   if (kind === 'redLine') return { v: 1, aoa: state.redLine.aoa, headers: state.redLine.headers, config: state.redLine.config };
   if (kind === 'mapping') return { v: 1, csvText: state.mapping.csvText || null, headers: state.mapping.headers, raw: state.mapping.raw, mapped: state.mapping.mapped };
   if (kind === 'amazon') return { v: 1, headers: state.amazon.headers, raw: state.amazon.raw, mapped: state.amazon.mapped };
-  if (kind === 'walmart') return { v: 1, headers: state.walmart.headers, raw: state.walmart.raw, mapped: state.walmart.mapped, storeManual: state.walmart.storeManual };
+  if (kind === 'walmart') return serializeWalmart() || { v: 1, headers: state.walmart.headers, raw: state.walmart.raw, mapped: state.walmart.mapped, storeManual: state.walmart.storeManual };
   if (kind === 'operator') return { v: 1, headers: state.operator.headers, raw: state.operator.raw, mapped: state.operator.mapped, overrides: state.operator.overrides || {} };
   if (kind === 'pricefix') return { v: 1, fixes: state.priceFix || {} };
   return null;
@@ -1405,6 +1436,14 @@ function restoreSource(src, store, obj, fileId) {
       applyAmazon();
     } else if (src === SRC_WALMART) {
       state.walmart.raw = obj.raw || []; state.walmart.headers = obj.headers || []; state.walmart.mapped = obj.mapped || {};
+      // 记录云端是否为「裁剪版」（只存计算所需列），用于状态提示
+      _wmtTrim = (obj.cols && obj.colsTotal && obj.cols < obj.colsTotal) ? { cols: obj.cols, total: obj.colsTotal } : null;
+      // 存量全列记录（老格式，无 cols 元信息）→ 标记，加载完成后由 admin 静默回写裁剪版
+      if (RL_IS_ADMIN && !obj.cols) {
+        const _h = obj.headers || [];
+        const _keepN = walmartKeepCols(_h, obj.mapped || {}).length;
+        if (_h.length > _keepN + 2) _wmtNeedsShrink = true;   // 至少能裁掉 3 列才值得回写
+      }
       // 兼容旧云端数据：状态说明/上架状态列按表头自动补齐（老数据 mapped 里没有这两个键）
       if (state.walmart.mapped.statusReason === undefined) state.walmart.mapped.statusReason = pickCol(state.walmart.headers, ALIAS.walmart.statusReason);
       if (state.walmart.mapped.publishStatus === undefined) state.walmart.mapped.publishStatus = pickCol(state.walmart.headers, ALIAS.walmart.publishStatus);
@@ -1863,6 +1902,8 @@ function applyAmazon() {
 }
 
 /* ================= ④ Walmart ================= */
+let _wmtTrim = null;        // {cols,total}：云端 Walmart 数据为裁剪版时记录，用于提示
+let _wmtNeedsShrink = false; // 存量记录（无 cols 元信息、列数很多）→ 加载后静默回写一次裁剪版
 function applyWalmart() {
   const c = state.walmart;
   const raw = mappedRows(c.headers, c.raw, c.mapped, { sku: 'sku', price: 'price', shipping: 'shipping', comparePrice: 'comparePrice', promoEnd: 'promoEnd', priceType: 'priceType', statusReason: 'statusReason', publishStatus: 'publishStatus', op: 'op', og: 'og' });
@@ -1919,6 +1960,8 @@ function applyWalmart() {
   if (!c.storeManual) { st.textContent = '⚠ 未选择店铺，请从SKU平台信息表中选择'; st.className = 'file-status err'; }
   else if (!c.mapped.sku) { st.textContent = '⚠ 缺少SKU列，请在上方选择'; st.className = 'file-status err'; }
   else st.className = 'file-status ' + (rows.length ? 'ok' : 'err');
+  // 云端为裁剪版（只存计算所需列）：提示用户改列需重新上传
+  if (_wmtTrim) st.textContent += ` · 云端仅存计算所需 ${_wmtTrim.cols}/${_wmtTrim.total} 列（需改列请重新上传 Walmart 报表）`;
 }
 
 /* ================= 店铺下拉框（从SKU平台信息表提取） ================= */
@@ -2275,6 +2318,7 @@ function initUploads() {
       op: pickCol(d.headers, ALIAS.walmart.op),
       og: pickCol(d.headers, ALIAS.walmart.og)
     };
+    _wmtTrim = null;   // 新上传的是完整列，清除「云端裁剪版」提示
     $('wmtStatus').textContent = `文件「${d.name}」共 ${d.rows.length} 行，列名已自动识别，可调整`;
     $('wmtStatus').className = 'file-status';
     renderMapPanel($('wmtMap'), {
@@ -4463,6 +4507,12 @@ function waitLibs(timeoutMs) {
     try { await cloudLoadAll(); }
     catch (e) { console.error('云端加载失败', e); toast('⚠ 云端数据加载失败：' + e.message); }
     finally { hideLoading(); }
+    // 存量 Walmart 全列记录：静默回写裁剪版（只跑一次；下次带 cols 元信息就不再触发）
+    if (RL_IS_ADMIN && _wmtNeedsShrink) {
+      _wmtNeedsShrink = false;
+      cloudSave(SRC_WALMART, state.walmart.storeManual, 'walmart', undefined, true);
+      console.info('[Walmart] 存量全列记录已按计算所需列裁剪并回写云端');
+    }
   } else {
     bannerText(libsOk ? '⚠️ 本地模式：数据仅保存在当前浏览器。发布到「资料库」后自动切换为云端共享模式' : '⚠️ 外部组件加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新', false);
     loadPeriods();
