@@ -1157,6 +1157,14 @@ const DB_PERIODS = 'qYAZ8rShRGqSLyWLQbtWXP';  // 红线价-历史期（计算结
 const MAX_CHUNK = 400000; // 单块 base64 上限（服务端 text 上限约1MB，留余量）
 const SRC_REDLINE = '红线价表', SRC_MAPPING = 'SKU平台信息表', SRC_AMAZON = 'Amazon', SRC_WALMART = 'Walmart', SRC_TEMU = 'Temu', SRC_OPERATOR = '运营运营组表', SRC_PRICEFIX = '价格人工修正';
 
+/* ================= 角色权限（服务端注入 window.REDLINE_ROLE） =================
+ * admin：全部模块；sub（运营）：只看板 / SKU明细 / 趋势分析，
+ * 「数据上传」「异常」及所有写接口保留 admin（后端 _admin_only 二次拦截）。
+ * 未注入时（本地 / 旧页面）按 admin 处理，行为不变。 */
+const RL_ROLE = String((window.REDLINE_ROLE || 'admin')).toLowerCase();
+const RL_IS_ADMIN = RL_ROLE === 'admin';
+const RL_ALLOWED_MODULES = { dashboard: 1, detail: 1, history: 1 };
+
 const Cloud = {
   mode: 'smartpage',          // 实际在本块之后按运行环境判定（smartpage / rest / none）
   apiBase: '/api',
@@ -1486,7 +1494,7 @@ async function cloudLoadAll() {
       if (g.multi) healGroups.push({ src: parts[0], store: parts[1] || '', fileId: parts[2] || '', obj: g.obj });
     });
     // 自愈：把残留多代的组用最新代数据重写一遍（saveSource 会删同组全部旧记录），云端自动清脏
-    if (healGroups.length) {
+    if (healGroups.length && RL_IS_ADMIN) {   // 运营无写权限，跳过自愈重写
       console.info('检测到云端重复记录，自动清理 ' + healGroups.length + ' 组');
       for (const h of healGroups) await Cloud.saveSource(h.src, h.store, h.obj, h.fileId || undefined);
     }
@@ -1501,7 +1509,7 @@ async function cloudLoadAll() {
       const first = g.recs[0] || {};
       return { id: Number(k), date: Cloud._f(first, 'date') || '', label: Cloud._f(first, 'label') || '', rows: (g.obj && g.obj.rows) || [] };
     }).sort((a, b) => b.id - a.id);
-    if (periodsMulti && _periods.length && Cloud.available) await Cloud.syncPeriods(_periods); // 清理历史期脏记录
+    if (periodsMulti && _periods.length && Cloud.available && RL_IS_ADMIN) await Cloud.syncPeriods(_periods); // 清理历史期脏记录（仅 admin）
     // 云端为空时回退到本地存储（防止云端同步尚未完成或失败时丢失已保存的期）
     if (!_periods.length) {
       try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); } catch (e) { _periods = []; }
@@ -3150,7 +3158,20 @@ function startModuleGuard(name) {
     } else if (++ticks > 40) { clearInterval(moduleGuardTimer); moduleGuardTimer = null; } // 10 秒上限
   }, 250);
 }
+/* 运营（sub）权限收敛：隐藏「数据上传 / 异常」导航与容器，并强制落在「看板」 */
+function applyRoleRestrictions() {
+  if (RL_IS_ADMIN) return;
+  document.querySelectorAll('.nav-item[data-module]').forEach(el => {
+    if (!RL_ALLOWED_MODULES[el.dataset.module]) el.style.display = 'none';
+  });
+  ['upload', 'abnormal'].forEach(m => {
+    const el = document.getElementById('module-' + m);
+    if (el) { el.classList.remove('active'); el.style.setProperty('display', 'none', 'important'); }
+  });
+}
 function switchModule(name) {
+  // 运营（sub）只能看看板 / SKU明细 / 趋势分析，其余模块直接忽略
+  if (!RL_IS_ADMIN && !RL_ALLOWED_MODULES[name]) return;
   // 更新导航高亮
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module === name));
   
@@ -4428,7 +4449,9 @@ function waitLibs(timeoutMs) {
         });
       }
     } catch (e) { console.error('fix nesting', e); }
-    switchModule('upload');
+    applyRoleRestrictions();
+    // 运营没有「数据上传」权限，直接落到「看板」
+    switchModule(RL_IS_ADMIN ? 'upload' : 'dashboard');
   }, 2000);
 })();
 

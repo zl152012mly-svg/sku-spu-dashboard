@@ -30,11 +30,18 @@ bp = Blueprint('redline', __name__, url_prefix='/redline')
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _HTML_PATH = os.path.join(_BASE, 'redline_app', 'index.html')
 
-# 服务时注入：告诉前端走 rest 模式、接口前缀；前端库全部本地化（不依赖公网 CDN）
-_INJECT = (
+# 服务时注入：告诉前端走 rest 模式、接口前缀、当前角色；前端库全部本地化（不依赖公网 CDN）
+_INJECT_HEAD = (
     "<script>window.REDLINE_BACKEND='rest';"
-    "window.REDLINE_API_BASE='/redline/api';</script>"
+    "window.REDLINE_API_BASE='/redline/api';"
 )
+
+
+def _inject_script(role):
+    """注入脚本：rest 模式 + 接口前缀 + 当前角色（前端据此隐藏「数据上传/异常」等 admin 模块）。"""
+    return _INJECT_HEAD + "window.REDLINE_ROLE=" + json.dumps(role or '') + ";</script>"
+
+
 _LIB_MAP = (
     ('https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js', '/static/libs/xlsx.full.min.js'),
     ('https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js', '/static/libs/echarts.min.js'),
@@ -65,12 +72,25 @@ def _api_auth(f):
     return w
 
 
-def _render_page_html():
+def _admin_only(f):
+    """写操作仅 admin：运营（sub）可查看板/SKU明细/趋势，但不能上传数据源、撤回期次。"""
+    @wraps(f)
+    def w(*a, **k):
+        role = auth.current_role()
+        if not role:
+            return jsonify({'ok': False, 'msg': 'unauthorized', 'auth': False}), 401
+        if role != 'admin':
+            return jsonify({'ok': False, 'msg': 'forbidden', 'auth': True}), 403
+        return f(*a, **k)
+    return w
+
+
+def _render_page_html(role=''):
     with open(_HTML_PATH, encoding='utf-8') as f:
         html = f.read()
-    # 1) 注入 REST 配置（放在 <head> 之后，早于主脚本执行）
+    # 1) 注入 REST 配置 + 角色（放在 <head> 之后，早于主脚本执行）
     if "REDLINE_API_BASE" not in html.split('</head>')[0]:
-        html = re.sub(r'(<head[^>]*>)', lambda m: m.group(1) + '\n' + _INJECT, html, count=1)
+        html = re.sub(r'(<head[^>]*>)', lambda m: m.group(1) + '\n' + _inject_script(role), html, count=1)
     # 2) 前端库本地化
     for cdn, local in _LIB_MAP:
         html = html.replace(cdn, local)
@@ -84,7 +104,7 @@ def _render_page_html():
 @_page_auth
 def page():
     try:
-        html = _render_page_html()
+        html = _render_page_html(auth.current_role() or '')
     except FileNotFoundError:
         return Response('红线价页面缺失：%s' % _HTML_PATH, status=500, mimetype='text/plain')
     resp = Response(html, content_type='text/html; charset=utf-8')
@@ -112,7 +132,7 @@ def api_periods():
 
 
 @bp.route('/api/sources/save', methods=['POST'])
-@_api_auth
+@_admin_only
 def api_sources_save():
     b = request.get_json(force=True, silent=True) or {}
     src = (b.get('src') or '').strip()
@@ -125,7 +145,7 @@ def api_sources_save():
 
 
 @bp.route('/api/sources/remove', methods=['POST'])
-@_api_auth
+@_admin_only
 def api_sources_remove():
     b = request.get_json(force=True, silent=True) or {}
     src = (b.get('src') or '').strip()
@@ -136,7 +156,7 @@ def api_sources_remove():
 
 
 @bp.route('/api/periods/sync', methods=['POST'])
-@_api_auth
+@_admin_only
 def api_periods_sync():
     b = request.get_json(force=True, silent=True) or {}
     n = store.sync_periods(b.get('periods') or [])
@@ -144,7 +164,7 @@ def api_periods_sync():
 
 
 @bp.route('/api/import', methods=['POST'])
-@_api_auth
+@_admin_only
 def api_import():
     """一次性迁移：接收旧资料库导出 JSON {sources:[...], periods:[...]}。
 
