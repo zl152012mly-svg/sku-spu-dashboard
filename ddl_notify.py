@@ -150,10 +150,12 @@ def build_messages(payload, cfg):
                 store = it.get('launch_store') or '-'
                 lines.append('· %s   DDL %s（%s）  店铺 %s'
                              % (it.get('spu', ''), it.get('ddl', ''), due, store))
-            text = ('【新品上架 DDL 提醒】%s\n运营组：%s\n@%s 以下 %d 个 SPU 上架已到期/逾期，'
+            head = ('@%s 以下 %d 个 SPU' % (op, len(items))) if not unmapped \
+                else ('运营 %s（未配置企微成员，暂无法艾特）以下 %d 个 SPU' % (op, len(items)))
+            text = ('【新品上架 DDL 提醒】%s\n运营组：%s\n%s 上架已到期/逾期，'
                     '页面「是否完成上架」仍为「未完成」：\n\n%s\n\n'
                     '请完成上架，或到「新品上架跟进」页面把状态改为 已完成 / 无需上架。'
-                    % (date_str, grp, op, len(items), '\n'.join(lines)))
+                    % (date_str, grp, head, '\n'.join(lines)))
             if unmapped and policy == 'at_all':
                 uid_list = ['@all']
             msgs.append({
@@ -272,8 +274,12 @@ def main(argv=None):
             failed += 1
             print('[ddl_notify] 发送失败：%s / %s -> %s'
                   % (m['group'], m['operator'], why))
-    print('[ddl_notify] 完成：成功 %d 条，失败 %d 条，跳过 %d 条'
-          % (sent, failed, len(msgs) - sent - failed))
+    if args.dry_run:
+        print('[ddl_notify] 预演完成：打印 %d 条，失败 %d 条，跳过 %d 条（未发送任何消息）'
+              % (sent, failed, len(msgs) - sent - failed))
+    else:
+        print('[ddl_notify] 完成：成功 %d 条，失败 %d 条，跳过 %d 条'
+              % (sent, failed, len(msgs) - sent - failed))
     return 1 if failed else 0
 
 
