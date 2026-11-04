@@ -1,0 +1,32 @@
+{
+  "_说明": "复制本文件到 ECS 的 /etc/sku-spu/ddl_notify.json 后填写；此文件含密钥，绝不提交 git。占位值 REPLACE_ME 必须替换，否则脚本会跳过对应群/成员。",
+  "api_base": "http://127.0.0.1:8092",
+  "access_password": "REPLACE_ME_与系统登录口令一致",
+  "timeout": 20,
+  "send_timeout": 10,
+  "state_path": "/opt/sku-spu/data/ddl_notify_state.json",
+
+  "groups": {
+    "AMZ组": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_ME_AMZ组群机器人key",
+    "综合组-AMZ": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_ME_综合组AMZ群key",
+    "综合组-WLM": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_ME_综合组WLM群key",
+    "综合组-TEMU": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_ME_综合组TEMU群key"
+  },
+  "fallback_webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REPLACE_ME_兜底总群key",
+
+  "operators": {
+    "吴琇仙": { "userid": "REPLACE_ME_企微成员账号" },
+    "陆飞翔": { "userid": "REPLACE_ME_企微成员账号" },
+    "MIA黄":  { "mobile": "REPLACE_ME_手机号" },
+    "查产品运营": { "userid": "REPLACE_ME_企微成员账号" }
+  },
+  "unmapped_operator": "plain",
+
+  "_字段说明": {
+    "groups": "运营组名 → 该群的群机器人 webhook。精确匹配优先，其次包含匹配，都没命中用 fallback_webhook；品牌组不会出现在提醒里，无需配置。",
+    "operators": "运营姓名 → 企微成员 userid（推荐）或手机号。群机器人艾特只认这两类，不认中文姓名。留空/未配置的运营按 unmapped_operator 处理。",
+    "unmapped_operator": "plain=只写名字不真艾特（默认，可先上线）；skip=跳过该运营；at_all=群里@所有人",
+    "access_password": "与系统管理员登录口令一致，脚本用它算出 X-Auth-Token；也可直接填 auth_token 字段。",
+    "state_path": "去重状态文件，记录「日期+运营组+运营」已发过，重跑不刷屏。"
+  }
+}

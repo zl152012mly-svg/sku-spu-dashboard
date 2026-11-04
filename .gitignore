@@ -9,8 +9,12 @@ app.log
 server.log
 *.pid
 
-# ---------- 部署敏感信息（用 Render 环境变量注入，绝不提交）----------
+# ---------- 部署敏感信息（用环境变量注入，绝不提交）----------
 .env
+# 企微群 webhook / 成员 userid / 口令：ECS 上放 /etc/sku-spu/ddl_notify.json
+ddl_notify_config.json
+ddl_notify_state.json
+*_notify_config.json
 
 na_data/
 _*.py

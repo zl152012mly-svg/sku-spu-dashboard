@@ -54,6 +54,8 @@ pull common_store.py         common_store.py
 pull na_core.py              na_core.py
 pull na_routes.py            na_routes.py
 pull bridge_main.py          bridge_main.py   # 2026-10-29 入口统一: 系统设置→清洗看板反向同步桥
+pull ddl_notify.py           ddl_notify.py   # 2026-11-04 上架DDL到期企微群提醒（ECS 定时脚本）
+pull ddl_notify_config.example.json ddl_notify_config.example.json   # 配置模板（不含密钥，真实配置放 /etc/sku-spu/）
 pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
 pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台

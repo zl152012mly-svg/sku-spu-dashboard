@@ -1358,6 +1358,111 @@ def api_data_sources():
     return jsonify(sources)
 
 
+@bp.route('/api/ddl-due')
+@auth.role_required('admin')
+def api_ddl_due():
+    """【上架 DDL 到期提醒 · 只读数据源】给 ECS 定时通知脚本调用。
+
+    口径与「页面 / CSV 导出」完全一致（避免另写一套规则导致页面与提醒不一致）:
+      - 报表走 load_report_data_with_confirmations()（含 SKU 异常确认的即时重算）
+      - 可编辑字段按 note_fields + stock_note 逐字段合并，spuNotes 优先
+      - 上架 DDL 取 note.launch_ddl（手工调整）优先，否则 p.launch_ddl（系统计算）
+    筛选链：
+      SPU是否需要上架 == 需要上架
+        AND 异常处理 != 异常（非上架新品）   [exclude_abnormal=0 可关]
+        AND 运营组非空 且 不含「品牌组」
+        AND 是否完成上架 == 未完成(pending)
+        AND 上架DDL <= date（含当天 + 已逾期）[include_overdue=0 则只取当天]
+    参数：date=YYYY-MM-DD（默认 Asia/Shanghai 今天）、include_overdue=1|0、
+          exclude_abnormal=1|0
+    返回：{date, total, groups: {运营组: {运营: [ {spu, ddl, days_overdue,
+          launch_store, launch_reason} ]}}, skipped: {原因: 条数}}
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo('Asia/Shanghai')).date()
+    except Exception:
+        today = datetime.date.today()
+    date_str = (request.args.get('date') or '').strip() or today.isoformat()
+    try:
+        target = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({'error': 'date 需为 YYYY-MM-DD'}), 400
+    include_overdue = request.args.get('include_overdue', '1') != '0'
+    exclude_abnormal = request.args.get('exclude_abnormal', '1') != '0'
+
+    data = load_report_data_with_confirmations()
+    if data is None:
+        return jsonify({'error': '报告数据不存在，请先在【系统设置】点「处理并生成报告」',
+                        'date': date_str, 'total': 0, 'groups': {}, 'skipped': {}}), 404
+
+    spu_notes = load_stock_note()
+    groups = {}
+    skipped = {}
+    total = 0
+
+    def _skip(reason):
+        skipped[reason] = skipped.get(reason, 0) + 1
+
+    for p in data.get('products', []):
+        spu = p.get('spu', '')
+        if not spu:
+            continue
+        # 与导出 CSV 相同的逐字段合并口径
+        nf = p.get('note_fields')
+        sn = spu_notes.get(spu)
+        note = {**(nf if isinstance(nf, dict) else {}),
+                **(sn if isinstance(sn, dict) else {})}
+
+        if need_launch_text(p) != '需要上架':
+            _skip('SPU是否需要上架 != 需要上架')
+            continue
+        if exclude_abnormal and note.get('abnormal_status', 'normal') == 'abnormal':
+            _skip('异常处理 = 异常（非上架新品）')
+            continue
+        grp = (note.get('operator_group') or p.get('category') or '').strip()
+        if not grp or '品牌组' in grp:
+            _skip('运营组为空或属于品牌组')
+            continue
+        if note.get('launch_completed', 'pending') != 'pending':
+            _skip('是否完成上架 != 未完成')
+            continue
+        ddl = (note.get('launch_ddl') or p.get('launch_ddl') or '').strip()
+        if not ddl:
+            _skip('无上架DDL')
+            continue
+        try:
+            d = datetime.date.fromisoformat(ddl[:10])
+        except ValueError:
+            _skip('上架DDL格式非法')
+            continue
+        if include_overdue:
+            if d > target:
+                _skip('DDL 未到期')
+                continue
+        elif d != target:
+            _skip('DDL 非当天')
+            continue
+
+        op = (note.get('operator') or p.get('operator') or '').strip() or '未分配运营'
+        item = {
+            'spu': spu,
+            'ddl': d.isoformat(),
+            'days_overdue': (target - d).days,
+            'launch_store': note.get('launch_store') or '',
+            'launch_reason': p.get('launch_reason', ''),
+        }
+        groups.setdefault(grp, {}).setdefault(op, []).append(item)
+        total += 1
+
+    for grp in groups.values():
+        for items in grp.values():
+            items.sort(key=lambda x: (x['ddl'], x['spu']))
+    return jsonify({'date': date_str, 'include_overdue': include_overdue,
+                    'exclude_abnormal': exclude_abnormal,
+                    'total': total, 'groups': groups, 'skipped': skipped})
+
+
 @bp.route('/api/shared-sources')
 @auth.role_required('sub')
 def api_shared_sources():
