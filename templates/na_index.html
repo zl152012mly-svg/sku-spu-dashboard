@@ -62,6 +62,14 @@ body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f0f2
 .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); transition: box-shadow 0.2s; }
 .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+/* 系统设置：横向胶囊 Tab（2026-11-04 拆页，参考样板选中蓝色实心） */
+.dm-tabs { display: flex; gap: 12px; margin: 2px 0 18px; flex-wrap: wrap; }
+.dm-tab { flex: 1; min-width: 190px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; border: 1px solid #e3e8ef; border-radius: 999px; background: #fff; color: #64748b; font-size: 13px; font-weight: 600; cursor: pointer; transition: .15s; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+.dm-tab:hover { border-color: #93c5fd; color: #1d4ed8; }
+.dm-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.25); }
+.dm-pane { display: none; }
+.dm-pane.active { display: block; }
+.dm-ta { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; font-family: inherit; line-height: 1.7; resize: vertical; }
 .card-title { font-size: 16px; font-weight: 700; color: #1a237e; }
 .card-desc { font-size: 12px; color: #888; margin-bottom: 12px; line-height: 1.5; }
 .file-info { background: #f5f5f5; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
@@ -297,7 +305,15 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
             {% if is_admin_bool %}
             <!-- 数据管理页面 (仅管理员可见) -->
             <div class="view active" id="view-upload">
-                <!-- 账号设置（系统设置 · 仅管理员） -->
+                <!-- 系统设置：三个分页（横向胶囊 Tab，默认第一个「数据源管理」） -->
+                <div class="dm-tabs" id="dmTabs">
+                    <button type="button" class="dm-tab active" data-pane="1" onclick="switchDmTab(1)">① 数据源管理</button>
+                    <button type="button" class="dm-tab" data-pane="2" onclick="switchDmTab(2)">② 账号设置（子账号）</button>
+                    <button type="button" class="dm-tab" data-pane="3" onclick="switchDmTab(3)">③ DDL 到期提醒设置（企微群）</button>
+                </div>
+
+                <!-- ② 账号设置（子账号） -->
+                <div class="dm-pane" id="dmPane2">
                 <div class="card" id="accountsCard" style="margin-bottom:20px;">
                     <div class="card-header"><h3>账号设置（子账号）</h3><span id="acctCount" style="font-size:12px;color:#888;"></span></div>
                     <div id="acctList"></div>
@@ -314,7 +330,10 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                         子账号仅可查看/编辑备注类内容；「待确认SKU确认 / 组合SKU / 无效SKU调整」仅管理员可操作。
                     </p>
                 </div>
+                </div><!-- /dmPane2 -->
 
+                <!-- ③ DDL 到期企微群提醒设置 -->
+                <div class="dm-pane" id="dmPane3">
                 <!-- DDL 到期企微群提醒设置（系统设置 · 仅管理员） -->
                 <div class="card" id="ddlNotifyCard" style="margin-bottom:20px;">
                     <div class="card-header">
@@ -322,9 +341,11 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                         <span id="ddlCfgState" style="font-size:12px;color:#888;">加载中…</span>
                     </div>
                     <p style="font-size:12px;color:#666;margin:2px 0 12px;line-height:1.9;">
-                        每天定时检查「<b>需要上架 + 未完成 + 上架DDL 当天或已逾期</b>」的 SPU，按运营组发到对应群，并真实艾特对应运营。<b>品牌组不提醒</b>。<br>
+                        <b>每个工作日 10:00</b> 检查「<b>需要上架 + 未完成 + 上架DDL 当天或已逾期</b>」的 SPU，按运营组发到对应群并真实艾特。<b>品牌组不提醒</b>。<br>
+                        <b>非工作日不发送</b>：DDL 落在节假日/周末的，顺延到<b>下一个最近的工作日</b> 10:00 一并提醒；当天没有到期、也没有历史逾期的，<b>不发任何消息</b>。<br>
+                        运营是「<b>未分配运营</b>」时，改按下面 ③ 的「运营组 → 默认艾特成员」真艾特；没配默认成员才按 ⑤ 的策略处理。<br>
                         下面的映射随时可增删改，<b style="color:#28a745;">保存后立即生效</b>——ECS 定时脚本直接读这份配置，不用改服务器文件、不用重启服务。<br>
-                        群机器人地址形如 <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;">https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…</code>；「运营 → 群成员」请填企微 <b>userid</b>（推荐）或<b>手机号</b>，群机器人不认中文姓名。
+                        群机器人地址形如 <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;">https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…</code>；成员请填企微 <b>userid</b> 或<b>手机号</b>（推荐手机号，群机器人不认中文姓名）。
                     </p>
 
                     <datalist id="ddlGroupOptions"></datalist>
@@ -349,7 +370,35 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     </div>
 
                     <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
-                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">③ 兜底与高级选项</div>
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">③ 运营组 → 默认艾特成员（运营=未分配运营时生效）</div>
+                        <div id="ddlGroupMentionRows"></div>
+                        <div style="margin-top:8px;">
+                            <button class="btn tiny" onclick="ddlAddGroupMention()">+ 添加一行</button>
+                            <span style="font-size:11px;color:#999;margin-left:8px;">同一运营组可加多行（多人），会全部艾特；组名可从下拉选。没配置的组仍按 ⑤ 的策略处理</span>
+                        </div>
+                    </div>
+
+                    <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">④ 工作日历（只在工作日 10:00 发送）</div>
+                        <p style="font-size:12px;color:#666;margin:0 0 8px;line-height:1.8;">
+                            默认<b>周一至周五为工作日</b>，周六周日不发送。法定节假日请填到「额外放假日」，调休上班的周末请填到「调休上班日」。
+                            DDL 落在非工作日的，会在下一个最近工作日 10:00 随当日提醒一起发出（顺延补发）。
+                        </p>
+                        <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:260px;">
+                                <div style="font-size:12px;font-weight:600;margin-bottom:4px;">额外放假日（本该上班但放假）</div>
+                                <textarea id="ddlHolidays" class="dm-ta" rows="4" placeholder="每行一个日期，例如：&#10;2026-10-01&#10;2026-10-02"></textarea>
+                            </div>
+                            <div style="flex:1;min-width:260px;">
+                                <div style="font-size:12px;font-weight:600;margin-bottom:4px;">调休上班日（本该是周末但要上班）</div>
+                                <textarea id="ddlWorkdayOverrides" class="dm-ta" rows="4" placeholder="每行一个日期，例如：&#10;2026-10-11&#10;2026-11-14"></textarea>
+                            </div>
+                        </div>
+                        <div style="font-size:11px;color:#999;margin-top:6px;">每行一个 YYYY-MM-DD，也可以用逗号 / 空格分隔；非法日期会自动忽略。</div>
+                    </div>
+
+                    <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">⑤ 兜底与高级选项</div>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;">
                             <label style="min-width:130px;">兜底群 webhook</label>
                             <input id="ddlFallback" placeholder="没匹配到运营组时发到这里（可留空=跳过）" style="flex:1;min-width:320px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">
@@ -361,6 +410,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                                 <option value="skip">跳过，不发这个运营的提醒</option>
                                 <option value="at_all">在群里 @所有人</option>
                             </select>
+                            <span style="font-size:11px;color:#999;">仅对「③ 没配默认成员」的运营组生效</span>
                         </div>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;margin-top:8px;">
                             <label style="min-width:130px;">管理员口令 / Token</label>
@@ -381,7 +431,10 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                         <div id="ddlPreviewBody"></div>
                     </div>
                 </div>
+                </div><!-- /dmPane3 -->
 
+                <!-- ① 数据源管理（默认展示） -->
+                <div class="dm-pane active" id="dmPane1">
                 <div class="page-header">
                     <h2>数据源管理</h2>
                     <p>上传或更新数据源文件，系统自动识别并处理。<b>已上传的文件保存在云端，代码更新/服务重启都不会丢失</b>；若状态显示"查询失败"只是云端读取超时，点刷新即可，无需重新上传。</p>
@@ -392,6 +445,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <span id="srcStatusTip" style="font-size:12px;color:#888;line-height:32px;"></span>
                 </div>
                 <div class="grid" id="sourceGrid"></div>
+                </div><!-- /dmPane1 -->
             </div>
             {% endif %}
 
@@ -511,6 +565,18 @@ function switchView(view) {
     if (view === 'new-color' && !ncDataLoaded) {
         loadNewColor();
     }
+    // 系统设置：每次进入都回到第一个分页「数据源管理」（含 ?view=dm 直达 / 更换数据源跳转）
+    if (view === 'upload') switchDmTab(1);
+}
+
+// 系统设置三个分页（2026-11-04）：纯函数声明，供前部 initConsole/switchView 安全调用
+function switchDmTab(n) {
+    document.querySelectorAll('.dm-tab').forEach(function(b){
+        b.classList.toggle('active', b.getAttribute('data-pane') === String(n));
+    });
+    document.querySelectorAll('.dm-pane').forEach(function(p){
+        p.classList.toggle('active', p.id === 'dmPane' + n);
+    });
 }
 
 // ========== 框架嵌入模式 + ?view 直达 + 角色锁 ==========
@@ -665,6 +731,21 @@ function ddlOpRowHtml(name, typ, val){
         + '<input class="ddl-o-val" value="' + escA(val) + '" placeholder="填 userid 或手机号；留空=不真艾特" style="flex:1;min-width:260px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
         + '<button class="btn tiny" onclick="ddlDelRow(this)">删除</button></div>';
 }
+function ddlGroupMentionRowHtml(grp, typ, val){
+    return '<div class="ddl-gm-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">'
+        + '<input class="ddl-gm-group" list="ddlGroupOptions" value="' + escA(grp) + '" placeholder="运营组名" style="width:190px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<select class="ddl-gm-type" style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<option value="mobile"' + (typ === 'userid' ? '' : ' selected') + '>手机号（推荐）</option>'
+        + '<option value="userid"' + (typ === 'userid' ? ' selected' : '') + '>userid（企微账号）</option>'
+        + '</select>'
+        + '<input class="ddl-gm-val" value="' + escA(val) + '" placeholder="填手机号或 userid；留空=该组不配置" style="flex:1;min-width:260px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<button class="btn tiny" onclick="ddlDelRow(this)">删除</button></div>';
+}
+function ddlAddGroupMention(grp, typ, val){
+    var b = document.getElementById('ddlGroupMentionRows'); if (!b) return;
+    var ph = b.querySelector('.ddl-empty'); if (ph) ph.remove();
+    b.insertAdjacentHTML('beforeend', ddlGroupMentionRowHtml(grp || '', typ || 'mobile', val || ''));
+}
 function ddlCfgRender(cfg, opt){
     var gs = (opt && opt.groups) || [], os = (opt && opt.operators) || [];
     var gd = document.getElementById('ddlGroupOptions');
@@ -694,6 +775,29 @@ function ddlCfgRender(cfg, opt){
     if (ob) ob.innerHTML = oRows.map(function(r){ return ddlOpRowHtml(r[0], r[1], r[2]); }).join('')
         || '<div class="ddl-empty" style="font-size:12px;color:#999;padding:4px 2px;">暂无运营，点「+ 添加一行」手动新增</div>';
 
+    // ③ 运营组 → 默认艾特成员（同组多行=多人）
+    var gmRows = [], cgm = cfg.group_mentions || {};
+    Object.keys(cgm).sort().forEach(function(k){
+        var rows = Array.isArray(cgm[k]) ? cgm[k] : [cgm[k]];
+        rows.forEach(function(r){
+            if (!r || typeof r !== 'object') return;
+            gmRows.push([k, (r.type === 'userid' ? 'userid' : 'mobile'), (r.value || '')]);
+        });
+    });
+    if (!gmRows.length) {
+        gs.filter(function(g){ return String(g).indexOf('品牌组') < 0; })
+          .slice(0, 10).forEach(function(g){ gmRows.push([g, 'mobile', '']); });
+    }
+    var gmb = document.getElementById('ddlGroupMentionRows');
+    if (gmb) gmb.innerHTML = gmRows.map(function(r){ return ddlGroupMentionRowHtml(r[0], r[1], r[2]); }).join('')
+        || '<div class="ddl-empty" style="font-size:12px;color:#999;padding:4px 2px;">暂无配置，点「+ 添加一行」新增</div>';
+
+    // ④ 工作日历
+    var hd = document.getElementById('ddlHolidays');
+    if (hd) hd.value = (cfg.holidays || []).join('\n');
+    var wo = document.getElementById('ddlWorkdayOverrides');
+    if (wo) wo.value = (cfg.workday_overrides || []).join('\n');
+
     var fb = document.getElementById('ddlFallback'); if (fb) fb.value = cfg.fallback_webhook || '';
     var um = document.getElementById('ddlUnmapped'); if (um) um.value = cfg.unmapped_operator || 'plain';
     var sc = document.getElementById('ddlSecret');
@@ -711,7 +815,8 @@ function ddlCfgLoad(){
         ddlCfgRender(cfg, opt);
         var st = document.getElementById('ddlCfgState');
         if (st) st.textContent = '已载入 · ' + Object.keys(cfg.groups || {}).length + ' 个群 / '
-            + Object.keys(cfg.operators || {}).length + ' 位运营 · '
+            + Object.keys(cfg.operators || {}).length + ' 位运营 / '
+            + Object.keys(cfg.group_mentions || {}).length + ' 个组默认成员 · '
             + (cfg.secret_set ? '口令已自动配置' : '口令未配置');
     }).catch(function(e){
         var st = document.getElementById('ddlCfgState');
@@ -743,12 +848,24 @@ function ddlCfgCollect(){
         var v = (r.querySelector('.ddl-o-val').value || '').trim();
         if (n || v) ops.push({ name: n, type: t, value: v });
     });
+    var gms = [];
+    document.querySelectorAll('#ddlGroupMentionRows .ddl-gm-row').forEach(function(r){
+        var g = (r.querySelector('.ddl-gm-group').value || '').trim();
+        var t = r.querySelector('.ddl-gm-type').value;
+        var v = (r.querySelector('.ddl-gm-val').value || '').trim();
+        if (g || v) gms.push({ group: g, type: t, value: v });
+    });
     var fb = document.getElementById('ddlFallback');
     var um = document.getElementById('ddlUnmapped');
     var sc = document.getElementById('ddlSecret');
+    var hd = document.getElementById('ddlHolidays');
+    var wo = document.getElementById('ddlWorkdayOverrides');
     return {
         groups: groups,
         operators: ops,
+        group_mentions: gms,
+        holidays: hd ? hd.value : '',
+        workday_overrides: wo ? wo.value : '',
         fallback_webhook: fb ? fb.value.trim() : '',
         unmapped_operator: um ? um.value : 'plain',
         secret: sc ? sc.value.trim() : ''
@@ -786,8 +903,17 @@ function ddlCfgPreview(){
         if (!d.ok) { if (bd) bd.innerHTML = '<div style="color:#dc3545;">预览失败：' + escA(d.error || '') + '</div>'; return; }
         var skip = Object.keys(d.skipped || {}).map(function(k){ return k + ' ' + d.skipped[k]; }).join('、') || '无';
         var h = '<div style="font-size:12px;color:#555;margin-bottom:10px;line-height:1.8;">日期 <b>' + escA(d.date)
-            + '</b> · 命中 <b>' + d.total + '</b> 个 SPU · 将生成 <b>' + (d.messages || []).length
+            + '</b> · ' + (d.workday === false ? '<b style="color:#dc3545;">非工作日</b>' : '工作日')
+            + ' · 命中 <b>' + d.total + '</b> 个 SPU · 将生成 <b>' + (d.messages || []).length
             + '</b> 条群消息<br>跳过：' + escA(skip) + '</div>';
+        h += '<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:'
+            + (d.would_send ? '#28a745' : '#92400e') + ';">'
+            + (d.would_send ? '当天 10:00 会发送 ' + (d.messages || []).length + ' 条提醒'
+                            : '当天不会发送任何消息') + '</div>';
+        if (d.note) {
+            h += '<div style="background:#fff7ed;border:1px solid #fbbf24;color:#92400e;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.8;margin-bottom:10px;">'
+                + escA(d.note) + '</div>';
+        }
         if (!(d.messages || []).length) {
             h += '<div style="color:#999;font-size:12px;">今天没有需要提醒的 SPU，或没有可用的群机器人地址。</div>';
         } else {
@@ -799,7 +925,8 @@ function ddlCfgPreview(){
                     + ' <span style="font-weight:400;color:' + (m.webhook_ok ? '#28a745' : '#dc3545') + ';">'
                     + (m.webhook_ok ? '群：' + escA(m.webhook) : '⚠ 未配置群机器人，这条不会发出') + '</span></div>'
                     + '<div style="font-size:11px;color:#666;margin-bottom:6px;">艾特：'
-                    + escA(at || (m.unmapped ? '无（未配置成员，按策略处理）' : '无')) + '</div>'
+                    + escA(at || (m.unmapped ? '无（未配置成员，按策略处理）' : '无'))
+                    + (m.group_pinged ? ' <b style="color:#1a237e;">[按运营组默认成员]</b>' : '') + '</div>'
                     + '<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;margin:0;font-family:inherit;color:#333;">'
                     + escA(m.text) + '</pre></div>';
             });

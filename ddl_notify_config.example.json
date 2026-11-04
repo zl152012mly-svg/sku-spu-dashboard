@@ -1,5 +1,5 @@
 {
-  "_说明": "【推荐】2026-11-04 起，运营组→群、运营→群成员一律在「系统设置 → DDL 到期提醒设置」里可视化编辑并保存，脚本会自动读取 na_data/ddl_notify_config.json，无需改本文件、无需重启。本文件仅作为字段说明/离线兜底模板；如需手工兜底，复制到 ECS 的 /etc/sku-spu/ddl_notify.json 并替换 REPLACE_ME（含密钥，绝不提交 git）。注意：系统设置保存的配置优先级高于 /etc 兜底文件。",
+  "_说明": "【推荐】2026-11-04 起，运营组→群、运营→群成员、运营组→默认艾特成员、工作日历一律在「系统设置 → ③ DDL 到期提醒设置」里可视化编辑并保存，脚本会自动读取 na_data/ddl_notify_config.json，无需改本文件、无需重启。本文件仅作为字段说明/离线兜底模板；如需手工兜底，复制到 ECS 的 /etc/sku-spu/ddl_notify.json 并替换 REPLACE_ME（含密钥，绝不提交 git）。注意：系统设置保存的配置优先级高于 /etc 兜底文件。提醒只在每个工作日 10:00 触发，非工作日静默跳过、到期项顺延到下一个最近工作日一并补发。",
   "api_base": "http://127.0.0.1:8092",
   "access_password": "REPLACE_ME_与系统登录口令一致",
   "timeout": 20,
@@ -22,12 +22,26 @@
   },
   "unmapped_operator": "plain",
 
+  "group_mentions": {
+    "AMZ组": [
+      { "type": "mobile", "value": "REPLACE_ME_板式组负责人手机号" },
+      { "type": "userid", "value": "REPLACE_ME_软包组负责人账号" }
+    ]
+  },
+  "holidays": ["2026-10-01", "2026-10-02", "2026-11-07", "2026-11-08"],
+  "workday_overrides": ["2026-10-11"],
+
   "_字段说明": {
     "groups": "运营组名 → 该群的群机器人 webhook。精确匹配优先，其次包含匹配，都没命中用 fallback_webhook；品牌组不会出现在提醒里，无需配置。",
     "operators": "运营姓名 → 企微成员 userid（推荐）或手机号。群机器人艾特只认这两类，不认中文姓名。留空/未配置的运营按 unmapped_operator 处理。",
     "unmapped_operator": "plain=只写名字不真艾特（默认，可先上线）；skip=跳过该运营；at_all=群里@所有人",
+    "group_mentions": "运营组 → 默认艾特成员列表。仅当该条 SPU 的运营名没在 operators 里配到（典型是「未分配运营」）时生效；同组可配多行，userid / 手机号可混用，会一起被艾特。完全没配才退回 unmapped_operator。界面里对应的表是「③ 运营组 → 默认艾特成员」。",
+    "holidays": "额外放假日（YYYY-MM-DD 数组，或界面里逗号/换行分隔文本）。周末默认已是非工作日，无需重复填；这里只补法定节假日。落在放假日的 DDL 顺延到下一个最近工作日 10:00 一并提醒。",
+    "workday_overrides": "调休上班日（YYYY-MM-DD 数组）。优先级最高，即使当天是周六/周日或已列在 holidays 里，也照常判定为工作日并发送。",
+    "工作日判定": "is_workday() 优先级：workday_overrides > holidays > 周一至周五。cron 改成每天 10:00 触发一次，由脚本自己判断是否工作日：非工作日不调接口、不发消息、不写去重状态，直接静默退出（--force 可绕过）。",
+    "顺延补发": "后端筛选口径本来就是「上架DDL <= 今天」，所以节假日到期的 SPU 会在下一个工作日自动带出来；当天既无当天到期、也无历史逾期时 total=0、消息为空，不发任何通知。逾期的 SPU 之后每个工作日会继续提醒（用户口径：每天继续提醒）。",
     "access_password": "与系统管理员登录口令一致，脚本用它算出 X-Auth-Token；也可直接填 auth_token 字段。",
     "state_path": "去重状态文件，记录「日期+运营组+运营」已发过，重跑不刷屏。",
-    "界面保存优先": "系统设置保存后写 na_data/ddl_notify_config.json，脚本 CONFIG_CANDIDATES 把它排在 /etc 兜底文件之前；界面里一般不需填口令，后端会自动注入与本机登录口令一致的 auth_token。"
+    "界面保存优先": "系统设置保存后写 na_data/ddl_notify_config.json，脚本 CONFIG_CANDIDATES 把它排在 /etc 兜底文件之前；界面里一般不需填口令，后端会自动注入与本机登录口令一致的 auth_token。配置含 webhook / 成员 / token，绝不提交 git。"
   }
 }

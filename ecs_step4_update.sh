@@ -86,16 +86,26 @@ K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
 echo "  /console 未登录返回码 = $K  （302=正常跳转到登录；404=console_index.html 漏传；000/502=服务没起来）"
 sudo systemctl status sku-spu.service --no-pager | head -3
 
-say "4.5 DDL 到期提醒 · 可视化配置部署自查（2026-11-04）"
+say "4.5 DDL 到期提醒 · 可视化配置 / 工作日分Tab 部署自查（2026-11-04 第二版）"
 G1=$(grep -c "ddl-notify-config" "$APP/na_routes.py" 2>/dev/null || echo 0)
 [ "$G1" -ge 2 ] && ok "na_routes.py 已含配置/预览接口 ($G1 处)" || bad "na_routes.py 缺少 DDL 配置接口，检查是否拉到最新版"
 G2=$(grep -c "na_data' / 'ddl_notify_config.json'" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
 [ "$G2" -ge 1 ] && ok "ddl_notify.py 已优先读系统设置保存的配置" || bad "ddl_notify.py 未读 na_data 配置，定时脚本会退回旧 /etc 文件"
 G3=$(grep -c "ddlNotifyCard" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
 [ "$G3" -ge 1 ] && ok "系统设置页已含「DDL 到期提醒设置」卡" || bad "na_index.html 缺少设置卡"
-G4=$(grep -c "v=c7" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
-[ "$G4" -eq 6 ] && ok "工作台 iframe 版本号 6 处已升到 c7" || warn "console_index.html 版本号异常 ($G4 处 c7)，页面可能走 iframe 旧缓存，请手动强刷"
-echo "  提示：群机器人 webhook / 运营成员映射请到【系统设置 → DDL 到期提醒设置】里填并保存，无需改 /etc 文件。"
+G4=$(grep -c "v=c8" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+[ "$G4" -eq 6 ] && ok "工作台 iframe 版本号 6 处已升到 c8" || warn "console_index.html 版本号异常 ($G4 处 c8)，页面可能走 iframe 旧缓存，请手动强刷"
+G5=$(grep -c "def is_workday" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+[ "$G5" -ge 1 ] && ok "ddl_notify.py 已含工作日判断（非工作日静默 / 顺延补发）" || bad "ddl_notify.py 缺少 is_workday，节假日仍会照常发消息"
+G6=$(grep -c "def group_mentions" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+[ "$G6" -ge 1 ] && ok "ddl_notify.py 已含「未分配运营 → 按组默认成员艾特」" || bad "ddl_notify.py 缺少 group_mentions，未分配运营仍无人认领"
+G7=$(grep -c "dmPane3" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+[ "$G7" -ge 2 ] && ok "系统设置已拆 3 个横向 Tab（数据源 / 子账号 / DDL 提醒）" || bad "na_index.html 缺少 dmPane3，说明没拉到拆页版"
+G8=$(grep -c "workday_overrides" "$APP/na_routes.py" 2>/dev/null || echo 0)
+[ "$G8" -ge 1 ] && ok "na_routes.py 已支持可编辑工作日历（holidays / workday_overrides）" || bad "na_routes.py 缺少工作日历字段，界面填了也存不上"
+echo "  提示：群 webhook / 运营成员 / 组默认成员 / 工作日历请到【系统设置 → ③ DDL 到期提醒设置】里填并保存，无需改 /etc 文件。"
+echo "  提醒：cron 需改成每天 10:00 触发（脚本自己判断工作日），见手册 §20："
+echo "    ( crontab -l 2>/dev/null | grep -v 'ddl_notify.py' ; echo '0 10 * * * cd /opt/sku-spu && /usr/bin/python3 ddl_notify.py >> /var/log/ddl_notify.log 2>&1' ) | crontab -"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then

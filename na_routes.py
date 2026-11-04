@@ -67,6 +67,10 @@ DDL_NOTIFY_DEFAULTS = {
     'fallback_webhook': '',
     'operators': {},
     'unmapped_operator': 'plain',
+    # 2026-11-04：运营=未分配运营时按运营组艾特默认成员；只在工作日发
+    'group_mentions': {},     # {运营组: [{type: userid|mobile, value: ...}]}
+    'holidays': [],           # 额外放假日（本该是工作日但放假）
+    'workday_overrides': [],  # 调休上班日（本该是周末但要上班）
 }
 DDL_UNMAPPED_VALUES = ('plain', 'skip', 'at_all')
 
@@ -93,6 +97,11 @@ def _read_ddl_notify_config():
         out['groups'] = {}
     if not isinstance(out.get('operators'), dict):
         out['operators'] = {}
+    if not isinstance(out.get('group_mentions'), dict):
+        out['group_mentions'] = {}
+    for _k in ('holidays', 'workday_overrides'):
+        if not isinstance(out.get(_k), list):
+            out[_k] = []
     if out.get('unmapped_operator') not in DDL_UNMAPPED_VALUES:
         out['unmapped_operator'] = 'plain'
     # 零配置：没有任何显式口令时，用本机管理员口令推算 token。
@@ -135,6 +144,24 @@ def _public_ddl_notify_config(cfg):
     return pub
 
 
+def _clean_date_list(raw):
+    """把日期清单规整成 YYYY-MM-DD 字符串数组（支持数组、逗号/换行分隔文本）。"""
+    if isinstance(raw, str):
+        raw = re.split(r'[\s,，;；]+', raw)
+    out = []
+    for x in (raw or []):
+        s = str(x).strip()
+        if not s:
+            continue
+        try:
+            v = datetime.date.fromisoformat(s[:10]).isoformat()
+        except ValueError:
+            continue
+        if v not in out:
+            out.append(v)
+    return sorted(out)
+
+
 def _ddl_notify_rows_to_config(body, old):
     """前端行式数据 → ddl_notify.py 需要的 dict 形态（不落盘，预览/保存共用）。"""
     cfg = dict(old)
@@ -157,11 +184,30 @@ def _ddl_notify_rows_to_config(body, old):
         if typ not in ('userid', 'mobile'):
             typ = 'userid'
         operators[name] = {typ: val} if val else {}
+    # 运营组 → 默认艾特成员（可一行组一人，同组多行自动合并）
+    group_mentions = {}
+    for r in (body.get('group_mentions') or []):
+        if not isinstance(r, dict):
+            continue
+        grp = str(r.get('group') or r.get('name') or '').strip()
+        typ = str(r.get('type') or 'userid').strip()
+        val = str(r.get('value') or '').strip()
+        if not grp or not val:
+            continue
+        if typ not in ('userid', 'mobile'):
+            typ = 'userid'
+        group_mentions.setdefault(grp, []).append({'type': typ, 'value': val})
     # 只覆盖本次提交里出现的字段；缺省字段保持原值（避免「只改口令」把映射清空）
     if 'groups' in body:
         cfg['groups'] = groups
     if 'operators' in body:
         cfg['operators'] = operators
+    if 'group_mentions' in body:
+        cfg['group_mentions'] = group_mentions
+    if 'holidays' in body:
+        cfg['holidays'] = _clean_date_list(body.get('holidays'))
+    if 'workday_overrides' in body:
+        cfg['workday_overrides'] = _clean_date_list(body.get('workday_overrides'))
     if 'fallback_webhook' in body:
         cfg['fallback_webhook'] = str(body.get('fallback_webhook') or '').strip()
     if 'unmapped_operator' in body:
@@ -192,6 +238,11 @@ def _validate_ddl_notify_config(cfg):
     for name, m in (cfg.get('operators') or {}).items():
         if not isinstance(m, dict):
             return '「%s」的成员配置格式异常' % name
+    if not isinstance(cfg.get('group_mentions') or {}, dict):
+        return '「运营组 → 默认艾特成员」配置格式异常'
+    for k in ('holidays', 'workday_overrides'):
+        if not isinstance(cfg.get(k) or [], list):
+            return '工作日历配置格式异常'
     return None
 
 
@@ -1720,6 +1771,7 @@ def api_ddl_notify_options():
             operators.add(o)
     cfg = _read_ddl_notify_config()
     groups.update((cfg.get('groups') or {}).keys())
+    groups.update((cfg.get('group_mentions') or {}).keys())
     operators.update((cfg.get('operators') or {}).keys())
     return jsonify({'ok': True, 'groups': sorted(groups),
                     'operators': sorted(operators),
@@ -1766,9 +1818,20 @@ def api_ddl_notify_preview():
         nm['webhook_ok'] = bool(m.get('webhook'))
         nm['webhook'] = _mask_webhook(m.get('webhook'))
         out.append(nm)
+    # 工作日口径与 ECS 脚本共用同一份实现（避免两处规则漂移）
+    try:
+        workday = bool(mod.is_workday(date_str, cfg))
+        nxt = date_str if workday else mod.next_workday(date_str, cfg)
+    except Exception:
+        workday, nxt = True, date_str
+    note = '' if workday else (
+        '%s 是非工作日，当天不会发送；这些到期项会顺延到下一个工作日 %s 上午 10:00 一并提醒。'
+        '下面展示的是按所选日期筛出的 SPU，仅作核对。' % (date_str, nxt))
     return jsonify({'ok': True, 'date': date_str, 'total': payload['total'],
                     'skipped': payload['skipped'], 'messages': out,
-                    'sent': False})
+                    'sent': False, 'workday': workday,
+                    'next_workday': nxt, 'would_send': bool(workday and out),
+                    'note': note})
 
 
 @bp.route('/api/shared-sources')
