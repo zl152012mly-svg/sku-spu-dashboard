@@ -314,6 +314,74 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                         子账号仅可查看/编辑备注类内容；「待确认SKU确认 / 组合SKU / 无效SKU调整」仅管理员可操作。
                     </p>
                 </div>
+
+                <!-- DDL 到期企微群提醒设置（系统设置 · 仅管理员） -->
+                <div class="card" id="ddlNotifyCard" style="margin-bottom:20px;">
+                    <div class="card-header">
+                        <h3>DDL 到期提醒设置（企微群）</h3>
+                        <span id="ddlCfgState" style="font-size:12px;color:#888;">加载中…</span>
+                    </div>
+                    <p style="font-size:12px;color:#666;margin:2px 0 12px;line-height:1.9;">
+                        每天定时检查「<b>需要上架 + 未完成 + 上架DDL 当天或已逾期</b>」的 SPU，按运营组发到对应群，并真实艾特对应运营。<b>品牌组不提醒</b>。<br>
+                        下面的映射随时可增删改，<b style="color:#28a745;">保存后立即生效</b>——ECS 定时脚本直接读这份配置，不用改服务器文件、不用重启服务。<br>
+                        群机器人地址形如 <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;">https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…</code>；「运营 → 群成员」请填企微 <b>userid</b>（推荐）或<b>手机号</b>，群机器人不认中文姓名。
+                    </p>
+
+                    <datalist id="ddlGroupOptions"></datalist>
+                    <datalist id="ddlOpOptions"></datalist>
+
+                    <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">① 运营组 → 企微群机器人</div>
+                        <div id="ddlGroupRows"></div>
+                        <div style="margin-top:8px;">
+                            <button class="btn tiny" onclick="ddlAddGroup()">+ 添加一行</button>
+                            <span style="font-size:11px;color:#999;margin-left:8px;">组名可从下拉选（来自当前报表），也可手动输入；留空的行保存时自动忽略</span>
+                        </div>
+                    </div>
+
+                    <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">② 运营 → 群成员（用于真实艾特）</div>
+                        <div id="ddlOpRows"></div>
+                        <div style="margin-top:8px;">
+                            <button class="btn tiny" onclick="ddlAddOp()">+ 添加一行</button>
+                            <span style="font-size:11px;color:#999;margin-left:8px;">没填成员的运营仍会收到提醒，但不会真艾特（按下方策略处理）</span>
+                        </div>
+                    </div>
+
+                    <div style="border:1px solid #e3e8ef;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:#1a237e;">③ 兜底与高级选项</div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;">
+                            <label style="min-width:130px;">兜底群 webhook</label>
+                            <input id="ddlFallback" placeholder="没匹配到运营组时发到这里（可留空=跳过）" style="flex:1;min-width:320px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;margin-top:8px;">
+                            <label style="min-width:130px;">未配置成员的运营</label>
+                            <select id="ddlUnmapped" style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;">
+                                <option value="plain">只写名字，不真艾特（推荐先用这个上线）</option>
+                                <option value="skip">跳过，不发这个运营的提醒</option>
+                                <option value="at_all">在群里 @所有人</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;margin-top:8px;">
+                            <label style="min-width:130px;">管理员口令 / Token</label>
+                            <input id="ddlSecret" type="password" autocomplete="new-password" placeholder="一般不用填，系统已自动配置" style="flex:1;min-width:320px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">
+                            <span style="font-size:11px;color:#999;">留空 = 保持不变；仅当系统登录口令改过且脚本报 401 时，才在这里重填</span>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="ddlCfgSave()">保存设置（立即生效）</button>
+                        <button class="btn btn-secondary" onclick="ddlCfgPreview()">预览今天的提醒（不发送）</button>
+                        <input type="date" id="ddlPreviewDate" title="预览日期，留空=今天" style="padding:6px 8px;border:1px solid #ccc;border-radius:6px;">
+                        <span id="ddlCfgMsg" style="font-size:12px;"></span>
+                    </div>
+
+                    <div id="ddlPreviewBox" style="display:none;margin-top:14px;border:1px solid #c8d6e5;background:#f8fafc;border-radius:8px;padding:12px 14px;max-height:460px;overflow:auto;">
+                        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">预览结果 <span style="font-weight:400;color:#28a745;">（仅组装消息，未发送任何企微消息）</span></div>
+                        <div id="ddlPreviewBody"></div>
+                    </div>
+                </div>
+
                 <div class="page-header">
                     <h2>数据源管理</h2>
                     <p>上传或更新数据源文件，系统自动识别并处理。<b>已上传的文件保存在云端，代码更新/服务重启都不会丢失</b>；若状态显示"查询失败"只是云端读取超时，点刷新即可，无需重新上传。</p>
@@ -460,7 +528,7 @@ function switchView(view) {
         window.__naViewFromUrl = true;   // 标记: 已按 URL 直达切换, 末尾默认初始化不再覆盖
         switchView(target);
     }
-    if (isAdmin) acctLoad();
+    if (isAdmin) { acctLoad(); ddlCfgLoad(); }
     if (!isAdmin) installRoleLock();
 })();
 
@@ -573,6 +641,171 @@ function acctSave(){
             }
             else { acctMsgBox('失败: ' + (d.error || ''), '#dc3545'); }
         }).catch(function(){ acctMsgBox('网络错误', '#dc3545'); });
+}
+
+// ========== DDL 到期提醒设置（系统设置 · 仅管理员） ==========
+// 说明：所有函数均为「函数声明」，initConsole 在前部调用 ddlCfgLoad() 不会触发 TDZ。
+function ddlCfgMsg(text, color){
+    var el = document.getElementById('ddlCfgMsg');
+    if (el) { el.style.color = color || '#666'; el.textContent = text; }
+}
+function ddlGroupRowHtml(name, hook){
+    return '<div class="ddl-g-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">'
+        + '<input class="ddl-g-name" list="ddlGroupOptions" value="' + escA(name) + '" placeholder="运营组名，如 综合组-AMZ" style="width:190px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<input class="ddl-g-hook" value="' + escA(hook) + '" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…" style="flex:1;min-width:300px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<button class="btn tiny" onclick="ddlDelRow(this)">删除</button></div>';
+}
+function ddlOpRowHtml(name, typ, val){
+    return '<div class="ddl-o-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">'
+        + '<input class="ddl-o-name" list="ddlOpOptions" value="' + escA(name) + '" placeholder="运营姓名" style="width:190px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<select class="ddl-o-type" style="padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<option value="userid"' + (typ === 'mobile' ? '' : ' selected') + '>userid（企微账号）</option>'
+        + '<option value="mobile"' + (typ === 'mobile' ? ' selected' : '') + '>手机号</option>'
+        + '</select>'
+        + '<input class="ddl-o-val" value="' + escA(val) + '" placeholder="填 userid 或手机号；留空=不真艾特" style="flex:1;min-width:260px;padding:5px 8px;border:1px solid #ccc;border-radius:6px;">'
+        + '<button class="btn tiny" onclick="ddlDelRow(this)">删除</button></div>';
+}
+function ddlCfgRender(cfg, opt){
+    var gs = (opt && opt.groups) || [], os = (opt && opt.operators) || [];
+    var gd = document.getElementById('ddlGroupOptions');
+    var od = document.getElementById('ddlOpOptions');
+    if (gd) gd.innerHTML = gs.map(function(g){ return '<option value="' + escA(g) + '"></option>'; }).join('');
+    if (od) od.innerHTML = os.map(function(o){ return '<option value="' + escA(o) + '"></option>'; }).join('');
+
+    var gRows = [], cg = cfg.groups || {};
+    Object.keys(cg).sort().forEach(function(k){ gRows.push([k, cg[k] || '']); });
+    if (!gRows.length) {
+        gs.filter(function(g){ return String(g).indexOf('品牌组') < 0; })
+          .slice(0, 10).forEach(function(g){ gRows.push([g, '']); });
+    }
+    var gb = document.getElementById('ddlGroupRows');
+    if (gb) gb.innerHTML = gRows.map(function(r){ return ddlGroupRowHtml(r[0], r[1]); }).join('')
+        || '<div class="ddl-empty" style="font-size:12px;color:#999;padding:4px 2px;">暂无运营组，点「+ 添加一行」手动新增</div>';
+
+    var oRows = [], co = cfg.operators || {};
+    Object.keys(co).sort().forEach(function(k){
+        var m = co[k] || {};
+        oRows.push([k, (m.userid ? 'userid' : 'mobile'), (m.userid || m.mobile || '')]);
+    });
+    if (!oRows.length) {
+        os.slice(0, 14).forEach(function(o){ oRows.push([o, 'userid', '']); });
+    }
+    var ob = document.getElementById('ddlOpRows');
+    if (ob) ob.innerHTML = oRows.map(function(r){ return ddlOpRowHtml(r[0], r[1], r[2]); }).join('')
+        || '<div class="ddl-empty" style="font-size:12px;color:#999;padding:4px 2px;">暂无运营，点「+ 添加一行」手动新增</div>';
+
+    var fb = document.getElementById('ddlFallback'); if (fb) fb.value = cfg.fallback_webhook || '';
+    var um = document.getElementById('ddlUnmapped'); if (um) um.value = cfg.unmapped_operator || 'plain';
+    var sc = document.getElementById('ddlSecret');
+    if (sc) { sc.value = ''; sc.placeholder = cfg.secret_set ? '已自动配置，留空保持不变' : '一般不用填，系统已自动配置'; }
+}
+function ddlCfgLoad(){
+    if (!isAdmin) return;
+    Promise.all([
+        fetch('/na/api/ddl-notify-config').then(function(r){ return r.json(); }),
+        fetch('/na/api/ddl-notify-options').then(function(r){ return r.json(); })
+    ]).then(function(arr){
+        var cfg = (arr[0] && arr[0].config) || {};
+        var opt = arr[1] || {};
+        window.__ddlOptions = opt;
+        ddlCfgRender(cfg, opt);
+        var st = document.getElementById('ddlCfgState');
+        if (st) st.textContent = '已载入 · ' + Object.keys(cfg.groups || {}).length + ' 个群 / '
+            + Object.keys(cfg.operators || {}).length + ' 位运营 · '
+            + (cfg.secret_set ? '口令已自动配置' : '口令未配置');
+    }).catch(function(e){
+        var st = document.getElementById('ddlCfgState');
+        if (st) st.textContent = '读取失败';
+        ddlCfgMsg('读取配置失败：' + e, '#dc3545');
+    });
+}
+function ddlAddGroup(name, hook){
+    var b = document.getElementById('ddlGroupRows'); if (!b) return;
+    var ph = b.querySelector('.ddl-empty'); if (ph) ph.remove();
+    b.insertAdjacentHTML('beforeend', ddlGroupRowHtml(name || '', hook || ''));
+}
+function ddlAddOp(name, typ, val){
+    var b = document.getElementById('ddlOpRows'); if (!b) return;
+    var ph = b.querySelector('.ddl-empty'); if (ph) ph.remove();
+    b.insertAdjacentHTML('beforeend', ddlOpRowHtml(name || '', typ || 'userid', val || ''));
+}
+function ddlDelRow(btn){ if (btn && btn.parentNode) btn.parentNode.remove(); }
+function ddlCfgCollect(){
+    var groups = [], ops = [];
+    document.querySelectorAll('#ddlGroupRows .ddl-g-row').forEach(function(r){
+        var n = (r.querySelector('.ddl-g-name').value || '').trim();
+        var h = (r.querySelector('.ddl-g-hook').value || '').trim();
+        if (n || h) groups.push({ name: n, webhook: h });
+    });
+    document.querySelectorAll('#ddlOpRows .ddl-o-row').forEach(function(r){
+        var n = (r.querySelector('.ddl-o-name').value || '').trim();
+        var t = r.querySelector('.ddl-o-type').value;
+        var v = (r.querySelector('.ddl-o-val').value || '').trim();
+        if (n || v) ops.push({ name: n, type: t, value: v });
+    });
+    var fb = document.getElementById('ddlFallback');
+    var um = document.getElementById('ddlUnmapped');
+    var sc = document.getElementById('ddlSecret');
+    return {
+        groups: groups,
+        operators: ops,
+        fallback_webhook: fb ? fb.value.trim() : '',
+        unmapped_operator: um ? um.value : 'plain',
+        secret: sc ? sc.value.trim() : ''
+    };
+}
+function ddlCfgSave(){
+    ddlCfgMsg('保存中…', '#666');
+    fetch('/na/api/ddl-notify-config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ddlCfgCollect())
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { ddlCfgMsg('失败：' + (d.error || ''), '#dc3545'); return; }
+        ddlCfgMsg('已保存 ' + (d.saved_at || '') + '：'
+            + Object.keys(d.config.groups || {}).length + ' 个群 / '
+            + Object.keys(d.config.operators || {}).length + ' 位运营；ECS 定时任务下次运行即按新配置发送',
+            '#28a745');
+        var sc = document.getElementById('ddlSecret'); if (sc) sc.value = '';
+        ddlCfgRender(d.config, window.__ddlOptions || {});
+        var st = document.getElementById('ddlCfgState');
+        if (st) st.textContent = '已保存 · 口令' + (d.secret_set ? '已配置' : '未配置');
+    }).catch(function(){ ddlCfgMsg('网络错误', '#dc3545'); });
+}
+function ddlCfgPreview(){
+    var body = ddlCfgCollect();
+    var di = document.getElementById('ddlPreviewDate');
+    if (di && di.value) body.date = di.value;
+    var box = document.getElementById('ddlPreviewBox');
+    var bd = document.getElementById('ddlPreviewBody');
+    if (box) box.style.display = 'block';
+    if (bd) bd.innerHTML = '<div style="color:#888;">正在组装预览…（不会发送任何消息）</div>';
+    fetch('/na/api/ddl-notify-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { if (bd) bd.innerHTML = '<div style="color:#dc3545;">预览失败：' + escA(d.error || '') + '</div>'; return; }
+        var skip = Object.keys(d.skipped || {}).map(function(k){ return k + ' ' + d.skipped[k]; }).join('、') || '无';
+        var h = '<div style="font-size:12px;color:#555;margin-bottom:10px;line-height:1.8;">日期 <b>' + escA(d.date)
+            + '</b> · 命中 <b>' + d.total + '</b> 个 SPU · 将生成 <b>' + (d.messages || []).length
+            + '</b> 条群消息<br>跳过：' + escA(skip) + '</div>';
+        if (!(d.messages || []).length) {
+            h += '<div style="color:#999;font-size:12px;">今天没有需要提醒的 SPU，或没有可用的群机器人地址。</div>';
+        } else {
+            (d.messages || []).forEach(function(m, i){
+                var at = (m.mentioned_list || []).concat(m.mentioned_mobile_list || []).join(', ');
+                h += '<div style="border:1px solid #dbe3ec;background:#fff;border-radius:6px;padding:10px 12px;margin-bottom:8px;">'
+                    + '<div style="font-size:12px;color:#1a237e;font-weight:600;margin-bottom:4px;">'
+                    + (i + 1) + '. ' + escA(m.group) + ' / ' + escA(m.operator)
+                    + ' <span style="font-weight:400;color:' + (m.webhook_ok ? '#28a745' : '#dc3545') + ';">'
+                    + (m.webhook_ok ? '群：' + escA(m.webhook) : '⚠ 未配置群机器人，这条不会发出') + '</span></div>'
+                    + '<div style="font-size:11px;color:#666;margin-bottom:6px;">艾特：'
+                    + escA(at || (m.unmapped ? '无（未配置成员，按策略处理）' : '无')) + '</div>'
+                    + '<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;margin:0;font-family:inherit;color:#333;">'
+                    + escA(m.text) + '</pre></div>';
+            });
+        }
+        if (bd) bd.innerHTML = h;
+    }).catch(function(){ if (bd) bd.innerHTML = '<div style="color:#dc3545;">网络错误</div>'; });
 }
 
 // ========== 数据源卡片 ==========

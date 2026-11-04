@@ -40,6 +40,9 @@ DEFAULT_PWD = 'lucie2026'
 API_PATH = '/na/api/ddl-due'
 CONFIG_CANDIDATES = [
     os.environ.get('DDL_NOTIFY_CONFIG', ''),
+    # 2026-11-04 起：系统设置页保存的配置优先（改完即生效，不必改 /etc）
+    # na_routes._write_ddl_notify_config() 写到这里，ECS 零配置直接读。
+    str(HERE / 'na_data' / 'ddl_notify_config.json'),
     '/etc/sku-spu/ddl_notify.json',
     str(HERE / 'ddl_notify_config.json'),
 ]

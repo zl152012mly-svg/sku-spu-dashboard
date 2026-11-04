@@ -23,6 +23,7 @@ na_routes.py —— 新品盘点（new-arrival）业务蓝图，统一挂载前�
 import os
 import sys
 import json
+import re
 import datetime
 import io
 import traceback
@@ -46,6 +47,204 @@ bp = Blueprint('na', __name__, url_prefix='/na')
 
 # 允许上传大文件 (增长产品清单原始 216MB, 瘦身后 1.4MB)
 MAX_CONTENT_LENGTH = 250 * 1024 * 1024
+
+
+# ============================================================
+# DDL 到期企微群提醒 · 可视化配置（系统设置，仅管理员）
+#   配置存于新品侧 outputs 桶 + 本地 na_data/ddl_notify_config.json；
+#   ECS 定时脚本 ddl_notify.py 直接读同一份文件 —— 界面改完即生效，
+#   不用改 /etc、不用重启服务、不用重新部署。
+#   口令「只写不读」：GET 绝不回显 auth_token / access_password；
+#   保存时若没有显式口令，自动注入本机推算的 auth_token（零配置可用）。
+# ============================================================
+DDL_NOTIFY_CONFIG_KEY = 'ddl_notify_config.json'
+DDL_NOTIFY_DEFAULTS = {
+    'api_base': 'http://127.0.0.1:8092',
+    'timeout': 20,
+    'send_timeout': 10,
+    'state_path': '',
+    'groups': {},
+    'fallback_webhook': '',
+    'operators': {},
+    'unmapped_operator': 'plain',
+}
+DDL_UNMAPPED_VALUES = ('plain', 'skip', 'at_all')
+
+
+def _read_ddl_notify_config():
+    """读配置（云端优先，回落本地）；缺失时返回默认骨架。"""
+    cfg = None
+    try:
+        cfg = cloud_store.read_json(cloud_store.BUCKET_OUTPUTS, DDL_NOTIFY_CONFIG_KEY)
+    except Exception as e:
+        print('[warn] 读取 DDL 提醒配置失败: %s' % e)
+    if not isinstance(cfg, dict):
+        try:
+            p = BASE_DIR / DDL_NOTIFY_CONFIG_KEY
+            if p.exists():
+                cfg = json.loads(p.read_text('utf-8'))
+        except Exception as e:
+            print('[warn] 回落读取本地 DDL 提醒配置失败: %s' % e)
+            cfg = None
+    out = dict(DDL_NOTIFY_DEFAULTS)
+    if isinstance(cfg, dict):
+        out.update(cfg)
+    if not isinstance(out.get('groups'), dict):
+        out['groups'] = {}
+    if not isinstance(out.get('operators'), dict):
+        out['operators'] = {}
+    if out.get('unmapped_operator') not in DDL_UNMAPPED_VALUES:
+        out['unmapped_operator'] = 'plain'
+    # 零配置：没有任何显式口令时，用本机管理员口令推算 token。
+    # 用户在系统设置里一般不需要填任何口令，ECS 脚本拿到配置就能调接口。
+    if not (out.get('auth_token') or out.get('access_password')):
+        out['auth_token'] = auth.AUTH_TOKEN
+    # OSS 模式下 read_json 只读云端，本地镜像可能缺失（换机/重装）。
+    # ECS 定时脚本是读本地文件的，这里顺手自愈一次，保证两边一致。
+    _ensure_local_ddl_notify_config(out)
+    return out
+
+
+def _ensure_local_ddl_notify_config(cfg):
+    """把配置原子写到 na_data/ddl_notify_config.json，供 ECS 定时脚本直接读。"""
+    try:
+        p = BASE_DIR / DDL_NOTIFY_CONFIG_KEY
+        p.parent.mkdir(parents=True, exist_ok=True)
+        cur = None
+        if p.exists():
+            try:
+                cur = json.loads(p.read_text('utf-8'))
+            except Exception:
+                cur = None
+        if cur == cfg:
+            return True
+        tmp = p.with_name(p.name + '.tmp')
+        tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
+        tmp.replace(p)
+        return True
+    except Exception as e:
+        print('[warn] 同步 DDL 提醒配置到本地失败: %s' % e)
+        return False
+
+
+def _public_ddl_notify_config(cfg):
+    """对外可读版本：绝不回显口令 / token，只给一个「是否已设置」标记。"""
+    pub = {k: v for k, v in cfg.items()
+           if k not in ('auth_token', 'access_password') and not k.startswith('_')}
+    pub['secret_set'] = bool(cfg.get('auth_token') or cfg.get('access_password'))
+    return pub
+
+
+def _ddl_notify_rows_to_config(body, old):
+    """前端行式数据 → ddl_notify.py 需要的 dict 形态（不落盘，预览/保存共用）。"""
+    cfg = dict(old)
+    groups, operators = {}, {}
+    for r in (body.get('groups') or []):
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get('name') or '').strip()
+        hook = str(r.get('webhook') or '').strip()
+        if name:
+            groups[name] = hook
+    for r in (body.get('operators') or []):
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get('name') or '').strip()
+        typ = str(r.get('type') or 'userid').strip()
+        val = str(r.get('value') or '').strip()
+        if not name:
+            continue
+        if typ not in ('userid', 'mobile'):
+            typ = 'userid'
+        operators[name] = {typ: val} if val else {}
+    # 只覆盖本次提交里出现的字段；缺省字段保持原值（避免「只改口令」把映射清空）
+    if 'groups' in body:
+        cfg['groups'] = groups
+    if 'operators' in body:
+        cfg['operators'] = operators
+    if 'fallback_webhook' in body:
+        cfg['fallback_webhook'] = str(body.get('fallback_webhook') or '').strip()
+    if 'unmapped_operator' in body:
+        unmapped = str(body.get('unmapped_operator') or 'plain').strip()
+        cfg['unmapped_operator'] = unmapped if unmapped in DDL_UNMAPPED_VALUES else 'plain'
+
+    # 口令：64位十六进制视为现成 token，其余按明文口令（脚本会用同一盐自行推算）
+    secret = str(body.get('secret') or '').strip()
+    if secret:
+        if re.fullmatch(r'[0-9a-fA-F]{64}', secret):
+            cfg['auth_token'] = secret.lower()
+            cfg.pop('access_password', None)
+        else:
+            cfg['access_password'] = secret
+            cfg.pop('auth_token', None)
+    elif not (cfg.get('auth_token') or cfg.get('access_password')):
+        # 零配置：用本机管理员口令算出 token，ECS 脚本拿到即可直接调接口
+        cfg['auth_token'] = auth.AUTH_TOKEN
+    return cfg
+
+
+def _validate_ddl_notify_config(cfg):
+    """只挡明显填错的地址，其余交给预览让用户自己看效果。返回错误串或 None。"""
+    for name, hook in [('兜底群', cfg.get('fallback_webhook', ''))] + \
+                      list((cfg.get('groups') or {}).items()):
+        if hook and not str(hook).lower().startswith('http'):
+            return '「%s」的群机器人地址不是 http(s) 链接，请检查是否复制完整' % name
+    for name, m in (cfg.get('operators') or {}).items():
+        if not isinstance(m, dict):
+            return '「%s」的成员配置格式异常' % name
+    return None
+
+
+def _write_ddl_notify_config(cfg):
+    """写云端 + 本地（common_store.write_json 已同时落 na_data/）。返回 (ok, cloud_ok)。"""
+    try:
+        cloud_ok = cloud_store.write_json(
+            cloud_store.BUCKET_OUTPUTS, DDL_NOTIFY_CONFIG_KEY, cfg)
+        return True, bool(cloud_ok)
+    except Exception as e:
+        print('[warn] 保存 DDL 提醒配置失败: %s' % e)
+        return False, False
+
+
+def _ddl_notify_module():
+    """懒加载 ECS 通知脚本（仅「预览消息」用；不联网、不发消息）。"""
+    import importlib.util
+    p = Path(__file__).resolve().parent / 'ddl_notify.py'
+    if not p.exists():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location('_ddl_notify_runtime', str(p))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception as e:
+        print('[warn] ddl_notify.py 加载失败: %s' % e)
+        return None
+
+
+def _mask_webhook(url):
+    """预览里不展示完整群机器人 key。"""
+    u = str(url or '')
+    if not u:
+        return ''
+    if 'key=' in u:
+        head, key = u.split('key=', 1)
+        return head + 'key=' + (key[:2] + '***' + key[-4:] if len(key) > 8 else '***')
+    return u[:48] + '...' if len(u) > 48 else u
+
+
+def _ddl_due_date_arg():
+    """解析 date 参数（默认 Asia/Shanghai 今天）。返回 (date_str, target, err)。"""
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo('Asia/Shanghai')).date()
+    except Exception:
+        today = datetime.date.today()
+    date_str = (request.args.get('date') or '').strip() or today.isoformat()
+    try:
+        return date_str, datetime.date.fromisoformat(date_str), None
+    except ValueError:
+        return date_str, None, 'date 需为 YYYY-MM-DD'
 
 
 def is_admin():
@@ -1358,43 +1557,24 @@ def api_data_sources():
     return jsonify(sources)
 
 
-@bp.route('/api/ddl-due')
-@auth.role_required('admin')
-def api_ddl_due():
-    """【上架 DDL 到期提醒 · 只读数据源】给 ECS 定时通知脚本调用。
+def _collect_ddl_due(date_str, target, include_overdue=True, exclude_abnormal=True):
+    """【唯一筛选口径】页面 / CSV 导出 / ECS 提醒 / 界面预览共用。
 
-    口径与「页面 / CSV 导出」完全一致（避免另写一套规则导致页面与提醒不一致）:
+    与「页面 / CSV 导出」完全一致（避免另写一套规则导致页面与提醒不一致）:
       - 报表走 load_report_data_with_confirmations()（含 SKU 异常确认的即时重算）
       - 可编辑字段按 note_fields + stock_note 逐字段合并，spuNotes 优先
       - 上架 DDL 取 note.launch_ddl（手工调整）优先，否则 p.launch_ddl（系统计算）
     筛选链：
       SPU是否需要上架 == 需要上架
-        AND 异常处理 != 异常（非上架新品）   [exclude_abnormal=0 可关]
+        AND 异常处理 != 异常（非上架新品）
         AND 运营组非空 且 不含「品牌组」
         AND 是否完成上架 == 未完成(pending)
-        AND 上架DDL <= date（含当天 + 已逾期）[include_overdue=0 则只取当天]
-    参数：date=YYYY-MM-DD（默认 Asia/Shanghai 今天）、include_overdue=1|0、
-          exclude_abnormal=1|0
-    返回：{date, total, groups: {运营组: {运营: [ {spu, ddl, days_overdue,
-          launch_store, launch_reason} ]}}, skipped: {原因: 条数}}
+        AND 上架DDL <= date（含当天 + 已逾期；include_overdue=False 则只取当天）
+    返回 None 表示报告数据不存在；否则返回可直接 jsonify 的 dict。
     """
-    try:
-        from zoneinfo import ZoneInfo
-        today = datetime.datetime.now(ZoneInfo('Asia/Shanghai')).date()
-    except Exception:
-        today = datetime.date.today()
-    date_str = (request.args.get('date') or '').strip() or today.isoformat()
-    try:
-        target = datetime.date.fromisoformat(date_str)
-    except ValueError:
-        return jsonify({'error': 'date 需为 YYYY-MM-DD'}), 400
-    include_overdue = request.args.get('include_overdue', '1') != '0'
-    exclude_abnormal = request.args.get('exclude_abnormal', '1') != '0'
-
     data = load_report_data_with_confirmations()
     if data is None:
-        return jsonify({'error': '报告数据不存在，请先在【系统设置】点「处理并生成报告」',
-                        'date': date_str, 'total': 0, 'groups': {}, 'skipped': {}}), 404
+        return None
 
     spu_notes = load_stock_note()
     groups = {}
@@ -1458,9 +1638,137 @@ def api_ddl_due():
     for grp in groups.values():
         for items in grp.values():
             items.sort(key=lambda x: (x['ddl'], x['spu']))
-    return jsonify({'date': date_str, 'include_overdue': include_overdue,
-                    'exclude_abnormal': exclude_abnormal,
-                    'total': total, 'groups': groups, 'skipped': skipped})
+    return {'date': date_str, 'include_overdue': include_overdue,
+            'exclude_abnormal': exclude_abnormal,
+            'total': total, 'groups': groups, 'skipped': skipped}
+
+
+@bp.route('/api/ddl-due')
+@auth.role_required('admin')
+def api_ddl_due():
+    """【上架 DDL 到期提醒 · 只读数据源】给 ECS 定时通知脚本调用。
+
+    参数：date=YYYY-MM-DD（默认 Asia/Shanghai 今天）、include_overdue=1|0、
+          exclude_abnormal=1|0
+    返回：{date, total, groups: {运营组: {运营: [ {spu, ddl, days_overdue,
+          launch_store, launch_reason} ]}}, skipped: {原因: 条数}}
+    """
+    date_str, target, err = _ddl_due_date_arg()
+    if err:
+        return jsonify({'error': err}), 400
+    include_overdue = request.args.get('include_overdue', '1') != '0'
+    exclude_abnormal = request.args.get('exclude_abnormal', '1') != '0'
+    payload = _collect_ddl_due(date_str, target, include_overdue, exclude_abnormal)
+    if payload is None:
+        return jsonify({'error': '报告数据不存在，请先在【系统设置】点「处理并生成报告」',
+                        'date': date_str, 'total': 0, 'groups': {}, 'skipped': {}}), 404
+    return jsonify(payload)
+
+
+# ---------- DDL 到期提醒 · 可视化配置接口（系统设置，仅管理员） ----------
+@bp.route('/api/ddl-notify-config', methods=['GET'])
+@auth.role_required('admin')
+def api_ddl_notify_config_get():
+    """读配置。口令/token 不回显，只给 secret_set 标记。"""
+    cfg = _read_ddl_notify_config()
+    return jsonify({'ok': True, 'config': _public_ddl_notify_config(cfg),
+                    'cloud': cloud_store.is_cloud()})
+
+
+@bp.route('/api/ddl-notify-config', methods=['POST'])
+@auth.role_required('admin')
+def api_ddl_notify_config_post():
+    """保存配置。body: {groups:[{name,webhook}], operators:[{name,type,value}],
+    fallback_webhook, unmapped_operator, secret?}。secret 留空=保留/自动注入。"""
+    body = request.get_json(silent=True) or {}
+    old = _read_ddl_notify_config()
+    cfg = _ddl_notify_rows_to_config(body, old)
+    err = _validate_ddl_notify_config(cfg)
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
+    ok, cloud_ok = _write_ddl_notify_config(cfg)
+    if not ok:
+        return jsonify({'ok': False, 'error': '保存失败，请查看服务日志'}), 500
+    _ensure_local_ddl_notify_config(cfg)
+    return jsonify({'ok': True, 'config': _public_ddl_notify_config(cfg),
+                    'cloud_ok': cloud_ok, 'secret_set': bool(
+                        cfg.get('auth_token') or cfg.get('access_password')),
+                    'saved_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
+
+
+@bp.route('/api/ddl-notify-options')
+@auth.role_required('admin')
+def api_ddl_notify_options():
+    """给两行表的下拉候选：当前报表里真实出现过的运营组 / 运营 + 已配置过的键。"""
+    data = load_report_data_with_confirmations() or {}
+    notes = load_stock_note() or {}
+    groups, operators = set(), set()
+    for p in data.get('products', []):
+        if not isinstance(p, dict):
+            continue
+        nf = p.get('note_fields') if isinstance(p.get('note_fields'), dict) else {}
+        sn = notes.get(p.get('spu', ''))
+        if not isinstance(sn, dict):
+            sn = {}
+        g = str(sn.get('operator_group') or nf.get('operator_group') or
+                p.get('category') or '').strip()
+        o = str(sn.get('operator') or nf.get('operator') or
+                p.get('operator') or '').strip()
+        if g:
+            groups.add(g)
+        if o:
+            operators.add(o)
+    cfg = _read_ddl_notify_config()
+    groups.update((cfg.get('groups') or {}).keys())
+    operators.update((cfg.get('operators') or {}).keys())
+    return jsonify({'ok': True, 'groups': sorted(groups),
+                    'operators': sorted(operators),
+                    'excluded_groups': ['品牌组']})
+
+
+@bp.route('/api/ddl-notify-preview', methods=['POST'])
+@auth.role_required('admin')
+def api_ddl_notify_preview():
+    """预览「今天会往哪些群、艾特谁、发哪些 SPU」——纯组装，绝不联网、绝不发送。
+
+    body 可直接带页面上尚未保存的草稿（与保存接口同形），另可带 date。
+    """
+    body = request.get_json(silent=True) or {}
+    date_str = str(body.get('date') or '').strip()
+    if not date_str:
+        date_str, target, err = _ddl_due_date_arg()
+        if err:
+            return jsonify({'error': err}), 400
+    else:
+        try:
+            target = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            return jsonify({'error': 'date 需为 YYYY-MM-DD'}), 400
+    include_overdue = body.get('include_overdue', True) is not False and \
+        str(body.get('include_overdue', '1')) != '0'
+    exclude_abnormal = body.get('exclude_abnormal', True) is not False and \
+        str(body.get('exclude_abnormal', '1')) != '0'
+
+    payload = _collect_ddl_due(date_str, target, include_overdue, exclude_abnormal)
+    if payload is None:
+        return jsonify({'error': '报告数据不存在，请先在【系统设置】点「处理并生成报告」'}), 404
+    mod = _ddl_notify_module()
+    if mod is None:
+        return jsonify({'error': 'ddl_notify.py 未部署或加载失败，无法预览'}), 500
+    cfg = _ddl_notify_rows_to_config(body, _read_ddl_notify_config())
+    try:
+        msgs = mod.build_messages(payload, cfg)
+    except Exception as e:
+        return jsonify({'error': '消息组装失败: %s' % e}), 500
+    out = []
+    for m in (msgs or []):
+        nm = dict(m)
+        nm['webhook_ok'] = bool(m.get('webhook'))
+        nm['webhook'] = _mask_webhook(m.get('webhook'))
+        out.append(nm)
+    return jsonify({'ok': True, 'date': date_str, 'total': payload['total'],
+                    'skipped': payload['skipped'], 'messages': out,
+                    'sent': False})
 
 
 @bp.route('/api/shared-sources')

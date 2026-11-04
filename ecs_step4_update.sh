@@ -54,8 +54,8 @@ pull common_store.py         common_store.py
 pull na_core.py              na_core.py
 pull na_routes.py            na_routes.py
 pull bridge_main.py          bridge_main.py   # 2026-10-29 入口统一: 系统设置→清洗看板反向同步桥
-pull ddl_notify.py           ddl_notify.py   # 2026-11-04 上架DDL到期企微群提醒（ECS 定时脚本）
-pull ddl_notify_config.example.json ddl_notify_config.example.json   # 配置模板（不含密钥，真实配置放 /etc/sku-spu/）
+pull ddl_notify.py           ddl_notify.py   # 2026-11-04 上架DDL到期企微群提醒（ECS 定时脚本；优先读系统设置保存的配置）
+pull ddl_notify_config.example.json ddl_notify_config.example.json   # 字段说明/离线兜底模板（不含密钥；映射已在系统设置里可视化维护）
 pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
 pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台
@@ -85,6 +85,17 @@ echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件�
 K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
 echo "  /console 未登录返回码 = $K  （302=正常跳转到登录；404=console_index.html 漏传；000/502=服务没起来）"
 sudo systemctl status sku-spu.service --no-pager | head -3
+
+say "4.5 DDL 到期提醒 · 可视化配置部署自查（2026-11-04）"
+G1=$(grep -c "ddl-notify-config" "$APP/na_routes.py" 2>/dev/null || echo 0)
+[ "$G1" -ge 2 ] && ok "na_routes.py 已含配置/预览接口 ($G1 处)" || bad "na_routes.py 缺少 DDL 配置接口，检查是否拉到最新版"
+G2=$(grep -c "na_data' / 'ddl_notify_config.json'" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+[ "$G2" -ge 1 ] && ok "ddl_notify.py 已优先读系统设置保存的配置" || bad "ddl_notify.py 未读 na_data 配置，定时脚本会退回旧 /etc 文件"
+G3=$(grep -c "ddlNotifyCard" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+[ "$G3" -ge 1 ] && ok "系统设置页已含「DDL 到期提醒设置」卡" || bad "na_index.html 缺少设置卡"
+G4=$(grep -c "v=c7" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+[ "$G4" -eq 6 ] && ok "工作台 iframe 版本号 6 处已升到 c7" || warn "console_index.html 版本号异常 ($G4 处 c7)，页面可能走 iframe 旧缓存，请手动强刷"
+echo "  提示：群机器人 webhook / 运营成员映射请到【系统设置 → DDL 到期提醒设置】里填并保存，无需改 /etc 文件。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
