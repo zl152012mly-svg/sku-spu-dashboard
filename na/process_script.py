@@ -492,7 +492,8 @@ def load_self_operated_products(known_spu_names=None):
 
 def load_inventory():
     """在库库存清单"""
-    filepath = find_data_file("库存清单-*.xlsx")
+    # 2026-11-05 放宽: 连字符/下划线/无分隔符都认（对齐卡片 pattern 与 new_color_module 宽松版）
+    filepath = find_data_file("库存清单*.xlsx")
     if not filepath:
         print("[WARNING] 库存清单文件未找到")
         return {}
@@ -509,7 +510,8 @@ def load_inventory():
 
 def load_in_transit():
     """在途动态库存表"""
-    filepath = find_data_file("动态库存表_*.xlsx")
+    # 2026-11-05 放宽: 原写死 '动态库存表_*.xlsx', 连字符/无下划线版匹配不上（对齐宽松口径）
+    filepath = find_data_file("动态库存表*.xlsx")
     if not filepath:
         print("[WARNING] 动态库存表文件未找到")
         return {}

@@ -468,7 +468,9 @@ DATA_SOURCES = [
     {
         'id': 'in_transit',
         'name': '动态库存表',
-        'pattern': '动态库存表_*.xlsx',
+        # 2026-11-05 放宽: 原来写死 '动态库存表_*.xlsx', 用户改名成连字符/无下划线版就匹配不上
+        # (上传成功但卡片"未找到"); new_color_module 本来就用宽松版, 此处对齐。全角＿ 由 _clean_filename 归一兜底。
+        'pattern': '动态库存表*.xlsx',
         'accept': '.xlsx',
         'desc': '在途数据, 含ETA和预计到仓时间',
         'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进
@@ -476,7 +478,7 @@ DATA_SOURCES = [
     {
         'id': 'inventory',
         'name': '库存清单',
-        'pattern': '库存清单-*.xlsx',
+        'pattern': '库存清单*.xlsx',   # 2026-11-05 放宽: 连字符/下划线/无分隔符都认（对齐 new_color_module）
         'accept': '.xlsx',
         'desc': '在库库存数据',
         'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进
@@ -620,6 +622,9 @@ def _clean_filename(name):
     3. 首尾空白/句点
     """
     import re
+    # 2026-11-05 全角→半角归一: 全角下划线＿(U+FF3F)/连字符－(U+FF0D)/空格(U+3000)
+    # 肉眼与半角几乎一样, 但 pattern 匹配只认半角 —— 曾致「上传成功但卡片未找到」。
+    name = name.replace('\uff3f', '_').replace('\uff0d', '-').replace('\u3000', ' ')
     name = re.sub(r'\s*\(\d+\)\s*', '', name)   # (1) (2)
     name = re.sub(r'\s*\[\d+\]\s*', '', name)   # [1] [2]
     name = re.sub(r'[<>:"/\\|?*\^\#]', '_', name)  # 危险字符
