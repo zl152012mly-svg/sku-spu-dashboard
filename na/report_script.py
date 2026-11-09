@@ -100,7 +100,7 @@ def generate_report():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>北美市场事业部新品跟进</title>
+<title>新品上架跟进 · 数据运营工作台</title>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{ font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f5f5f5; color: #333; padding: 20px; }}
@@ -169,7 +169,7 @@ tbody td {{ padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle
 <div class="header">
     <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-            <h1>北美市场事业部新品跟进</h1>
+            <h1>新品上架跟进 · 数据运营工作台</h1>
             <div class="subtitle">生成时间: {data['generated_at']} | 今日: {today} | 6大数据源全接入</div>
         </div>
         <div style="display:flex;gap:8px;">
@@ -241,7 +241,7 @@ tbody td {{ padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle
 </div>
 
 <div class="footer">
-    北美市场事业部新品跟进 | 候选库: 增长产品+上品通知表 | 主记录: 款式表(上架汇总-US) | FedEx 2026规则
+    数据运营工作台 · 新品上架跟进 | 生成时间: {data['generated_at']}
 </div>
 
 <script>

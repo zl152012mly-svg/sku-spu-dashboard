@@ -719,12 +719,22 @@ function loadState(msgEl, doneNote) {
 
 /* ---------- 视图切换 ---------- */
 // 2026-10-29 入口统一: 跳转【系统设置 → 数据源管理】上传数据源。
-// 工作台嵌入时: postMessage 同步左侧导航高亮(console 已监听 na-console-nav/view=dm), iframe 自行导航;
-// 独立访问时: 直接整页跳转 /na/?view=dm。
+// 工作台嵌入时: 由父框架统一接管导航 —— 同步左侧高亮 + 用同一版本号改 iframe.src，
+// 避免「左侧已高亮系统设置、右侧还是旧内容」的错位；独立访问时直接整页跳转。
+// 父框架会回执 na-console-nav-ack；旧版外壳没有回执，2s 后由本页兜底跳转（同 URL，不会漏）。
 function goConsoleUpload() {
+  var v = window.ASSET_VER ? '&v=' + encodeURIComponent(window.ASSET_VER) : '';
+  var url = '/na/?view=dm&embed=1' + v;
   if (window.parent && window.parent !== window) {
     try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
-    location.href = '/na/?view=dm&embed=1';
+    var timer = setTimeout(function(){ location.href = url; }, 2000);
+    var onAck = function(ev){
+      if (ev.data && ev.data.type === 'na-console-nav-ack') {
+        clearTimeout(timer);
+        window.removeEventListener('message', onAck);
+      }
+    };
+    window.addEventListener('message', onAck);
   } else {
     location.href = '/na/?view=dm';
   }

@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SKU&SPU 清洗看板</title>
+<title>SKU&SPU 数据清洗 · 数据运营工作台</title>
 <link rel="stylesheet" href="/static/libs/datatables.min.css">
-<link rel="stylesheet" href="/static/style.css?v=20261023-na">
+<link rel="stylesheet" href="/static/style.css?v={{ ASSET_VER }}">
 </head>
 <body>
 <div class="wrap">
 
   <header class="top">
     <div>
-      <h1>SKU&SPU 清洗看板</h1>
+      <h1>SKU&SPU 数据清洗</h1>
       <div class="sub">数据源统一在【系统设置 → 数据源管理】上传 → 自动清洗 / 打标 / 转单扩展 / 包裹类型判定 → 看板 + 下载</div>
     </div>
     <div class="toolbar">
@@ -284,7 +284,7 @@
 <!-- 访问口令弹窗 -->
 <div id="login-modal" class="hide modal-mask">
   <div class="modal login-box">
-    <p class="lg-title">SKU&SPU 清洗看板</p>
+    <p class="lg-title">数据运营工作台</p>
     <p class="lg-sub">请输入访问口令</p>
     <input id="login-pwd" type="password" placeholder="口令" autocomplete="off">
     <p id="login-msg" class="lg-msg"></p>
@@ -295,8 +295,11 @@
 <script src="/static/libs/jquery.min.js"></script>
 <script src="/static/libs/datatables.min.js"></script>
 <script src="/static/libs/echarts.min.js"></script>
-<script src="/static/app.js?v=20261029-bridge"></script>
+<script src="/static/app.js?v={{ ASSET_VER }}"></script>
 <script>
+// 统一版本号：由 app.py 的 context_processor 注入（ASSET_VERSION + 前端文件内容哈希）。
+// app.js 与下面的内联兜底共用，保证「去系统设置上传」跳的是同一版页面。
+window.ASSET_VER = '{{ ASSET_VER }}';
 // 嵌入模式 (在 /console 框架内): 隐藏顶部工具条，使看板铺满内容区
 (function(){
   if (new URLSearchParams(location.search).get('embed') === '1') {
@@ -308,9 +311,12 @@
 // 在此内联定义, 保证「去系统设置上传」按钮(内联 onclick)始终可用。
 if (typeof window.goConsoleUpload !== 'function') {
   window.goConsoleUpload = function(){
+    var v = window.ASSET_VER ? '&v=' + encodeURIComponent(window.ASSET_VER) : '';
+    var url = '/na/?view=dm&embed=1' + v;
     if (window.parent && window.parent !== window) {
       try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
-      location.href = '/na/?view=dm&embed=1';
+      // 旧版工作台外壳只改高亮、不接管导航 → 2s 后自行兜底跳转（新版会回执，跳过此定时器）
+      setTimeout(function(){ location.href = url; }, 2000);
     } else {
       location.href = '/na/?view=dm';
     }

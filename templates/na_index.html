@@ -2,7 +2,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>北美市场事业部新品跟进</title>
+<title>新品上架跟进 · 数据运营工作台</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #333; height: 100vh; overflow: hidden; }
@@ -264,8 +264,8 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
 <div class="app-layout">
     <div class="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo">北美市场事业部</div>
-            <div class="sidebar-sub">新品 / 新色跟进</div>
+            <div class="sidebar-logo">数据运营工作台</div>
+            <div class="sidebar-sub">新品 / 新色跟进 / 系统设置</div>
         </div>
         <div class="sidebar-menu">
             {% if is_admin_bool %}
@@ -1191,11 +1191,20 @@ function runProcess() {
 function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
 
 // ========== 业务页快捷操作 (仅管理员渲染) ==========
-// 更换数据源: 工作台嵌入时 postMessage 同步导航高亮, iframe 自行切到系统设置; 独立访问时直接切视图
+// 更换数据源: 工作台嵌入时交给父框架统一导航(高亮+iframe 地址+统一版本号一起切),
+// 避免旧写法硬编码版本号导致「高亮到位但内容是旧版页面」；独立访问时直接切视图。
 function goSourceMgr() {
     if (window.parent && window.parent !== window) {
         try { window.parent.postMessage({ type: 'na-console-nav', view: 'dm' }, '*'); } catch (e) {}
-        location.href = '/na/?view=dm&embed=1&v=c2';
+        var url = '/na/?view=dm&embed=1&v={{ ASSET_VER }}';
+        var timer = setTimeout(function(){ location.href = url; }, 2000);  // 旧版外壳兜底
+        var onAck = function(ev){
+            if (ev.data && ev.data.type === 'na-console-nav-ack') {
+                clearTimeout(timer);
+                window.removeEventListener('message', onAck);
+            }
+        };
+        window.addEventListener('message', onAck);
     } else {
         switchView('upload');
     }
@@ -1381,7 +1390,7 @@ function renderReport() {
     html += '<th style="width:160px;min-width:160px;" data-col="content">SPU特殊备注</th>';
     html += '</tr></thead><tbody id="tableBody"></tbody></table></div>';
     html += '</div>';   // close .report-scroll
-    html += '<div class="footer">北美市场事业部新品跟进 | 候选库: 增长产品+上品通知表 | 主记录: 款式表(上架汇总-US) | FedEx 2026规则 | 生成时间: ' + reportData.generated_at + '</div>';
+    html += '<div class="footer">数据运营工作台 · 新品上架跟进 | 生成时间: ' + reportData.generated_at + '</div>';
 
     document.getElementById('reportContent').innerHTML = html;
     renderTable();

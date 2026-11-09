@@ -24,6 +24,7 @@ import zipfile
 import threading
 import time
 import hashlib
+from functools import lru_cache
 from datetime import datetime, timezone, timedelta
 from flask import (Flask, request, jsonify, render_template,
                    send_file, send_from_directory, redirect)
@@ -112,6 +113,52 @@ for d in (REF_DIR, UPLOAD_DIR, DATA_DIR):
     os.makedirs(d, exist_ok=True)
 
 app = Flask(__name__)
+
+# ---------- 前端资源版本号：一处生成 + Jinja 全局注入（2026-11-09 阶段0） ----------
+# 旧铁律（已废除）：改 app.js/style.css 要手升 index.html 的 ?v=；
+# 改 na_index.html/console_index.html 要手升 console_index.html 六处 v=cN。
+# 漏一处就出现「线上还是旧页面」，历史上已踩过多次。
+# 新机制：
+#   ① 基准号读 ASSET_VERSION 文件（需要强制刷新时只改这一行，便于人工识别版本）；
+#   ② 后缀取全部关键前端文件的「内容哈希」——改任何一个文件，ASSET_VER 自动变化，
+#      不可能再漏升；没改文件时版本号稳定，浏览器缓存照常生效。
+#   ③ 用 context_processor 注入，主站 /console 与 /na 蓝图共用同一个值。
+# 模板里一律写 {{ ASSET_VER }}，不要再出现任何手写 v=cN / v=2026xxxx。
+_ASSET_FILES = (
+    'ASSET_VERSION',
+    'templates/index.html',
+    'templates/na_index.html',
+    'templates/console_index.html',
+    'static/app.js',
+    'static/style.css',
+    'redline_app/index.html',
+)
+
+
+def compute_asset_version():
+    try:
+        with open(os.path.join(BASE, 'ASSET_VERSION'), encoding='utf-8') as f:
+            base = (f.read().strip().splitlines() or [''])[0].strip()
+    except (OSError, IndexError):
+        base = ''                       # ECS 漏传该文件也不至于全部走旧缓存
+    h = hashlib.md5()
+    for rel in _ASSET_FILES:
+        h.update(rel.encode('utf-8'))
+        try:
+            with open(os.path.join(BASE, rel), 'rb') as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b'<missing>')
+    return '%s-%s' % (base or 'dev', h.hexdigest()[:8])
+
+
+ASSET_VER = compute_asset_version()
+
+
+@app.context_processor
+def _inject_asset_ver():
+    return {'ASSET_VER': ASSET_VER}
+
 
 # ---------- 统一鉴权（auth.py：session+role，兼容既有 X-Auth-Token 流） ----------
 from auth import init_app, role_required, current_role
@@ -646,6 +693,10 @@ def _run_and_store(raw_path, raw_name, keep_uploaded_at=False):
         STATE['ops_filename'] = (opm or {}).get('filename')
         STATE['ops_uploaded_at'] = (opm or {}).get('uploaded_at')
         _save_state()
+        # 阶段0：STATE 已换版，立即丢弃 /api/state 的序列化缓存（指纹也会变，这里是双保险）
+        _sbc = globals().get('_state_body_cached')
+        if _sbc is not None:
+            _sbc.cache_clear()
         # 数据源版本元信息同步到存储层（JSON / Supabase），保证多人看到同一套口径
         try:
             _sync_source_meta()
@@ -905,8 +956,12 @@ def index():
 def console():
     """统一工作台外壳：左侧导航（4 模块）+ 右侧 iframe。
     模块一 SKU&SPU数据清洗 / 模块四 系统设置 仅管理员可见；运营(sub)仅见新品/新色跟进。"""
-    return render_template('console_index.html',
-                           is_admin=auth.current_role() == 'admin')
+    # 外壳只有几 KB，强制不缓存：避免部署后用户还拿着旧版导航/postMessage 协议，
+    # 造成「左侧高亮与 iframe 内容不一致」。模块页自身仍走 ?v={{ ASSET_VER }} 缓存。
+    resp = app.response_class(render_template(
+        'console_index.html', is_admin=auth.current_role() == 'admin'))
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @app.route('/login')
@@ -1501,60 +1556,114 @@ def api_rebuild():
     return jsonify(payload)
 
 
-@app.route('/api/state')
-def api_state():
-    """返回看板所需数据：表头 + 全量行 + 统计。
-    带 ETag/304 协商缓存：数据未变（current.json 未重写 且 异常确认未改）时返回 304，
-    浏览器复用上次已下载的明细（弱带宽下重复打开看板秒开，不再重传 1.5MB）。"""
-    if STATE['rows'] is None:
-        return jsonify({'ready': False})
-    # 异常确认记录（含 version），供前端行级冲突检测初始化 + 参与版本指纹
+# ---------- /api/state 进程内结果缓存（2026-11-09 阶段0） ----------
+# 目的：/api/state 明细约 19MB，原先每次 200 都要重新 jsonify + 全局 gzip(level=5)。
+# 设计要点（缺一不可）：
+#   ① ETag 与缓存键逐字节共用同一指纹 fp（current.json 签名 + 异常确认内容哈希），
+#      绝不出现「304 判未变、缓存里却是另一版」的错配；
+#   ② 304 判断排在缓存查询之前 —— 协商缓存命中时零序列化、零查缓存；
+#   ③ 只缓存 jsonify 之后的【未压缩 bytes】，压缩仍交给全局 after_request，
+#      否则会把带 Content-Encoding 的响应复用给不接受 gzip 的客户端；
+#   ④ 不设短 TTL —— 失效完全由 fp 驱动；重算（current.json）、异常标注、数据源 *_META
+#      三者任一变化就换一份，保证「上传数据源 → 看板 *_stale 亮」不被缓存吞掉；
+#   ⑤ gunicorn.conf.py workers=1（单 worker 多线程），进程内缓存天然一致。
+_STATE_BODY_LOCK = threading.Lock()
+# 系统设置上传数据源时，bridge_main 会写这些 *_META，但【不会】重写 current.json。
+# 若指纹只看 current.json + 标注，缓存会把 ref_stale / temu_stale 冻结成旧值，
+# 看板就不会亮「数据源已更新，请重算」——这是业务回归，必须一并纳入指纹。
+_STATE_META_FILES = (REF_META, TEMU_META, RAW_META, LINGXING_META,
+                     WALMART_META, ADMIN_META, OPS_META, OPS_REMOVED_FLAG)
+
+
+def _meta_signature():
+    """数据源元信息内容签名（文件都很小，逐字节读即可）。"""
+    h = hashlib.md5()
+    for p in _STATE_META_FILES:
+        h.update(os.path.basename(p).encode('utf-8'))
+        try:
+            with open(p, 'rb') as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b'<none>')
+    return h.hexdigest()
+
+
+def state_fingerprint():
+    """返回 (ann_json, fp)：异常确认序列化串 + /api/state 唯一版本指纹。"""
     try:
         ann = storage.annot_get() or {}
     except Exception:
         ann = {}
+    ann_json = json.dumps(ann, sort_keys=True, ensure_ascii=False)
     try:
         st_ = os.stat(CURRENT_JSON)
         cur_sig = '%.6f|%d' % (st_.st_mtime, st_.st_size)   # 任一次重算/上传都会重写 current.json
     except OSError:
         cur_sig = 'none'
-    ann_fp = hashlib.md5(json.dumps(ann, sort_keys=True,
-                                    ensure_ascii=False).encode('utf-8')).hexdigest()
-    etag = '"%s"' % hashlib.md5((cur_sig + '|' + ann_fp).encode('utf-8')).hexdigest()
+    ann_fp = hashlib.md5(ann_json.encode('utf-8')).hexdigest()
+    fp = hashlib.md5((cur_sig + '|' + ann_fp + '|' + _meta_signature()
+                      ).encode('utf-8')).hexdigest()
+    return ann_json, fp
+
+
+@lru_cache(maxsize=2)
+def _state_body_cached(fp, ann_json):
+    """按指纹缓存一次 JSON 序列化结果；只在 miss 时构建 payload。"""
+    _, meta = current_ref()
+    tm = _ensure_temu_meta()
+    payload = {
+        'ready': True,
+        'header': STATE['header'],
+        'rows': STATE['rows'],
+        'stats': STATE['stats'],
+        'filename': STATE['filename'],
+        'uploaded_at': STATE['uploaded_at'],
+        'ref_filename': STATE['ref_filename'],
+        'ref_uploaded_at': STATE['ref_uploaded_at'],
+        'lx_filename': STATE['lx_filename'],
+        'lx_uploaded_at': STATE['lx_uploaded_at'],
+        'wm_filename': STATE['wm_filename'],
+        'wm_uploaded_at': STATE['wm_uploaded_at'],
+        'admin_filename': STATE['admin_filename'],
+        'admin_uploaded_at': STATE['admin_uploaded_at'],
+        'temu_a_filename': STATE['temu_a_filename'],
+        'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
+        'temu_b_filename': STATE['temu_b_filename'],
+        'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
+        'ops_filename': STATE['ops_filename'],
+        'ops_uploaded_at': STATE['ops_uploaded_at'],
+        'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
+        'temu_stale': bool((tm.get('a') and STATE['temu_a_uploaded_at'] != tm['a']['uploaded_at']) or
+                           (tm.get('b') and STATE['temu_b_uploaded_at'] != tm['b']['uploaded_at'])),
+    }
+    # 异常确认记录（含 version），供前端行级冲突检测初始化
+    payload['annotations'] = json.loads(ann_json)
+    # 用 app.json.dumps 而不是 jsonify：序列化结果与 jsonify 逐字节一致（末尾同样带 \n），
+    # 但不需要请求上下文，进程启动/离线校验/未来后台预热都能安全构建缓存。
+    return (app.json.dumps(payload) + '\n').encode('utf-8')
+
+
+def state_body(fp, ann_json):
+    """加锁：4 个线程并发 miss 时只序列化一次，避免 19MB×4 内存尖峰。"""
+    with _STATE_BODY_LOCK:
+        return _state_body_cached(fp, ann_json)
+
+
+@app.route('/api/state')
+def api_state():
+    """返回看板所需数据：表头 + 全量行 + 统计。
+    ETag/304 协商缓存 + 服务端结果缓存：数据未变（current.json 未重写 且 异常确认未改）时
+    返回 304（浏览器复用明细）；换了客户端来请求则命中进程内缓存，直接复用已序列化 bytes。"""
+    if STATE['rows'] is None:
+        return jsonify({'ready': False})
+    ann_json, fp = state_fingerprint()
+    etag = '"%s"' % fp
     inm = (request.headers.get('If-None-Match') or '').replace('W/', '').strip()
     if inm == etag:
         resp = app.response_class(status=304)
     else:
-        _, meta = current_ref()
-        tm = _ensure_temu_meta()
-        payload = {
-            'ready': True,
-            'header': STATE['header'],
-            'rows': STATE['rows'],
-            'stats': STATE['stats'],
-            'filename': STATE['filename'],
-            'uploaded_at': STATE['uploaded_at'],
-            'ref_filename': STATE['ref_filename'],
-            'ref_uploaded_at': STATE['ref_uploaded_at'],
-            'lx_filename': STATE['lx_filename'],
-            'lx_uploaded_at': STATE['lx_uploaded_at'],
-            'wm_filename': STATE['wm_filename'],
-            'wm_uploaded_at': STATE['wm_uploaded_at'],
-            'admin_filename': STATE['admin_filename'],
-            'admin_uploaded_at': STATE['admin_uploaded_at'],
-            'temu_a_filename': STATE['temu_a_filename'],
-            'temu_a_uploaded_at': STATE['temu_a_uploaded_at'],
-            'temu_b_filename': STATE['temu_b_filename'],
-            'temu_b_uploaded_at': STATE['temu_b_uploaded_at'],
-            'ops_filename': STATE['ops_filename'],
-            'ops_uploaded_at': STATE['ops_uploaded_at'],
-            'ref_stale': bool(meta and STATE['ref_uploaded_at'] != meta['uploaded_at']),
-            'temu_stale': bool((tm.get('a') and STATE['temu_a_uploaded_at'] != tm['a']['uploaded_at']) or
-                               (tm.get('b') and STATE['temu_b_uploaded_at'] != tm['b']['uploaded_at'])),
-        }
-        # 异常确认记录（含 version），供前端行级冲突检测初始化
-        payload['annotations'] = ann
-        resp = jsonify(payload)
+        resp = app.response_class(state_body(fp, ann_json),
+                                  mimetype='application/json')
     resp.headers['ETag'] = etag
     resp.headers['Cache-Control'] = 'no-cache'
     return resp

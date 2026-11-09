@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>红线价监控看板 v2</title>
+<title>红线价监控 · 数据运营工作台</title>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" defer></script>
@@ -708,7 +708,7 @@
 <body>
 <div id="rdLoading"><div class="box"><div class="spin"></div><div id="rdLoadingText">正在加载数据…</div><div class="rlerr" id="rdLoadingErr"></div><div class="rlbtns"><button type="button" class="primary" id="rdRetry">重新加载</button><button type="button" id="rdSkip">先用本机缓存</button></div></div></div>
 <div id="cdnWarn" style="display:none; background:#fff3cd; color:#7a5b00; padding:10px 24px; font-size:13px; text-align:center;">
-  ⚠️ 检测到外部组件（Excel解析/图表库）加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新页面
+  ⚠️ 检测到部分组件（Excel解析/图表库）加载失败，请刷新页面重试；若仍失败请联系系统管理员
 </div>
 
 <div class="app-layout">
@@ -860,7 +860,7 @@
           <button class="btn btn-ghost" id="exportCsvBtn">📄 改存 CSV</button>
           <button class="btn btn-ghost" id="exportOpenBtn">↗ 在新窗口打开</button>
           <button class="btn btn-ghost" id="exportCopyBtn">📋 复制为表格文本</button>
-          <button class="btn btn-ghost" id="exportPublicBtn" style="display:none">🌐 用公开链接下载</button>
+          <button class="btn btn-ghost" id="exportPublicBtn" style="display:none">🌐 新窗口打开下载</button>
           <button class="btn btn-ghost" id="exportCloseBtn">关闭</button>
         </div>
       </div>
@@ -3684,7 +3684,9 @@ function renderAbnormal() {
 const EXPORT_ST = { busy: false, blob: null, name: '', url: '', previewUrl: '', csv: '', tsv: '', rows: 0, at: null, allow: null, lastBtn: null };
 
 // 公开链接：其 iframe sandbox 含 allow-downloads，导出可正常落盘（编辑器预览环境通常不含）
-const PUBLIC_PAGE_URL = 'https://workbuddy.link/p/qnbMlfGvsBiwUcU6yzGPoQ';
+// 本模块已并入数据运营工作台（/console），导出兜底一律在当前系统的新标签页打开，
+// 不再依赖旧公网 SaaS 页面。服务端 redline_routes._render_page_html 也会强制改写为本地地址。
+const PUBLIC_PAGE_URL = window.location.href;
 
 // 明细导出的「当前筛选」文字描述（用于弹窗里说明为什么只有 N 行）
 function describeDetailScope() {
@@ -3838,7 +3840,7 @@ function buildTextPreviewHtml(tsv, filename) {
     + 'pre{white-space:pre;font:12px/1.5 Consolas,Menlo,monospace;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:74vh;overflow:auto;background:#fafafa;margin:0}</style></head><body>'
     + '<h1>' + escHtml(filename) + ' · 文本预览（' + rows.toLocaleString() + ' 行）</h1>'
     + '<div class="tip">当前页面是<b>文本预览</b>，不是原 Excel 文件（原文件是二进制，直接在新标签页打开只会显示空白，属正常现象）。<br>'
-    + '· 要 Excel：回到页面点「🌐 用公开链接下载」→ 在公开页面里重新导出，可正常落盘；<br>'
+    + '· 要 Excel：回到页面点「🌐 新窗口打开下载」→ 在新页面里重新导出，可正常落盘；<br>'
     + '· 现在就要用：Ctrl+A 全选 → 复制 → 粘到 Excel；或本页 Ctrl+S 另存，文件名后缀改成 <b>.csv</b> 即可用 Excel 打开。</div>'
     + '<pre>' + escHtml(tsv) + '</pre></body></html>';
 }
@@ -3992,7 +3994,7 @@ async function runExport(btn, cfg) {
   const bigFile = rows > 20000;
   let warn = '';
   if (blocked) {
-    warn = '⚠️ <b>当前页面处于受限的内嵌预览环境</b>（浏览器未开放下载权限），下载可能已被静默拦截 —— 文件本身没问题。<br>三种拿文件的办法：① 点「🌐 用公开链接下载」，在公开页面里重新导出（下载正常）；② 点「📋 复制为表格文本」粘贴到 Excel；③ 点「↗ 新窗口预览文本」在新标签页查看内容并 Ctrl+S 另存为 .csv。'
+    warn = '⚠️ <b>当前页面处于受限的内嵌预览环境</b>（浏览器未开放下载权限），下载可能已被静默拦截 —— 文件本身没问题。<br>三种拿文件的办法：① 点「🌐 新窗口打开下载」，在新页面里重新导出（下载正常）；② 点「📋 复制为表格文本」粘贴到 Excel；③ 点「↗ 新窗口预览文本」在新标签页查看内容并 Ctrl+S 另存为 .csv。'
       + (rows > 5000 ? '<br>数据量较大（' + rows.toLocaleString() + ' 行），复制/预览可能较慢，建议先缩小筛选范围。' : '');
   } else if (bigFile) {
     warn = '数据量较大（' + rows.toLocaleString() + ' 行），若浏览器长时间无反应，可改用「📄 改存 CSV」（体积更小、打开更快）。';
@@ -4568,7 +4570,7 @@ if (resyncPriceFixBtn) resyncPriceFixBtn.addEventListener('click', async () => {
   savePriceFixLocal();
   const n = priceFixCount();
   if (!n) { toast('暂无人工填价记录'); return; }
-  if (!Cloud.available) { toast('⚠ 当前为本地模式，记录已保存在本机浏览器'); return; }
+  if (!Cloud.available) { toast('⚠ 云端暂不可用，记录已保存在本机浏览器'); return; }
   try {
     const ok = await Cloud.saveSource(SRC_PRICEFIX, '', serializeSource('pricefix'));
     toast(ok ? `✓ 已同步 ${n} 条人工填价到共享空间` : '⚠ 同步失败，请稍后重试');
@@ -4642,9 +4644,9 @@ if (exportTrendBtn) exportTrendBtn.addEventListener('click', exportTrendData);
   if (pubBtn) pubBtn.addEventListener('click', async () => {
     let win = null;
     try { win = window.open(PUBLIC_PAGE_URL, '_blank'); } catch (e) { win = null; }
-    if (win) { toast('✓ 已在新标签页打开公开链接，在该页面点「⬇ 导出明细」即可正常下载'); return; }
+    if (win) { toast('✓ 已在新标签页打开本模块，在该页面点「⬇ 导出明细」即可正常下载'); return; }
     const ok = await copyPlainText(PUBLIC_PAGE_URL);
-    toast(ok ? '✓ 公开链接已复制到剪贴板，粘贴到浏览器新标签页打开后重新导出' : '⚠ 请手动打开：' + PUBLIC_PAGE_URL);
+    toast(ok ? '✓ 页面地址已复制到剪贴板，粘贴到浏览器新标签页打开后重新导出' : '⚠ 请手动打开：' + PUBLIC_PAGE_URL);
   });
 })();
 
@@ -4686,7 +4688,7 @@ function waitLibs(timeoutMs) {
   // 外部组件没加载成功 → 云端数据根本没法解压，与其空转不如直接说清楚（过去这里会白屏/空表）
   if (Cloud.available && !libsOk) {
     try { const w = document.getElementById('cdnWarn'); if (w) w.style.display = 'block'; } catch (e) {}
-    failLoading('外部组件（pako / xlsx / echarts）加载失败，无法解析云端数据。\n请确认本机网络能访问 unpkg.com 或 jsdelivr.net，然后点「重新加载」。');
+    failLoading('组件（pako / xlsx / echarts）加载失败，无法解析数据。\n组件已随系统本地部署，请点「重新加载」重试；若仍失败请联系系统管理员。');
     loadPeriods(); loadHistory();
     applyRoleRestrictions();
     if (!RL_IS_ADMIN) switchModule('dashboard');
@@ -4708,7 +4710,7 @@ function waitLibs(timeoutMs) {
       console.info('[Walmart] 存量全列记录已按计算所需列裁剪并回写云端');
     }
   } else {
-    bannerText(libsOk ? '⚠️ 本地模式：数据仅保存在当前浏览器。发布到「资料库」后自动切换为云端共享模式' : '⚠️ 外部组件加载失败，请确认网络可访问 unpkg.com / jsdelivr.net 后刷新', false);
+    bannerText(libsOk ? '⚠️ 云端数据暂不可用，正在使用本机缓存；可刷新或点「重新加载」重试' : '⚠️ 部分组件加载失败，请刷新页面重试', false);
     loadPeriods();
     loadHistory();
     // 本地模式同样从本机备份恢复人工填价记录（刷新不丢）

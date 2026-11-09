@@ -47,7 +47,9 @@ _LIB_MAP = (
     ('https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js', '/static/libs/echarts.min.js'),
     ('https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js', '/static/libs/pako.min.js'),
 )
-_PUBLIC_OLD = "const PUBLIC_PAGE_URL = 'https://workbuddy.link/p/qnbMlfGvsBiwUcU6yzGPoQ';"
+# 兼容两种源码：① 新版已直接写 window.location.href；② 旧版残留 workbuddy.link 公网 SaaS 链接。
+# 无论哪种，对外服务时都强制指向当前系统自身，杜绝「导出跳到旧公网页面」的残留。
+_PUBLIC_URL_RE = re.compile(r"const PUBLIC_PAGE_URL\s*=\s*(['\"])[^'\"]*\1\s*;")
 
 
 def _authed():
@@ -95,7 +97,7 @@ def _render_page_html(role=''):
     for cdn, local in _LIB_MAP:
         html = html.replace(cdn, local)
     # 3) 导出兜底链接指向本模块（而非旧的 workbuddy.link）
-    html = html.replace(_PUBLIC_OLD, 'const PUBLIC_PAGE_URL = window.location.href;')
+    html = _PUBLIC_URL_RE.sub('const PUBLIC_PAGE_URL = window.location.href;', html, count=1)
     return html
 
 

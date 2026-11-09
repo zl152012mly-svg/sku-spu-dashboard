@@ -20,8 +20,20 @@
   .nav-foot { padding: 16px; border-top: 1px solid rgba(255,255,255,.08); }
   .nav-foot button { width: 100%; padding: 9px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
   .nav-foot button:hover { background: rgba(255,255,255,.2); }
-  .content { flex: 1; min-width: 0; background: #f1f5f9; }
+  .content { flex: 1; min-width: 0; background: #f1f5f9; position: relative; }
   .content iframe { width: 100%; height: 100%; border: 0; display: block; }
+  /* 阶段0：切换加载态 —— 199KB/252KB 模块整页重载期间给出明确反馈，不再「点了没反应」 */
+  .loading { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; gap: 10px; background: #f8fafc;
+             color: #334155; font-size: 14px; }
+  .loading[hidden] { display: none; }
+  .loading .spinner { width: 26px; height: 26px; border: 3px solid #dbe4f0; border-top-color: #2563eb;
+                      border-radius: 50%; animation: console-spin .8s linear infinite; }
+  @keyframes console-spin { to { transform: rotate(360deg); } }
+  .loading .sub { font-size: 12px; color: #94a3b8; }
+  .loading button { margin-top: 6px; padding: 7px 14px; border: 1px solid #cbd5e1; background: #fff;
+                    color: #2563eb; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .loading button[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -33,21 +45,21 @@
     </div>
     <div class="nav-menu" id="navMenu">
       {% if is_admin %}
-      <div class="nav-item active" data-src="/?embed=1&v=c8" onclick="go(this)">
+      <div class="nav-item active" data-view="clean" data-src="/?embed=1&v={{ ASSET_VER }}" onclick="go(this)">
         <span class="ico">🧹</span><span>SKU&SPU数据清洗</span>
       </div>
       {% endif %}
-      <div class="nav-item" data-src="/redline/?embed=1&v=r3" onclick="go(this)">
+      <div class="nav-item" data-view="redline" data-src="/redline/?embed=1&v={{ ASSET_VER }}" onclick="go(this)">
         <span class="ico">📉</span><span>红线价监控</span>
       </div>
-      <div class="nav-item {% if not is_admin %}active{% endif %}" data-src="/na/?view=xp&embed=1&v=c8" onclick="go(this)">
+      <div class="nav-item {% if not is_admin %}active{% endif %}" data-view="xp" data-src="/na/?view=xp&embed=1&v={{ ASSET_VER }}" onclick="go(this)">
         <span class="ico">📦</span><span>新品上架跟进</span>
       </div>
-      <div class="nav-item" data-src="/na/?view=nc&embed=1&v=c8" onclick="go(this)">
+      <div class="nav-item" data-view="nc" data-src="/na/?view=nc&embed=1&v={{ ASSET_VER }}" onclick="go(this)">
         <span class="ico">🎨</span><span>新色上架跟进</span>
       </div>
       {% if is_admin %}
-      <div class="nav-item" data-src="/na/?view=dm&embed=1&v=c8" onclick="go(this)">
+      <div class="nav-item" data-view="dm" data-src="/na/?view=dm&embed=1&v={{ ASSET_VER }}" onclick="go(this)">
         <span class="ico">⚙️</span><span>系统设置</span>
       </div>
       {% endif %}
@@ -58,25 +70,83 @@
     </div>
   </div>
   <div class="content">
-    <iframe id="frame" src="{% if is_admin %}/?embed=1&v=c8{% else %}/na/?view=xp&embed=1&v=c8{% endif %}"></iframe>
+    <iframe id="frame" src="{% if is_admin %}/?embed=1&v={{ ASSET_VER }}{% else %}/na/?view=xp&embed=1&v={{ ASSET_VER }}{% endif %}"></iframe>
+    <div class="loading" id="loading" hidden>
+      <div class="spinner"></div>
+      <div>正在打开 <b id="loadingName">模块</b></div>
+      <div class="sub" id="loadingSub">正在加载模块…</div>
+      <button type="button" id="loadingRetry" hidden onclick="retryLoad()">重新加载</button>
+    </div>
   </div>
 </div>
 <script>
-function go(el){
+var frame = document.getElementById('frame');
+var loading = document.getElementById('loading');
+var pendingSrc = '', navStart = 0, slowTimer = null;
+window.__moduleLoadMs = [];   // 模块切换耗时埋点，供后续性能优化取样（最多留 20 条）
+
+function loadStart(name){
+  if (!loading) return;
+  document.getElementById('loadingName').textContent = name || '模块';
+  document.getElementById('loadingSub').textContent = '正在加载模块…';
+  document.getElementById('loadingRetry').hidden = true;
+  loading.hidden = false;
+  navStart = performance.now();
+  clearTimeout(slowTimer);
+  slowTimer = setTimeout(function(){
+    var s = document.getElementById('loadingSub');
+    if (s) s.textContent = '加载较慢，请稍候；如长时间无响应可点「重新加载」';
+    var b = document.getElementById('loadingRetry');
+    if (b) b.hidden = false;
+  }, 6000);
+}
+function loadEnd(){
+  clearTimeout(slowTimer);
+  if (loading) loading.hidden = true;
+  if (navStart) {
+    window.__moduleLoadMs.push(Math.round(performance.now() - navStart));
+    if (window.__moduleLoadMs.length > 20) window.__moduleLoadMs.shift();
+    navStart = 0;
+  }
+  pendingSrc = '';
+}
+function navigate(el){
+  var src = el.getAttribute('data-src');
+  if (!src) return;
+  if (pendingSrc === src) return;    // 重复点击防抖
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
   el.classList.add('active');
-  document.getElementById('frame').src = el.getAttribute('data-src');
+  pendingSrc = src;
+  loadStart((el.textContent || '').trim());
+  frame.src = src;
 }
+function go(el){ navigate(el); }
+function retryLoad(){
+  if (!pendingSrc) return;
+  loadStart(document.getElementById('loadingName').textContent);
+  frame.src = pendingSrc;
+}
+frame.addEventListener('load', loadEnd);
+
 function doLogout(){
   fetch('/logout').then(function(){ location.href = '/login'; }).catch(function(){ location.href = '/login'; });
 }
-// iframe 内「更换数据源」跳到数据源管理视图时, 同步左侧导航高亮 (iframe 自己导航, 这里只改高亮)
+// iframe 内点「更换数据源」时：父框架统一接管导航（高亮 + 内容 + 同一版本号一起切），
+// 修掉以前「左侧高亮已跳、右侧 iframe 还停在旧内容/旧版本」的错位。
+// 先回执再导航 —— 子页收到 ack 后取消 2s 兜底自跳，避免二次导航。
 window.addEventListener('message', function(e){
   var d = e.data || {};
-  if (d && d.type === 'na-console-nav' && d.view === 'dm') {
+  if (d && d.type === 'na-console-nav' && d.view) {
+    var target = null;
     document.querySelectorAll('.nav-item').forEach(function(n){
-      n.classList.toggle('active', (n.getAttribute('data-src') || '').indexOf('view=dm') > -1);
+      if ((n.getAttribute('data-view') || '') === d.view) target = n;
     });
+    try { e.source.postMessage({ type: 'na-console-nav-ack', view: d.view }, '*'); } catch (err) {}
+    if (target) {
+      navigate(target);
+    } else {   // 运营身份没有该管理项：至少清掉错误高亮
+      document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+    }
   }
 });
 </script>

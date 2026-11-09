@@ -39,7 +39,7 @@ done
 systemctl list-units --type=service --all --no-pager 2>/dev/null | grep -iE 'new|arrival|na\.service' | head -5
 
 say "1. 拉取最新代码"
-mkdir -p "$APP/na" "$APP/templates" "$APP/static"
+mkdir -p "$APP/na" "$APP/templates" "$APP/static" "$APP/redline_app"
 pull() {  # $1=目标相对路径  $2=GitHub 路径
   if curl -fsSL -o "$APP/$1" "$B/$2"; then
     sz=$(stat -c%s "$APP/$1" 2>/dev/null || echo '?')
@@ -48,6 +48,7 @@ pull() {  # $1=目标相对路径  $2=GitHub 路径
     bad "$1 拉取失败！请确认 GitHub Desktop 已经 Push main 分支"
   fi
 }
+pull ASSET_VERSION           ASSET_VERSION              # 2026-11-09 阶段0: 前端版本号唯一来源（漏拉会退回 dev- 前缀）
 pull app.py                  app.py
 pull auth.py                 auth.py
 pull common_store.py         common_store.py
@@ -60,6 +61,8 @@ pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
 pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台
 pull static/app.js           static/app.js
+pull redline_routes.py       redline_routes.py                 # 2026-11-09 阶段0: 导出兜底链接强制本地化
+pull redline_app/index.html  redline_app/index.html            # 2026-11-09 阶段0: 统一 title + 清旧 SaaS 文案
 
 for f in cloud_store process_script new_color_module sku_eval report_script color_dict_seed color_audit new_color_check; do
   pull "na/$f.py" "na/$f.py"
@@ -78,8 +81,11 @@ sudo systemctl restart sku-spu.service
 sleep 5
 
 say "4. 验证结果"
-V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9a-z-]*' | head -1)
-[ -n "$V" ] && ok "版本号: $V  （期望含 20261029-bridge）" || bad "取不到版本号，服务可能没起来"
+V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9A-Za-z._-]*' | head -1)
+[ -n "$V" ] && ok "前端版本号: $V  （ASSET_VERSION + 文件内容哈希，由 app.py 注入）" || bad "取不到版本号，服务可能没起来"
+AV=$(cat "$APP/ASSET_VERSION" 2>/dev/null | head -1 | tr -d '\r\n')
+[ -n "$AV" ] && ok "ASSET_VERSION 基准号: $AV" || bad "$APP/ASSET_VERSION 缺失，版本号会退回 dev- 前缀"
+case "$V" in *"$AV"*) ok "页面版本号与 ASSET_VERSION 一致" ;; *) warn "页面版本号未包含基准号，可能是服务未重启或 index.html 漏拉" ;; esac
 C=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/na/)
 echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件缺失；000/502=服务没起来）"
 K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
@@ -93,8 +99,8 @@ G2=$(grep -c "na_data' / 'ddl_notify_config.json'" "$APP/ddl_notify.py" 2>/dev/n
 [ "$G2" -ge 1 ] && ok "ddl_notify.py 已优先读系统设置保存的配置" || bad "ddl_notify.py 未读 na_data 配置，定时脚本会退回旧 /etc 文件"
 G3=$(grep -c "ddlNotifyCard" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
 [ "$G3" -ge 1 ] && ok "系统设置页已含「DDL 到期提醒设置」卡" || bad "na_index.html 缺少设置卡"
-G4=$(grep -c "v=c8" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
-[ "$G4" -eq 6 ] && ok "工作台 iframe 版本号 6 处已升到 c8" || warn "console_index.html 版本号异常 ($G4 处 c8)，页面可能走 iframe 旧缓存，请手动强刷"
+G4=$(grep -F -o 'v={{ ASSET_VER }}' "$APP/templates/console_index.html" 2>/dev/null | wc -l)
+[ "$G4" -eq 7 ] && ok "工作台 iframe 版本号已改为 ASSET_VER 注入（模板 7 处）" || warn "console_index.html 版本号异常 ($G4 处 ASSET_VER，期望 7)，可能是旧版文件"
 G5=$(grep -c "def is_workday" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
 [ "$G5" -ge 1 ] && ok "ddl_notify.py 已含工作日判断（非工作日静默 / 顺延补发）" || bad "ddl_notify.py 缺少 is_workday，节假日仍会照常发消息"
 G6=$(grep -c "def group_mentions" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
@@ -106,6 +112,21 @@ G8=$(grep -c "workday_overrides" "$APP/na_routes.py" 2>/dev/null || echo 0)
 echo "  提示：群 webhook / 运营成员 / 组默认成员 / 工作日历请到【系统设置 → ③ DDL 到期提醒设置】里填并保存，无需改 /etc 文件。"
 echo "  提醒：cron 需改成每天 10:00 触发（脚本自己判断工作日），见手册 §20："
 echo "    ( crontab -l 2>/dev/null | grep -v 'ddl_notify.py' ; echo '0 10 * * * cd /opt/sku-spu && /usr/bin/python3 ddl_notify.py >> /var/log/ddl_notify.log 2>&1' ) | crontab -"
+
+say "4.6 页面一体化阶段0 自查（2026-11-09）"
+S1=$(grep -c "def compute_asset_version" "$APP/app.py" 2>/dev/null || echo 0)
+[ "$S1" -ge 1 ] && ok "app.py 已含统一版本号生成器" || bad "app.py 缺少 ASSET_VER，模板会渲染出空白占位"
+S2=$(grep -c "def state_fingerprint" "$APP/app.py" 2>/dev/null || echo 0)
+[ "$S2" -ge 1 ] && ok "/api/state 已含结果缓存 + ETag 共用指纹" || warn "app.py 缺少结果缓存，刷新看板仍会重复序列化 19MB"
+S3=$(grep -c 'id="loading"' "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+[ "$S3" -ge 1 ] && ok "工作台已含切换加载态" || warn "console_index.html 缺少加载态，切模块仍像卡住"
+S4=$(grep -c "na-console-nav-ack" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+[ "$S4" -ge 1 ] && ok "工作台已接管跨模块导航（高亮与内容同步）" || warn "console_index.html 缺少导航回执"
+S5=$(grep -c "v=c2" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+[ "$S5" -eq 0 ] && ok "na_index.html 不再残留 v=c2 旧硬编码" || warn "na_index.html 仍有 $S5 处 v=c2，跳系统设置可能看到旧页"
+S6=$(grep -c "本地模式：数据仅保存在当前浏览器" "$APP/redline_app/index.html" 2>/dev/null || echo 0)
+[ "$S6" -eq 0 ] && ok "红线价旧 SaaS 文案已清理" || warn "红线价页面仍有 $S6 处旧 SaaS 文案"
+echo "  提示：/console 外壳已设 no-store；模块页版本号由 app.py 自动计算，改前端后无需再手升 6 处 v=cN。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
