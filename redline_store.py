@@ -36,9 +36,14 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 LOCAL_DIR = os.path.join(BASE, 'data', 'redline')
 _SRC_DIR = os.path.join(LOCAL_DIR, 'src')
 _PER_DIR = os.path.join(LOCAL_DIR, 'period')
+_META_DIR = os.path.join(LOCAL_DIR, 'meta')
 
 _PREFIX_SRC = 'redline/src/'
 _PREFIX_PER = 'redline/period/'
+# 2026-11-09 首屏提速：轻量元数据对象。原 list_sources(meta_only=True) 会把每个
+# 数据源对象（含几 MB b64）完整下载后只取 src/updated_at 再丢掉，首屏平白多下一遍大数据。
+# 现在保存时双写一份只有几十字节的 meta，清单接口只读它；老数据没有 meta 时自动回退并补写。
+_PREFIX_META = 'redline/meta/'
 
 _LOCK = threading.Lock()
 
@@ -55,14 +60,37 @@ def backend_name():
     return 'oss' if _is_oss() else 'json'
 
 
-def _src_key(src, store, file):
+def _src_hash(src, store, file):
     raw = '%s\x01%s\x01%s' % (src or '', store or '', file or '')
-    return _PREFIX_SRC + hashlib.md5(raw.encode('utf-8')).hexdigest() + '.json'
+    return hashlib.md5(raw.encode('utf-8')).hexdigest()
+
+
+def _src_key(src, store, file):
+    return _PREFIX_SRC + _src_hash(src, store, file) + '.json'
+
+
+def _meta_key_of_src(src_key):
+    """src 对象键 → 对应的轻量 meta 对象键（同一 md5 后缀）。"""
+    return _PREFIX_META + src_key[len(_PREFIX_SRC):]
+
+
+def _meta_obj(o):
+    """从完整对象里抽出清单接口需要的字段（绝不含 b64）。"""
+    return {
+        'src': o.get('src') or '',
+        'store': o.get('store') or '',
+        'file': o.get('file') or '',
+        'gen': int(o.get('gen') or 1),
+        'updated_at': o.get('updated_at') or '',
+        'b64_size': len(o.get('b64') or ''),
+    }
 
 
 def _local_path(key):
     if key.startswith(_PREFIX_SRC):
         return os.path.join(_SRC_DIR, key[len(_PREFIX_SRC):])
+    if key.startswith(_PREFIX_META):
+        return os.path.join(_META_DIR, key[len(_PREFIX_META):])
     if key.startswith(_PREFIX_PER):
         return os.path.join(_PER_DIR, key[len(_PREFIX_PER):])
     return os.path.join(LOCAL_DIR, key.replace('/', '_'))
@@ -134,7 +162,7 @@ def _list_keys(prefix):
             if not marker:
                 break
         return keys
-    d = _SRC_DIR if prefix == _PREFIX_SRC else _PER_DIR
+    d = {_PREFIX_SRC: _SRC_DIR, _PREFIX_META: _META_DIR, _PREFIX_PER: _PER_DIR}.get(prefix, _PER_DIR)
     if not os.path.isdir(d):
         return []
     return [prefix + f for f in sorted(os.listdir(d)) if f.endswith('.json')]
@@ -157,6 +185,32 @@ def _batch_get(keys):
 
 def list_sources(meta_only=False):
     keys = _list_keys(_PREFIX_SRC)
+    if meta_only:
+        # 轻量清单：只读几十字节的 meta 对象，绝不下载 b64。
+        meta_keys = [_meta_key_of_src(k) for k in keys]
+        metas = _batch_get(meta_keys)
+        out = []
+        for k, mk, m in zip(keys, meta_keys, metas):
+            if not m:
+                # 迁移前保存的数据没有 meta：回退读一次完整对象并补写（自愈，只会慢这一次）
+                o = _get(k)
+                if not o:
+                    continue
+                m = _meta_obj(o)
+                try:
+                    _put(mk, m)
+                except Exception:
+                    pass
+            out.append({
+                'id': k,
+                'src': m.get('src') or '',
+                'store': m.get('store') or '',
+                'file': m.get('file') or '',
+                'gen': int(m.get('gen') or 1),
+                'chunk': 0,
+                'updated_at': m.get('updated_at') or '',
+            })
+        return out
     objs = _batch_get(keys)
     out = []
     for k, o in zip(keys, objs):
@@ -170,9 +224,8 @@ def list_sources(meta_only=False):
             'gen': int(o.get('gen') or 1),
             'chunk': 0,
             'updated_at': o.get('updated_at') or '',
+            'data': o.get('b64') or '',
         }
-        if not meta_only:
-            rec['data'] = o.get('b64') or ''
         out.append(rec)
     return out
 
@@ -193,7 +246,15 @@ def save_source(src, store, file, chunks, updated_at):
         'b64': ''.join(chunks or []),
     }
     with _LOCK:
-        return _put(_src_key(src, store, file), obj)
+        ok = _put(_src_key(src, store, file), obj)
+        if ok:
+            # 轻量元数据双写：清单接口靠它避免重复下载几 MB 的 b64。
+            # meta 写失败不影响主数据（下次清单接口会自动自愈补写）。
+            try:
+                _put(_PREFIX_META + _src_hash(src, store, file) + '.json', _meta_obj(obj))
+            except Exception:
+                pass
+        return ok
 
 
 def remove_source(src, store, file):
@@ -201,17 +262,19 @@ def remove_source(src, store, file):
     n = 0
     with _LOCK:
         for k in _list_keys(_PREFIX_SRC):
-            o = _get(k)
-            if not o:
+            # 优先读轻量 meta 做匹配，避免为了判断归属把整个 b64 下载下来
+            m = _get(_meta_key_of_src(k)) or _get(k)
+            if not m:
                 continue
-            if (o.get('src') or '') != (src or ''):
+            if (m.get('src') or '') != (src or ''):
                 continue
-            if store not in (None, '') and (o.get('store') or '') != store:
+            if store not in (None, '') and (m.get('store') or '') != store:
                 continue
-            if file is not None and (o.get('file') or '') != (file or ''):
+            if file is not None and (m.get('file') or '') != (file or ''):
                 continue
             if _delete(k):
                 n += 1
+            _delete(_meta_key_of_src(k))
     return n
 
 
@@ -261,5 +324,6 @@ def stats():
     return {
         'backend': backend_name(),
         'sources': len(_list_keys(_PREFIX_SRC)),
+        'metas': len(_list_keys(_PREFIX_META)),
         'periods': len(_list_keys(_PREFIX_PER)),
     }

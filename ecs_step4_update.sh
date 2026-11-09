@@ -71,7 +71,10 @@ pull templates/index.html    templates/index.html
 pull templates/na_index.html templates/na_index.html
 pull templates/console_index.html templates/console_index.html   # 界面改版：/console 统一工作台
 pull static/app.js           static/app.js
+pull static/style.css        static/style.css                  # 2026-11-09 补漏: 阶段0补修的 .pg-actions 失败出口样式
+pull storage.py              storage.py                       # 2026-11-09 首屏提速: OSS Bucket 按线程复用
 pull redline_routes.py       redline_routes.py                 # 2026-11-09 阶段0: 导出兜底链接强制本地化
+pull redline_store.py        redline_store.py                  # 2026-11-09 首屏提速: 轻量 meta 对象分离
 pull redline_app/index.html  redline_app/index.html            # 2026-11-09 阶段0: 统一 title + 清旧 SaaS 文案
 
 for f in cloud_store process_script new_color_module sku_eval report_script color_dict_seed color_audit new_color_check; do
@@ -162,6 +165,21 @@ T6=$(count_in "$APP/redline_app/index.html" "共享空间")
 T7=$(count_in "$APP/templates/index.html" 'id="file-input" class="hide"')
 [ "$T7" -ge 1 ] && ok "看板旧上传触发器已隐藏" || warn "index.html 仍裸露「选择文件」"
 echo "  提示：改前端后 ASSET_VER 会自动换号；本脚本末尾已含 restart，无需手工重启。"
+
+say "4.8 红线价首屏提速 + 横幅来源自查（2026-11-09 下午）"
+U1=$(count_in "$APP/redline_store.py" "_PREFIX_META")
+[ "$U1" -ge 1 ] && ok "轻量 meta 清单已启用（不再重复下载几 MB b64）" || bad "redline_store 缺少 meta 分离，首屏仍会重复下载大对象"
+U2=$(count_in "$APP/storage.py" "_OSS_CLIENT_LOCAL")
+[ "$U2" -ge 1 ] && ok "OSS Bucket 已按线程复用" || warn "storage.py 未复用 OSS 客户端"
+U3=$(count_in "$APP/redline_app/index.html" "redline_calc_cache")
+[ "$U3" -ge 1 ] && ok "计算结果已缓存（数据源未变时跳过全量重算）" || warn "redline_app 缺少结果缓存"
+U4=$(count_in "$APP/redline_app/index.html" "超过 90 秒")
+[ "$U4" -ge 1 ] && ok "遮罩兜底已放宽到 90 秒（不再中途误报失败）" || warn "redline_app 仍是过早的失败兜底"
+U5=$(count_in "$APP/redline_app/index.html" "数据源：ECS 工作台共享存储")
+[ "$U5" -ge 1 ] && ok "横幅已写明真实数据来源" || warn "横幅文案仍是旧表述"
+U6=$(count_in "$APP/static/style.css" ".pg-actions")
+[ "$U6" -ge 1 ] && ok "style.css 已补齐（阶段0补修失败出口样式）" || warn "style.css 漏拉，遮罩按钮样式会失效"
+echo "  提示：/redline/api/health 的 storage.backend 可确认走 oss 还是本地 JSON；metas 数量应与 sources 一致。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then

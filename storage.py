@@ -366,14 +366,26 @@ def _oss_endpoint():
     return e
 
 
+_OSS_CLIENT_LOCAL = threading.local()   # 每线程一个 Bucket，避免并发共享同一客户端
+
+
 def _oss_client():
-    """惰性创建 OSS Bucket 客户端（仅 oss 模式、且真正读写时才 import oss2）。"""
+    """惰性创建 OSS Bucket 客户端（仅 oss 模式、且真正读写时才 import oss2）。
+
+    2026-11-09 首屏提速：按线程复用 Bucket。原先每次 _oss_get_bytes 都重新
+    import oss2 + 构造 Auth/Bucket，红线价首屏几十次读取时是纯重复初始化开销。
+    """
+    c = getattr(_OSS_CLIENT_LOCAL, 'bucket', None)
+    if c is not None:
+        return c
     try:
         import oss2
     except ImportError as e:
         raise RuntimeError('未安装 oss2（pip install oss2）') from e
     auth = oss2.Auth(_OSS_ID, _OSS_SECRET)
-    return oss2.Bucket(auth, _oss_endpoint(), _OSS_BUCKET)
+    c = oss2.Bucket(auth, _oss_endpoint(), _OSS_BUCKET)
+    _OSS_CLIENT_LOCAL.bucket = c
+    return c
 
 
 def _oss_key(key):

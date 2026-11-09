@@ -1643,9 +1643,75 @@ async function parallelLimit(items, limit, fn) {
   }
   await Promise.all(workers);
 }
+/* ---------- 计算结果缓存（IndexedDB） ----------
+   首屏最耗时的一段是 doCalc()：几万行全量重算 + 渲染，旧逻辑每次打开都要跑一遍。
+   数据源签名没变时直接复用上次结果，页面秒出；签名变了才重算，保证口径永远跟数据一致。
+   IndexedDB 不受 localStorage 5MB 上限限制；任何一步不可用都回退到正常重算，不影响正确性。 */
+const RL_CALC_DB = 'redline_calc_cache';
+const RL_CALC_STORE = 'result';
+function rlCalcDb() {
+  return new Promise(function (resolve, reject) {
+    if (typeof indexedDB === 'undefined' || !indexedDB) { reject(new Error('no indexedDB')); return; }
+    let req;
+    try { req = indexedDB.open(RL_CALC_DB, 1); } catch (e) { reject(e); return; }
+    req.onupgradeneeded = function () {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(RL_CALC_STORE)) db.createObjectStore(RL_CALC_STORE);
+    };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error || new Error('idb open failed')); };
+  });
+}
+function rlCalcGet(sig) {
+  return rlCalcDb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      try {
+        const tx = db.transaction(RL_CALC_STORE, 'readonly');
+        const r = tx.objectStore(RL_CALC_STORE).get('latest');
+        r.onsuccess = function () {
+          const v = r.result;
+          try { db.close(); } catch (e) {}
+          resolve(v && v.sig === sig && v.result && v.result.rows ? v.result : null);
+        };
+        r.onerror = function () { try { db.close(); } catch (e) {} reject(r.error || new Error('idb get failed')); };
+      } catch (e) { reject(e); }
+    });
+  });
+}
+function rlCalcPut(sig, result) {
+  if (!sig) return Promise.resolve(false);
+  return rlCalcDb().then(function (db) {
+    return new Promise(function (resolve) {
+      try {
+        const tx = db.transaction(RL_CALC_STORE, 'readwrite');
+        tx.objectStore(RL_CALC_STORE).put({ sig: sig, result: result, at: Date.now() }, 'latest');
+        tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
+        tx.onerror = function () { try { db.close(); } catch (e) {} resolve(false); };
+      } catch (e) { resolve(false); }
+    });
+  }).catch(function () { return false; });
+}
+/* 签名覆盖所有会改变结果的输入：数据源版本 / 人工填价 / 历史期次 */
+function rlCalcSignature(meta) {
+  try {
+    const parts = (meta || []).map(function (r) {
+      return [Cloud._f(r, 'src'), Cloud._f(r, 'store'), Cloud._f(r, 'file'),
+              Cloud._f(r, 'updated_at')].join('|');
+    }).sort();
+    parts.push('priceFix=' + JSON.stringify(state.priceFix || {}));
+    parts.push('periods=' + (_periods || []).map(function (p) {
+      return p.id + ':' + ((p.rows || []).length);
+    }).join(','));
+    const s = parts.join('\n');
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return String(h >>> 0) + '.' + s.length;
+  } catch (e) { return ''; }
+}
+
 async function cloudLoadAll() {
   _cloudRestoring = true;
-  setLoadingText('正在读取云端数据源…');
+  setLoadingText('正在读取工作台数据源…');
   try {
     // 1) 轻量清单（几 KB，极快）：拿到每个数据源的 updated_at，判断哪些本机缓存可用
     let meta;
@@ -1696,7 +1762,7 @@ async function cloudLoadAll() {
           } catch (e) {
             console.error('数据源加载失败，已跳过', g.key, e);
           } finally {
-            done++; setLoadingText('正在读取云端数据源…（' + done + '/' + fetchGroups.length + '）');
+            done++; setLoadingText('正在读取工作台数据源…（' + done + '/' + fetchGroups.length + '）');
           }
         });
       }
@@ -1724,9 +1790,33 @@ async function cloudLoadAll() {
       const local = loadPriceFixLocal();
       if (Object.keys(local).length) { state.priceFix = local; renderPriceFixList(); console.info('人工填价：已从本机备份恢复 ' + Object.keys(local).length + ' 条'); }
     }
-    // 5) 数据齐全 → 自动计算（等算完再撤遮罩）
-    setLoadingText('正在计算红线价…');
-    if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) await doCalc();
+    // 5) 数据没变就复用上次计算结果，变了才全量重算（这是首屏提速最大的一步）
+    window.__rlCalcMeta = meta || [];
+    window.__rlCalcSig = rlCalcSignature(window.__rlCalcMeta);
+    let reused = false;
+    if (window.__rlCalcSig) {
+      try {
+        const cached = await rlCalcGet(window.__rlCalcSig);
+        if (cached && cached.rows && cached.rows.length) {
+          state.result = cached;
+          setLoadingText('正在恢复上次计算结果…');
+          renderWithModules();
+          try {
+            const nb = $('navBadgeBreach');
+            if (nb) {
+              const n = (cached.counts && cached.counts.breach) || 0;
+              nb.textContent = n;
+              nb.style.display = n > 0 ? 'inline-block' : 'none';
+            }
+          } catch (e) {}
+          reused = true;
+        }
+      } catch (e) { console.warn('计算结果缓存不可用，改为重新计算', e); }
+    }
+    if (!reused) {
+      setLoadingText('正在计算红线价…');
+      if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) await doCalc();
+    }
   } finally {
     _cloudRestoring = false;
   }
@@ -1751,7 +1841,10 @@ function _rlRenderLoadText() {
   const t = $('rdLoadingText');
   if (!t) return;
   const sec = Math.floor((Date.now() - _rlLoadStart) / 1000);
-  t.textContent = _rlLoadBase + (sec >= 2 ? '（已 ' + sec + ' 秒）' : '');
+  // 大表首次加载可能要 60~90 秒：先给「仍在加载」的软提示，不提前判失败，
+  // 避免正常但慢的加载在半路被弹成「加载失败」（2026-11-09 用户实测踩过）。
+  const slow = sec >= 45 ? ' · 数据量较大，仍在加载，可点「先用本机缓存」先查看' : '';
+  t.textContent = _rlLoadBase + (sec >= 2 ? '（已 ' + sec + ' 秒）' : '') + slow;
   const el = $('rdLoading');
   if (el && sec >= 10 && !el.classList.contains('fail')) el.classList.add('has-btns');
 }
@@ -2897,6 +2990,11 @@ async function doCalc(options) {
   await delay(30);
 
   state.result = result;
+  // 异步写入结果缓存（首屏复用；写失败/无 IndexedDB 时下次照常重算，不影响本次结果）
+  try {
+    const _sig = rlCalcSignature(window.__rlCalcMeta || []);
+    if (_sig) { window.__rlCalcSig = _sig; rlCalcPut(_sig, result); }
+  } catch (e) {}
   // 人工填价触发的重算不写历史快照（避免同一期快照被反复覆盖）
   if (!options || !options.skipHistory) saveHistory(result.rows);
   renderWithModules();
@@ -4720,16 +4818,16 @@ function waitLibs(timeoutMs) {
   // 角色限制「立刻」生效：不等数据加载完成，避免运营在慢加载期间看到全部模块
   applyRoleRestrictions();
   if (!RL_IS_ADMIN) switchModule('dashboard');
-  // 遮罩兜底：单个源已有 20~30s 超时，35s 仍未完成就进入失败态
-  // （有「重新加载 / 先用本机缓存」出口），不再无限转圈。
+  // 遮罩兜底：单个源有 20~30s 超时；大表首次全量加载实测 60~90 秒属正常，
+  // 故 45s 只给软提示、90s 才进入失败态（有「重新加载 / 先用本机缓存」出口）。
   if (Cloud.available) {
     showLoading('正在读取工作台数据…');
     setTimeout(() => {
       const el = $('rdLoading');
       if (el && el.classList.contains('on') && !el.classList.contains('fail')) {
-        failLoading('数据响应超过 35 秒仍未完成，后端可能繁忙。可点「重新加载」再试，或先看本机缓存。');
+        failLoading('数据响应超过 90 秒仍未完成，后端可能繁忙。可点「重新加载」再试，或先看本机缓存。');
       }
-    }, 35000);
+    }, 90000);
   }
   const libsOk = await waitLibs(15000);
   // 外部组件没加载成功 → 云端数据根本没法解压，与其空转不如直接说清楚（过去这里会白屏/空表）
@@ -4743,8 +4841,8 @@ function waitLibs(timeoutMs) {
   }
   if (Cloud.available) {
     bannerText(RL_IS_ADMIN
-      ? '☁️ 数据已接入工作台共享存储，多人查看同一份数据'
-      : '☁️ 数据已接入工作台共享存储（只读），与管理员上传的最新数据保持一致', true);
+      ? '数据源：ECS 工作台共享存储 · 由本模块「数据上传」独立维护（与清洗看板的数据源分开）'
+      : '数据源：ECS 工作台共享存储（只读）· 与管理员在本模块上传的最新数据一致', true);
     try { await cloudLoadAll(); hideLoading(); }
     catch (e) {
       console.error('云端加载失败', e);
