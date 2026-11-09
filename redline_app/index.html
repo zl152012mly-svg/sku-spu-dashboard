@@ -1209,6 +1209,32 @@ const Cloud = {
     }
     return all;
   },
+  /* 轻量清单：rest 模式打 /sources?meta=1（只回 src/store/file/gen/updated_at，几 KB），
+     smartpage/none 回退到完整列表。前端据此判断哪些源本机缓存可用、哪些需联网。 */
+  queryUploadsMeta: async function () {
+    if (this.mode === 'rest') {
+      const arr = await this._fetch('/sources?meta=1', null, 20000);
+      if (!Array.isArray(arr)) throw new Error('数据源清单格式异常' + (arr && arr.msg ? '：' + arr.msg : ''));
+      return arr;
+    }
+    return this.queryUploads();
+  },
+  /* 按需取单个数据源的压缩数据（b64）：rest 打 /sources/data?src=&store=&file=，
+     smartpage 回退到完整列表里挑。用于「只拉云端比本机新的源」，并行加载。 */
+  fetchSourceData: async function (src, store, file) {
+    if (this.mode === 'rest') {
+      const q = '?src=' + encodeURIComponent(src) + '&store=' + encodeURIComponent(store || '') + '&file=' + encodeURIComponent(file || '');
+      const r = await this._fetch('/sources/data' + q, null, 30000);
+      if (!r || !r.ok || !r.data) throw new Error('数据源数据缺失：' + src);
+      return r.data;
+    }
+    if (!this.db) return null;
+    const all = await this.queryUploads();
+    const rec = all.find(function (x) {
+      return (Cloud._f(x, 'src') || '') === src && (Cloud._f(x, 'store') || '') === (store || '') && (Cloud._f(x, 'file') || '') === (file || '');
+    });
+    return rec ? Cloud._f(rec, 'data') : null;
+  },
   // 压缩 JSON → base64 → 分块（返回字符串数组）
   pack: function (obj) {
     const json = JSON.stringify(obj);
@@ -1552,69 +1578,113 @@ function restoreGroupRecords(recs) {
   }
   return { obj: null, recs: [], multi: true };
 }
+/* ---------- 数据源本机缓存 + 并发加载 ---------- */
+// 已上传过的数据：按 src|store|file 存 {updated_at, obj}，云端 updated_at 不变则秒出，不再重拉几 MB。
+const SRC_CACHE_PREFIX = 'redline_src_';
+function srcCacheKey(k) { return SRC_CACHE_PREFIX + k; }
+function loadSrcCache(k) {
+  try { const v = localStorage.getItem(srcCacheKey(k)); if (!v) return null; const o = JSON.parse(v); return (o && o.obj) ? o : null; }
+  catch (e) { return null; }
+}
+function saveSrcCache(k, updated_at, obj) {
+  try { localStorage.setItem(srcCacheKey(k), JSON.stringify({ updated_at: updated_at || '', obj: obj })); } catch (e) {}
+}
+function restoreSourceFromGroup(key, obj) {
+  const parts = key.split('\u0001');
+  restoreSource(parts[0], parts[1] || '', obj, parts[2] || '');
+}
+// 并发上限执行：items 依次交给 worker，最多 limit 个同时进行（避免一次性打爆单进程 worker）
+async function parallelLimit(items, limit, fn) {
+  let i = 0;
+  const workers = [];
+  const n = Math.min(limit, items.length);
+  for (let w = 0; w < n; w++) {
+    workers.push((async () => { while (i < items.length) { const idx = i++; await fn(items[idx], idx); } })());
+  }
+  await Promise.all(workers);
+}
 async function cloudLoadAll() {
   _cloudRestoring = true;
   setLoadingText('正在读取云端数据源…');
-  const healGroups = []; // 检测到多代残留的组：恢复后用最新代重写，清掉云端脏记录
   try {
-    const uploads = await Cloud.queryUploads();
+    // 1) 轻量清单（几 KB，极快）：拿到每个数据源的 updated_at，判断哪些本机缓存可用
+    let meta;
+    try { meta = await Cloud.queryUploadsMeta(); }
+    catch (e) { console.warn('清单接口失败，回退完整取数', e); meta = await Cloud.queryUploads(); }
     const groups = {};
-    uploads.forEach(r => {
+    (meta || []).forEach(r => {
       if (Number(Cloud._f(r, 'gen')) !== 1) return;
       const key = Cloud._f(r, 'src') + '\u0001' + (Cloud._f(r, 'store') || '') + '\u0001' + (Cloud._f(r, 'file') || '');
       (groups[key] = groups[key] || []).push(r);
     });
-    Object.keys(groups).forEach(key => {
-      const g = restoreGroupRecords(groups[key]);
-      if (!g.obj) { console.error('云端数据解压失败，跳过该数据源', key); return; }
-      const parts = key.split('\u0001');
-      // 单个数据源坏掉不该拖垮整页：解压成功但字段异常时隔离掉，其余照常恢复
-      try { restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || ''); }
-      catch (e) { console.error('数据源恢复失败，已跳过', key, e); }
-      if (g.multi) healGroups.push({ src: parts[0], store: parts[1] || '', fileId: parts[2] || '', obj: g.obj });
-    });
-    /* 自愈：残留多代的组用最新代重写（saveSource 会删同组全部旧记录）。
-       写回要打多次大请求，绝不能卡在首屏关键路径上 —— 改为计算完成后再后台串行跑，
-       否则「读」阶段会被写拖住，正是线上长时间停在「正在读取云端数据源…」的原因之一。 */
-    if (healGroups.length && RL_IS_ADMIN) {
-      console.info('检测到云端重复记录，稍后自动清理 ' + healGroups.length + ' 组');
-      setTimeout(async () => {
-        for (const h of healGroups) {
-          try { await Cloud.saveSource(h.src, h.store, h.obj, h.fileId || undefined); }
-          catch (e) { console.warn('自愈回写失败（忽略）', h.src, e); }
-        }
-      }, 2500);
+    // 记录是否已内联 data：smartpage 模式 / 旧后端（无 meta 接口）回退到 queryUploads 时，
+    // 记录自带 data，直接内联解压（兼容旧逻辑）；否则走「清单 + 按需拉取」模式。
+    const haveData = !!(meta && meta.length && Cloud._f(meta[0], 'data') != null);
+    if (haveData) {
+      // 完整记录（含 data）：直接解压恢复，并顺手写入本机缓存，下次即便切到 meta 模式也能秒出
+      Object.keys(groups).forEach(key => {
+        const g = restoreGroupRecords(groups[key]);
+        if (!g.obj) { console.error('云端数据解压失败，跳过该数据源', key); return; }
+        const parts = key.split('\u0001');
+        try { restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || ''); }
+        catch (e) { console.error('数据源恢复失败，已跳过', key, e); }
+        try { saveSrcCache(key, Cloud._f(g.recs[0], 'updated_at') || '', g.obj); } catch (e) {}
+      });
+    } else {
+      const cachedGroups = [], fetchGroups = [];
+      Object.keys(groups).forEach(key => {
+        const recs = groups[key];
+        const newest = recs.slice().sort((a, b) => parseCnTime(Cloud._f(b, 'updated_at')) - parseCnTime(Cloud._f(a, 'updated_at')))[0];
+        const c = loadSrcCache(key);
+        const ua = Cloud._f(newest, 'updated_at') || '';
+        if (c && c.updated_at === ua && c.obj) cachedGroups.push({ key: key, obj: c.obj });
+        else fetchGroups.push({ key: key, newest: newest });
+      });
+      // 2) 缓存命中的先瞬间恢复（已上传过的数据秒出，不再等几 MB 下载）
+      cachedGroups.forEach(g => { try { restoreSourceFromGroup(g.key, g.obj); } catch (e) { fetchGroups.push({ key: g.key, newest: null }); } });
+      // 3) 需要更新的并行取（并发上限 4，带进度）；单源失败只跳过它
+      if (fetchGroups.length) {
+        let done = 0;
+        await parallelLimit(fetchGroups, 4, async (g) => {
+          try {
+            const rec = g.newest || groups[g.key][0];
+            const b64 = await Cloud.fetchSourceData(Cloud._f(rec, 'src'), Cloud._f(rec, 'store'), Cloud._f(rec, 'file'));
+            const obj = Cloud.unpack([b64]);
+            if (!obj) throw new Error('解压失败');
+            saveSrcCache(g.key, Cloud._f(rec, 'updated_at') || '', obj);
+            restoreSourceFromGroup(g.key, obj);
+          } catch (e) {
+            console.error('数据源加载失败，已跳过', g.key, e);
+          } finally {
+            done++; setLoadingText('正在读取云端数据源…（' + done + '/' + fetchGroups.length + '）');
+          }
+        });
+      }
     }
-    // 历史期（最多4期，按期次分块拼接；同样防多代残留）
+    // 4) 历史期：先用本机缓存瞬间渲染，再用云端刷新（≤4 期，体积小）
+    try { const pc = JSON.parse(localStorage.getItem('redline_periods_cache') || 'null'); if (Array.isArray(pc) && pc.length) { _periods = pc; renderPeriodPanel(); } } catch (e) {}
     setLoadingText('正在读取历史期次…');
     const periods = await Cloud.queryPeriods();
     const pg = {};
     periods.forEach(r => { const k = Cloud._f(r, 'period') || 0; (pg[k] = pg[k] || []).push(r); });
-    let periodsMulti = false;
-    _periods = Object.keys(pg).map(k => {
+    const periodsArr = Object.keys(pg).map(k => {
       const g = restoreGroupRecords(pg[k]);
-      if (g.multi) periodsMulti = true;
       const first = g.recs[0] || {};
       return { id: Number(k), date: Cloud._f(first, 'date') || '', label: Cloud._f(first, 'label') || '', rows: (g.obj && g.obj.rows) || [] };
     }).sort((a, b) => b.id - a.id);
-    if (periodsMulti && _periods.length && Cloud.available && RL_IS_ADMIN) {
-      setTimeout(() => { Cloud.syncPeriods(_periods).catch(() => {}); }, 3000);   // 同样移出关键路径
-    }
-    // 云端为空时回退到本地存储（防止云端同步尚未完成或失败时丢失已保存的期）
-    if (!_periods.length) {
+    if (periodsArr.length) {
+      _periods = periodsArr;
+      try { localStorage.setItem('redline_periods_cache', JSON.stringify(_periods)); } catch (e) {}
+    } else if (!_periods.length) {
       try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); } catch (e) { _periods = []; }
     }
-    // 人工填价：云端记录为空时用本机备份兜底（防云端写入失败 / 字段选项缺失导致丢失）
+    renderPeriodPanel();
+    // 人工填价：云端记录为空时用本机备份兜底
     if (!Object.keys(state.priceFix || {}).length) {
       const local = loadPriceFixLocal();
-      if (Object.keys(local).length) {
-        state.priceFix = local;
-        renderPriceFixList();
-        console.info('人工填价：已从本机备份恢复 ' + Object.keys(local).length + ' 条');
-      }
+      if (Object.keys(local).length) { state.priceFix = local; renderPriceFixList(); console.info('人工填价：已从本机备份恢复 ' + Object.keys(local).length + ' 条'); }
     }
-    renderPeriodPanel();
-    // 数据齐全 → 自动计算（等算完再撤遮罩，否则会出现「数据已到但表格还空着」的错觉）
+    // 5) 数据齐全 → 自动计算（等算完再撤遮罩）
     setLoadingText('正在计算红线价…');
     if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) await doCalc();
   } finally {

@@ -122,13 +122,32 @@ def api_health():
 @bp.route('/api/sources')
 @_api_auth
 def api_sources():
-    return jsonify(store.list_sources())
+    # ?meta=1 → 只返回清单（src/store/file/gen/updated_at），不含数据体；
+    # 前端据此判断哪些数据源需要重新拉取，避免一次性把几 MB 压缩数据全推下来。
+    meta = request.args.get('meta') == '1'
+    return jsonify(store.list_sources(meta_only=meta))
+
+
+@bp.route('/api/sources/data')
+@_api_auth
+def api_sources_data():
+    # 按需取单个数据源的压缩数据（b64），供前端「只拉云端更新的源」并行加载。
+    src = (request.args.get('src') or '').strip()
+    if not src:
+        return jsonify({'ok': False, 'msg': 'src required'}), 400
+    store_ = (request.args.get('store') or '').strip()
+    file_ = (request.args.get('file') or '').strip()
+    data = store.get_source_data(src, store_, file_)
+    if data is None:
+        return jsonify({'ok': False, 'msg': 'not found'}), 404
+    return jsonify({'ok': True, 'data': data})
 
 
 @bp.route('/api/periods')
 @_api_auth
 def api_periods():
-    return jsonify(store.list_periods())
+    meta = request.args.get('meta') == '1'
+    return jsonify(store.list_periods(meta_only=meta))
 
 
 @bp.route('/api/sources/save', methods=['POST'])

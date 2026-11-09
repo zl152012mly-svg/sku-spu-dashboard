@@ -28,6 +28,7 @@ import json
 import time
 import hashlib
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import storage as _st
 
@@ -140,23 +141,45 @@ def _list_keys(prefix):
 
 
 # ---------------------------------------------------------------- 数据源
-def list_sources():
+def _batch_get(keys):
+    """并发取回多个对象（OSS 模式用线程池并行，消除逐条串行往返导致的首屏慢）。"""
+    if not keys:
+        return []
+    if _is_oss():
+        n = min(8, len(keys)) or 1
+        try:
+            with ThreadPoolExecutor(max_workers=n) as ex:
+                return list(ex.map(_get, keys))
+        except Exception:
+            pass
+    return [_get(k) for k in keys]
+
+
+def list_sources(meta_only=False):
+    keys = _list_keys(_PREFIX_SRC)
+    objs = _batch_get(keys)
     out = []
-    for k in _list_keys(_PREFIX_SRC):
-        o = _get(k)
+    for k, o in zip(keys, objs):
         if not o:
             continue
-        out.append({
+        rec = {
             'id': k,
             'src': o.get('src') or '',
             'store': o.get('store') or '',
             'file': o.get('file') or '',
             'gen': int(o.get('gen') or 1),
             'chunk': 0,
-            'data': o.get('b64') or '',
             'updated_at': o.get('updated_at') or '',
-        })
+        }
+        if not meta_only:
+            rec['data'] = o.get('b64') or ''
+        out.append(rec)
     return out
+
+
+def get_source_data(src, store, file):
+    """按 src|store|file 取单个数据源的压缩数据（b64）；不存在返回 None。"""
+    return (_get(_src_key(src, store, file)) or {}).get('b64') or None
 
 
 def save_source(src, store, file, chunks, updated_at):
@@ -193,21 +216,24 @@ def remove_source(src, store, file):
 
 
 # ---------------------------------------------------------------- 历史期
-def list_periods():
+def list_periods(meta_only=False):
+    keys = _list_keys(_PREFIX_PER)
+    objs = _batch_get(keys)
     out = []
-    for k in _list_keys(_PREFIX_PER):
-        o = _get(k)
+    for k, o in zip(keys, objs):
         if not o:
             continue
         pid = o.get('period') or 0
-        out.append({
+        rec = {
             'id': pid,
             'period': pid,
             'date': o.get('date') or '',
             'label': o.get('label') or '',
             'chunk': 0,
-            'data': o.get('b64') or '',
-        })
+        }
+        if not meta_only:
+            rec['data'] = o.get('b64') or ''
+        out.append(rec)
     return out
 
 
