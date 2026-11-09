@@ -17,6 +17,16 @@ say() { printf '\n\033[36m==== %s ====\033[0m\n' "$1"; }
 ok()  { printf '  \033[32m[OK ]\033[0m %s\n' "$1"; }
 bad() { printf '  \033[31m[!! ]\033[0m %s\n' "$1"; }
 warn(){ printf '  \033[33m[.. ]\033[0m %s\n' "$1"; }
+# 统计文件里某个固定串出现的行数，永远返回单个整数。
+# 坑（2026-11-09 ECS 实测）：grep -c 在 0 命中时仍输出 "0" 但退出码为 1，
+# 旧写法 `grep -c ... || echo 0` 会再追加一个 "0" → 变量变成 "0\n0"，
+# `[ "$X" -eq 0 ]` 报 integer expression expected，自查误报 [..]。
+# 这里用 `|| true` 只吞退出码、保留 grep 的输出，再用 ${n:-0} 兜住「文件不存在」。
+count_in() {  # $1=文件  $2=固定字符串
+  local n
+  n=$(grep -F -c "$2" "$1" 2>/dev/null || true)
+  printf '%s' "${n:-0}"
+}
 
 say "0. 环境体检"
 [ -d "$APP" ] && ok "应用目录存在 $APP" || { bad "找不到 $APP，脚本终止"; exit 1; }
@@ -84,8 +94,15 @@ say "4. 验证结果"
 V=$(curl -s http://127.0.0.1:8092/ | grep -o 'app.js?v=[0-9A-Za-z._-]*' | head -1)
 [ -n "$V" ] && ok "前端版本号: $V  （ASSET_VERSION + 文件内容哈希，由 app.py 注入）" || bad "取不到版本号，服务可能没起来"
 AV=$(cat "$APP/ASSET_VERSION" 2>/dev/null | head -1 | tr -d '\r\n')
-[ -n "$AV" ] && ok "ASSET_VERSION 基准号: $AV" || bad "$APP/ASSET_VERSION 缺失，版本号会退回 dev- 前缀"
-case "$V" in *"$AV"*) ok "页面版本号与 ASSET_VERSION 一致" ;; *) warn "页面版本号未包含基准号，可能是服务未重启或 index.html 漏拉" ;; esac
+if [ -n "$AV" ]; then
+  ok "ASSET_VERSION 基准号: $AV"
+  case "$V" in
+    *"$AV"*) ok "页面版本号与 ASSET_VERSION 一致" ;;
+    *) warn "页面版本号未包含基准号，可能是服务未重启或 index.html 漏拉" ;;
+  esac
+else
+  bad "$APP/ASSET_VERSION 缺失，版本号会退回 dev- 前缀"
+fi
 C=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/na/)
 echo "  /na/ 未登录返回码 = $C  （302=正常跳转到登录；404=文件缺失；000/502=服务没起来）"
 K=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8092/console)
@@ -93,46 +110,49 @@ echo "  /console 未登录返回码 = $K  （302=正常跳转到登录；404=con
 sudo systemctl status sku-spu.service --no-pager | head -3
 
 say "4.5 DDL 到期提醒 · 可视化配置 / 工作日分Tab 部署自查（2026-11-04 第二版）"
-G1=$(grep -c "ddl-notify-config" "$APP/na_routes.py" 2>/dev/null || echo 0)
+G1=$(count_in "$APP/na_routes.py" "ddl-notify-config")
 [ "$G1" -ge 2 ] && ok "na_routes.py 已含配置/预览接口 ($G1 处)" || bad "na_routes.py 缺少 DDL 配置接口，检查是否拉到最新版"
-G2=$(grep -c "na_data' / 'ddl_notify_config.json'" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+G2=$(count_in "$APP/ddl_notify.py" "na_data' / 'ddl_notify_config.json'")
 [ "$G2" -ge 1 ] && ok "ddl_notify.py 已优先读系统设置保存的配置" || bad "ddl_notify.py 未读 na_data 配置，定时脚本会退回旧 /etc 文件"
-G3=$(grep -c "ddlNotifyCard" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+G3=$(count_in "$APP/templates/na_index.html" "ddlNotifyCard")
 [ "$G3" -ge 1 ] && ok "系统设置页已含「DDL 到期提醒设置」卡" || bad "na_index.html 缺少设置卡"
-G4=$(grep -F -o 'v={{ ASSET_VER }}' "$APP/templates/console_index.html" 2>/dev/null | wc -l)
+G4=$(grep -F -o 'v={{ ASSET_VER }}' "$APP/templates/console_index.html" 2>/dev/null | wc -l | tr -d ' ')
+G4=${G4:-0}
 [ "$G4" -eq 7 ] && ok "工作台 iframe 版本号已改为 ASSET_VER 注入（模板 7 处）" || warn "console_index.html 版本号异常 ($G4 处 ASSET_VER，期望 7)，可能是旧版文件"
-G5=$(grep -c "def is_workday" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+G5=$(count_in "$APP/ddl_notify.py" "def is_workday")
 [ "$G5" -ge 1 ] && ok "ddl_notify.py 已含工作日判断（非工作日静默 / 顺延补发）" || bad "ddl_notify.py 缺少 is_workday，节假日仍会照常发消息"
-G6=$(grep -c "def group_mentions" "$APP/ddl_notify.py" 2>/dev/null || echo 0)
+G6=$(count_in "$APP/ddl_notify.py" "def group_mentions")
 [ "$G6" -ge 1 ] && ok "ddl_notify.py 已含「未分配运营 → 按组默认成员艾特」" || bad "ddl_notify.py 缺少 group_mentions，未分配运营仍无人认领"
-G7=$(grep -c "dmPane3" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+G7=$(count_in "$APP/templates/na_index.html" "dmPane3")
 [ "$G7" -ge 2 ] && ok "系统设置已拆 3 个横向 Tab（数据源 / 子账号 / DDL 提醒）" || bad "na_index.html 缺少 dmPane3，说明没拉到拆页版"
-G8=$(grep -c "workday_overrides" "$APP/na_routes.py" 2>/dev/null || echo 0)
+G8=$(count_in "$APP/na_routes.py" "workday_overrides")
 [ "$G8" -ge 1 ] && ok "na_routes.py 已支持可编辑工作日历（holidays / workday_overrides）" || bad "na_routes.py 缺少工作日历字段，界面填了也存不上"
 echo "  提示：群 webhook / 运营成员 / 组默认成员 / 工作日历请到【系统设置 → ③ DDL 到期提醒设置】里填并保存，无需改 /etc 文件。"
 echo "  提醒：cron 需改成每天 10:00 触发（脚本自己判断工作日），见手册 §20："
 echo "    ( crontab -l 2>/dev/null | grep -v 'ddl_notify.py' ; echo '0 10 * * * cd /opt/sku-spu && /usr/bin/python3 ddl_notify.py >> /var/log/ddl_notify.log 2>&1' ) | crontab -"
 
 say "4.6 页面一体化阶段0 自查（2026-11-09）"
-S1=$(grep -c "def compute_asset_version" "$APP/app.py" 2>/dev/null || echo 0)
+S1=$(count_in "$APP/app.py" "def compute_asset_version")
 [ "$S1" -ge 1 ] && ok "app.py 已含统一版本号生成器" || bad "app.py 缺少 ASSET_VER，模板会渲染出空白占位"
-S2=$(grep -c "def state_fingerprint" "$APP/app.py" 2>/dev/null || echo 0)
+S2=$(count_in "$APP/app.py" "def state_fingerprint")
 [ "$S2" -ge 1 ] && ok "/api/state 已含结果缓存 + ETag 共用指纹" || warn "app.py 缺少结果缓存，刷新看板仍会重复序列化 19MB"
-S3=$(grep -c 'id="loading"' "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+S3=$(count_in "$APP/templates/console_index.html" 'id="loading"')
 [ "$S3" -ge 1 ] && ok "工作台已含切换加载态" || warn "console_index.html 缺少加载态，切模块仍像卡住"
-S4=$(grep -c "na-console-nav-ack" "$APP/templates/console_index.html" 2>/dev/null || echo 0)
+S4=$(count_in "$APP/templates/console_index.html" "na-console-nav-ack")
 [ "$S4" -ge 1 ] && ok "工作台已接管跨模块导航（高亮与内容同步）" || warn "console_index.html 缺少导航回执"
-S5=$(grep -c "v=c2" "$APP/templates/na_index.html" 2>/dev/null || echo 0)
+S5=$(count_in "$APP/templates/na_index.html" "v=c2")
 [ "$S5" -eq 0 ] && ok "na_index.html 不再残留 v=c2 旧硬编码" || warn "na_index.html 仍有 $S5 处 v=c2，跳系统设置可能看到旧页"
-S6=$(grep -c "本地模式：数据仅保存在当前浏览器" "$APP/redline_app/index.html" 2>/dev/null || echo 0)
+S6=$(count_in "$APP/redline_app/index.html" "本地模式：数据仅保存在当前浏览器")
 [ "$S6" -eq 0 ] && ok "红线价旧 SaaS 文案已清理" || warn "红线价页面仍有 $S6 处旧 SaaS 文案"
 echo "  提示：/console 外壳已设 no-store；模块页版本号由 app.py 自动计算，改前端后无需再手升 6 处 v=cN。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"
-  echo "  ---- 内容 ----"
-  cat "$APP/accounts.json"
+  # 只列账号名，不回显明文口令：部署截图/日志常常外发，避免泄露
+  echo "  ---- 已保存的账号（口令已隐藏） ----"
+  grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$APP/accounts.json" 2>/dev/null \
+    | sed 's/.*:[[:space:]]*"/  - /; s/"$//' || true
   echo "  --------------"
 else
   warn "accounts.json 不存在 —— 还没在「系统设置 → 账号设置」里成功保存过子账号"
