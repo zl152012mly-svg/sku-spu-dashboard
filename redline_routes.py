@@ -152,6 +152,37 @@ def api_periods():
     return jsonify(store.list_periods(meta_only=meta))
 
 
+@bp.route('/api/state-fp')
+@_api_auth
+def api_state_fp():
+    """整页数据指纹（只读轻量 meta，几十毫秒）。前端据此判断快照是否还能用。"""
+    return jsonify({'ok': True, 'fp': store.fingerprint()})
+
+
+@bp.route('/api/snapshot', methods=['GET'])
+@_api_auth
+def api_snapshot_get():
+    """共享计算快照：所有人可读，换浏览器 / 换电脑首次打开也能秒出。"""
+    snap = store.get_snapshot() or {}
+    return jsonify({'ok': bool(snap.get('b64')), 'fp': snap.get('fp') or '',
+                    'b64': snap.get('b64') or '',
+                    'updated_at': snap.get('updated_at') or ''})
+
+
+@bp.route('/api/snapshot', methods=['POST'])
+@_admin_only
+def api_snapshot_save():
+    """管理员在完整链路算完后写回快照；fp 由服务端重新核对，防止前端传错。"""
+    b = request.get_json(force=True, silent=True) or {}
+    fp = (b.get('fp') or '').strip()
+    b64 = b.get('b64') or ''
+    if not fp or not b64:
+        return jsonify({'ok': False, 'msg': 'fp / b64 required'}), 400
+    if fp != store.fingerprint():
+        return jsonify({'ok': False, 'msg': '数据已变化，快照已作废，请重新计算'}), 409
+    return jsonify({'ok': bool(store.save_snapshot(fp, b64))})
+
+
 @bp.route('/api/sources/save', methods=['POST'])
 @_admin_only
 def api_sources_save():

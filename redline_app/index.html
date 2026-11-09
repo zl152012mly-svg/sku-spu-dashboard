@@ -1259,6 +1259,27 @@ const Cloud = {
     }
     return this.queryUploads();
   },
+  /* 整页数据指纹：服务端只读轻量 meta（几十毫秒），用来判断页面快照是否仍然有效。
+     老后端没有这个接口时返回 ''，前端自动回退完整取数链路。 */
+  queryStateFp: async function () {
+    if (this.mode !== 'rest') return '';
+    try {
+      const r = await this._fetch('/state-fp', null, 15000);
+      return (r && r.fp) ? String(r.fp) : '';
+    } catch (e) { console.warn('指纹接口不可用，回退完整取数', e); return ''; }
+  },
+  /* 共享页面快照：管理员算完写一份到工作台，其他账号 / 其他浏览器首次打开也能秒出。 */
+  getSnapshot: async function (fp) {
+    if (this.mode !== 'rest' || !fp) return null;
+    const r = await this._fetch('/snapshot', null, 30000);
+    if (!r || !r.ok || !r.b64 || r.fp !== fp) return null;
+    return { fp: r.fp, b64: r.b64 };
+  },
+  saveSnapshot: async function (fp, b64) {
+    if (this.mode !== 'rest' || !fp || !b64) return false;
+    const r = await this._restPost('/snapshot', { fp: fp, b64: b64 }, 30000);
+    return !!(r && r.ok);
+  },
   /* 按需取单个数据源的压缩数据（b64）：rest 打 /sources/data?src=&store=&file=，
      smartpage 回退到完整列表里挑。用于「只拉云端比本机新的源」，并行加载。 */
   fetchSourceData: async function (src, store, file) {
@@ -1627,7 +1648,14 @@ function loadSrcCache(k) {
   catch (e) { return null; }
 }
 function saveSrcCache(k, updated_at, obj) {
-  try { localStorage.setItem(srcCacheKey(k), JSON.stringify({ updated_at: updated_at || '', obj: obj })); } catch (e) {}
+  // localStorage 只有约 5MB 配额：几万行表 JSON.stringify 后必然超配额，旧版
+  // catch(e){} 把 QuotaExceededError 静默吞掉 → 每次打开都误判「缓存未命中」，
+  // 重新下载全部 b64。大对象统一交给上面的 IndexedDB 整页快照，这里只留小对象。
+  try {
+    const raw = obj && (obj.raw || obj.aoa || obj.fixes);
+    if (((raw && raw.length) || 0) > 3000) return;
+    localStorage.setItem(srcCacheKey(k), JSON.stringify({ updated_at: updated_at || '', obj: obj }));
+  } catch (e) {}
 }
 function restoreSourceFromGroup(key, obj) {
   const parts = key.split('\u0001');
@@ -1709,10 +1737,142 @@ function rlCalcSignature(meta) {
   } catch (e) { return ''; }
 }
 
+/* ---------- 整页快照（本机 IndexedDB + 工作台共享快照） ----------
+   上一轮只做了「计算结果缓存」，但它在 cloudLoadAll 第 5 步才判断：前面几 MB 的
+   /sources/data 与 /periods 下载、pako 解压、applyXxx 早就跑完了，所以关掉网页
+   重新进入依旧要等 2 分钟。而数据源缓存写在 localStorage（约 5MB 上限），几万行
+   表 JSON.stringify 后必然超配额且被 catch(e){} 静默吞掉 → 每次都是冷加载。
+   现在：先用一次几十毫秒的 /state-fp 拿服务端数据指纹，指纹没变就直接恢复整页
+   快照（所有数据源对象 + 计算结果 + 历史期 + 人工填价），整条下载/解压/重算链路
+   全部跳过。任何上传或期次同步都会改变指纹 → 快照立即作废，绝不展示过期数据。 */
+const RL_SNAP_DB = 'redline_page_snapshot';
+const RL_SNAP_STORE = 'snap';
+function rlSnapDb() {
+  return new Promise(function (resolve, reject) {
+    if (typeof indexedDB === 'undefined' || !indexedDB) { reject(new Error('no indexedDB')); return; }
+    let req;
+    try { req = indexedDB.open(RL_SNAP_DB, 1); } catch (e) { reject(e); return; }
+    req.onupgradeneeded = function () {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(RL_SNAP_STORE)) db.createObjectStore(RL_SNAP_STORE);
+    };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error || new Error('idb open failed')); };
+  });
+}
+async function rlSnapPut(rec) {
+  try {
+    const db = await rlSnapDb();
+    await new Promise(function (resolve) {
+      try {
+        const tx = db.transaction(RL_SNAP_STORE, 'readwrite');
+        tx.objectStore(RL_SNAP_STORE).put(rec, 'latest');
+        tx.oncomplete = function () { try { db.close(); } catch (e) {} resolve(true); };
+        tx.onerror = function () { try { db.close(); } catch (e) {} resolve(false); };
+      } catch (e) { resolve(false); }
+    });
+  } catch (e) { return false; }
+  return true;
+}
+async function rlSnapRaw() {
+  // 读本机最近一份快照（不校验指纹）：用于「有人改了一个源」时的热缓存复用
+  try {
+    const db = await rlSnapDb();
+    const rec = await new Promise(function (resolve, reject) {
+      try {
+        const tx = db.transaction(RL_SNAP_STORE, 'readonly');
+        const r = tx.objectStore(RL_SNAP_STORE).get('latest');
+        r.onsuccess = function () { try { db.close(); } catch (e) {} resolve(r.result); };
+        r.onerror = function () { try { db.close(); } catch (e) {} reject(r.error || new Error('idb get failed')); };
+      } catch (e) { reject(e); }
+    });
+    if (!rec || !rec.b64) return null;
+    return { fp: rec.fp || '', b64: rec.b64, payload: Cloud.unpack([rec.b64]) };
+  } catch (e) { return null; }
+}
+async function rlSnapGet(fp) {
+  const rec = await rlSnapRaw();
+  return (rec && rec.fp === fp) ? rec : null;
+}
+function rlSnapValid(p, fp) {
+  return !!(p && p.fp === fp && p.result && p.result.rows && p.result.rows.length
+            && p.sources && Object.keys(p.sources).length);
+}
+async function rlReadSnapshot(fp) {
+  if (!fp) return null;
+  const local = await rlSnapGet(fp);
+  if (local && rlSnapValid(local.payload, fp)) return { payload: local.payload, b64: local.b64, from: 'local' };
+  // 本机没有（换浏览器 / 清过缓存）→ 用工作台共享快照，并顺手写回本机
+  try {
+    const remote = await Cloud.getSnapshot(fp);
+    if (remote && remote.b64) {
+      const payload = Cloud.unpack([remote.b64]);
+      if (rlSnapValid(payload, fp)) {
+        rlSnapPut({ fp: fp, b64: remote.b64 });
+        return { payload: payload, b64: remote.b64, from: 'shared' };
+      }
+    }
+  } catch (e) { console.warn('共享快照不可用，回退完整取数', e); }
+  return null;
+}
+function rlRestoreSnapshot(snap, fp) {
+  if (!rlSnapValid(snap, fp)) return false;
+  const srcs = snap.sources || {};
+  Object.keys(srcs).forEach(function (k) {
+    try { restoreSourceFromGroup(k, srcs[k]); }
+    catch (e) { console.error('快照数据源恢复失败', k, e); }
+  });
+  state.result = snap.result;
+  state.priceFix = snap.priceFix || state.priceFix || {};
+  _periods = snap.periods || [];
+  window.__rlCalcMeta = snap.meta || [];
+  window.__rlCalcSig = rlCalcSignature(window.__rlCalcMeta);
+  renderPeriodPanel();
+  renderPriceFixList();
+  renderWithModules();
+  try {
+    const nb = $('navBadgeBreach');
+    if (nb) {
+      const n = (snap.result.counts && snap.result.counts.breach) || 0;
+      nb.textContent = n;
+      nb.style.display = n > 0 ? 'inline-block' : 'none';
+    }
+  } catch (e) {}
+  return true;
+}
+
 async function cloudLoadAll() {
   _cloudRestoring = true;
   setLoadingText('正在读取工作台数据源…');
   try {
+    // 0) 快速通道：服务端数据指纹没变 → 直接用整页快照恢复，
+    //    后面所有 /sources/data、/periods 大数据下载、pako 解压、doCalc 全部跳过。
+    //    指纹接口不存在 / 快照无效 / 数据有更新时，自动落到下面的完整链路。
+    let fp = '';
+    try { fp = await Cloud.queryStateFp(); } catch (e) { fp = ''; }
+    window.__rlSnapFp = fp;
+    if (fp) {
+      try {
+        const hit = await rlReadSnapshot(fp);
+        if (hit && rlRestoreSnapshot(hit.payload, fp)) {
+          setLoadingText(hit.from === 'shared' ? '已从工作台共享快照恢复…' : '已从本机快照恢复…');
+          return;
+        }
+      } catch (e) { console.warn('快照恢复失败，回退完整取数', e); }
+    }
+    // 完整链路：记录本次实际恢复出来的数据源对象，供末尾生成快照
+    const restoredSources = {};
+    const srcUpdated = {};
+    // 热缓存：指纹变了（有人上传了一个源）时，其余未变的源仍可直接复用本机快照，
+    // 不必把全部 b64 重下一遍。用 updated_at 逐源校验，绝不复用过期数据。
+    let warmSources = {}, warmUpdated = {};
+    try {
+      const raw = await rlSnapRaw();
+      if (raw && raw.payload && raw.payload.sources && raw.payload.srcUpdated) {
+        warmSources = raw.payload.sources;
+        warmUpdated = raw.payload.srcUpdated;
+      }
+    } catch (e) { console.warn('本机热缓存不可用', e); }
     // 1) 轻量清单（几 KB，极快）：拿到每个数据源的 updated_at，判断哪些本机缓存可用
     let meta;
     try { meta = await Cloud.queryUploadsMeta(); }
@@ -1731,8 +1891,9 @@ async function cloudLoadAll() {
       Object.keys(groups).forEach(key => {
         const g = restoreGroupRecords(groups[key]);
         if (!g.obj) { console.error('云端数据解压失败，跳过该数据源', key); return; }
+        srcUpdated[key] = Cloud._f(g.recs[0], 'updated_at') || '';
         const parts = key.split('\u0001');
-        try { restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || ''); }
+        try { restoreSource(parts[0], parts[1] || '', g.obj, parts[2] || ''); restoredSources[key] = g.obj; }
         catch (e) { console.error('数据源恢复失败，已跳过', key, e); }
         try { saveSrcCache(key, Cloud._f(g.recs[0], 'updated_at') || '', g.obj); } catch (e) {}
       });
@@ -1743,11 +1904,16 @@ async function cloudLoadAll() {
         const newest = recs.slice().sort((a, b) => parseCnTime(Cloud._f(b, 'updated_at')) - parseCnTime(Cloud._f(a, 'updated_at')))[0];
         const c = loadSrcCache(key);
         const ua = Cloud._f(newest, 'updated_at') || '';
+        srcUpdated[key] = ua;
         if (c && c.updated_at === ua && c.obj) cachedGroups.push({ key: key, obj: c.obj });
+        else if (warmSources[key] && warmUpdated[key] === ua) cachedGroups.push({ key: key, obj: warmSources[key] });
         else fetchGroups.push({ key: key, newest: newest });
       });
       // 2) 缓存命中的先瞬间恢复（已上传过的数据秒出，不再等几 MB 下载）
-      cachedGroups.forEach(g => { try { restoreSourceFromGroup(g.key, g.obj); } catch (e) { fetchGroups.push({ key: g.key, newest: null }); } });
+      cachedGroups.forEach(g => {
+        try { restoreSourceFromGroup(g.key, g.obj); restoredSources[g.key] = g.obj; }
+        catch (e) { fetchGroups.push({ key: g.key, newest: null }); }
+      });
       // 3) 需要更新的并行取（并发上限 4，带进度）；单源失败只跳过它
       if (fetchGroups.length) {
         let done = 0;
@@ -1759,6 +1925,7 @@ async function cloudLoadAll() {
             if (!obj) throw new Error('解压失败');
             saveSrcCache(g.key, Cloud._f(rec, 'updated_at') || '', obj);
             restoreSourceFromGroup(g.key, obj);
+            restoredSources[g.key] = obj;
           } catch (e) {
             console.error('数据源加载失败，已跳过', g.key, e);
           } finally {
@@ -1780,7 +1947,12 @@ async function cloudLoadAll() {
     }).sort((a, b) => b.id - a.id);
     if (periodsArr.length) {
       _periods = periodsArr;
-      try { localStorage.setItem('redline_periods_cache', JSON.stringify(_periods)); } catch (e) {}
+      // 每期都是几万行结果，写 localStorage 必然超配额（旧版静默失败）；
+      // 整页快照已覆盖历史期，这里只在体积极小时留一份加速副本。
+      try {
+        const n = periodsArr.reduce(function (s, p) { return s + ((p.rows || []).length); }, 0);
+        if (n <= 20000) localStorage.setItem('redline_periods_cache', JSON.stringify(_periods));
+      } catch (e) {}
     } else if (!_periods.length) {
       try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); } catch (e) { _periods = []; }
     }
@@ -1816,6 +1988,31 @@ async function cloudLoadAll() {
     if (!reused) {
       setLoadingText('正在计算红线价…');
       if (state.redLine.aoa.length && (state.mapping.rows.length || state.mapping.raw)) await doCalc();
+    }
+    // 6) 写回整页快照：本机 IndexedDB 必写（下次关网页重进直接秒开）；
+    //    工作台共享快照仅 admin 写（换浏览器 / 其他账号首次打开同样秒开）。
+    //    只要有一个数据源没恢复成功，就不写快照，避免把残缺状态固化下来。
+    const allKeys = Object.keys(groups);
+    const complete = allKeys.length > 0
+      && Object.keys(restoredSources).length === allKeys.length
+      && !!(state.result && state.result.rows && state.result.rows.length);
+    if (fp && complete) {
+      try {
+        const payload = {
+          fp: fp, meta: meta || [], sources: restoredSources, srcUpdated: srcUpdated,
+          result: state.result, periods: _periods || [], priceFix: state.priceFix || {}
+        };
+        setLoadingText('正在保存本次结果快照…');
+        const b64 = Cloud.pack(payload).join('');
+        await rlSnapPut({ fp: fp, b64: b64 });
+        if (RL_IS_ADMIN) {
+          // 等写完再收遮罩：管理员关页面前若被中断，其他账号就仍要冷算一次
+          try { await Cloud.saveSnapshot(fp, b64); }
+          catch (e) { console.warn('共享快照写入失败（不影响本次结果）', e); }
+        }
+      } catch (e) { console.warn('快照写入失败（不影响本次结果）', e); }
+    } else if (fp && !complete) {
+      console.warn('部分数据源未恢复成功，本次不生成快照，下次将重新校验');
     }
   } finally {
     _cloudRestoring = false;

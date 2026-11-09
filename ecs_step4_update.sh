@@ -181,6 +181,22 @@ U6=$(count_in "$APP/static/style.css" ".pg-actions")
 [ "$U6" -ge 1 ] && ok "style.css 已补齐（阶段0补修失败出口样式）" || warn "style.css 漏拉，遮罩按钮样式会失效"
 echo "  提示：/redline/api/health 的 storage.backend 可确认走 oss 还是本地 JSON；metas 数量应与 sources 一致。"
 
+say "4.9 红线价「关网页重进仍 2 分钟」修复自查（2026-11-09 傍晚）"
+V1=$(count_in "$APP/redline_store.py" "_list_object_info")
+[ "$V1" -ge 1 ] && ok "数据指纹只读对象元信息（不下 b64）" || bad "redline_store 缺少轻量指纹，快照快速通道无法启用"
+V2=$(count_in "$APP/redline_routes.py" "/api/state-fp")
+[ "$V2" -ge 1 ] && ok "已提供 /redline/api/state-fp" || bad "redline_routes 缺少指纹接口"
+V3=$(count_in "$APP/redline_routes.py" "/api/snapshot")
+[ "$V3" -ge 1 ] && ok "已提供共享快照读/写接口" || bad "redline_routes 缺少快照接口"
+V4=$(count_in "$APP/redline_app/index.html" "redline_page_snapshot")
+[ "$V4" -ge 1 ] && ok "整页快照已落 IndexedDB（不受 localStorage 5MB 限制）" || bad "redline_app 缺少整页快照"
+V5=$(count_in "$APP/redline_app/index.html" "await rlReadSnapshot(fp)")
+[ "$V5" -ge 1 ] && ok "首屏已前置快照快速通道（跳过全部 b64 下载与重算）" || bad "快照判断未前置，重进仍会冷加载"
+V6=$(count_in "$APP/redline_app/index.html" "> 3000) return")
+[ "$V6" -ge 1 ] && ok "大表已不再误写 localStorage（配额静默失败已规避）" || warn "旧 localStorage 缓存路径可能仍在空转"
+echo "  提示：部署后第一次仍会走完整链路一次并生成共享快照；之后关网页重进应秒开。"
+echo "  浏览器里访问 /redline/api/state-fp 可看到 20 位指纹；/redline/api/health 的 snapshot=true 表示共享快照已生成。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

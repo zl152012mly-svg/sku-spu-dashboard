@@ -8,8 +8,11 @@ redline_store.py —— 红线价监控模块存储层（OSS 优先，JSON 兜�
 对象键：
   redline/src/<md5(src|store|file)>.json
       {"src","store","file","gen","updated_at","b64"}
+  redline/meta/<md5>.json              轻量清单（无 b64）
   redline/period/<period>.json
       {"period","date","label","b64"}
+  redline/periodmeta/<period>.json     轻量期次清单（无 b64）
+  redline/snapshot.json                共享计算快照 {"fp","b64","updated_at"}
 
 说明：前端把 pako.deflate 后的内容 base64 后再按 400000 字符分块上传；
 本层把分块直接 join 成一条 b64 存在单个对象里（OSS 无字段长度限制），
@@ -37,6 +40,7 @@ LOCAL_DIR = os.path.join(BASE, 'data', 'redline')
 _SRC_DIR = os.path.join(LOCAL_DIR, 'src')
 _PER_DIR = os.path.join(LOCAL_DIR, 'period')
 _META_DIR = os.path.join(LOCAL_DIR, 'meta')
+_PER_META_DIR = os.path.join(LOCAL_DIR, 'periodmeta')
 
 _PREFIX_SRC = 'redline/src/'
 _PREFIX_PER = 'redline/period/'
@@ -44,6 +48,10 @@ _PREFIX_PER = 'redline/period/'
 # 数据源对象（含几 MB b64）完整下载后只取 src/updated_at 再丢掉，首屏平白多下一遍大数据。
 # 现在保存时双写一份只有几十字节的 meta，清单接口只读它；老数据没有 meta 时自动回退并补写。
 _PREFIX_META = 'redline/meta/'
+# 2026-11-09 第二轮：历史期同理。原 list_periods(meta_only=True) 仍会下载每期完整
+# b64（每期可能是几万行结果），却只用到 id/date/label。期次也拆一份轻量 meta。
+_PREFIX_PER_META = 'redline/periodmeta/'
+_SNAPSHOT_KEY = 'redline/snapshot.json'
 
 _LOCK = threading.Lock()
 
@@ -74,15 +82,39 @@ def _meta_key_of_src(src_key):
     return _PREFIX_META + src_key[len(_PREFIX_SRC):]
 
 
+def _b64_digest(b64):
+    """内容指纹。写入时内存里本来就有 b64，算一次 md5 后存进轻量 meta，
+    使 fingerprint() 完全不必下载 b64 就能发现「同名同时间但内容变了」。"""
+    return hashlib.md5((b64 or '').encode('utf-8')).hexdigest()
+
+
 def _meta_obj(o):
     """从完整对象里抽出清单接口需要的字段（绝不含 b64）。"""
+    b64 = o.get('b64') or ''
     return {
         'src': o.get('src') or '',
         'store': o.get('store') or '',
         'file': o.get('file') or '',
         'gen': int(o.get('gen') or 1),
         'updated_at': o.get('updated_at') or '',
-        'b64_size': len(o.get('b64') or ''),
+        'b64_size': len(b64),
+        'b64_md5': _b64_digest(b64),
+    }
+
+
+def _period_meta_key(period_key):
+    """period 对象键 → 对应的轻量 meta 对象键（同一期号后缀）。"""
+    return _PREFIX_PER_META + period_key[len(_PREFIX_PER):]
+
+
+def _period_meta_obj(o):
+    b64 = o.get('b64') or ''
+    return {
+        'period': o.get('period') or 0,
+        'date': o.get('date') or '',
+        'label': o.get('label') or '',
+        'b64_size': len(b64),
+        'b64_md5': _b64_digest(b64),
     }
 
 
@@ -91,8 +123,12 @@ def _local_path(key):
         return os.path.join(_SRC_DIR, key[len(_PREFIX_SRC):])
     if key.startswith(_PREFIX_META):
         return os.path.join(_META_DIR, key[len(_PREFIX_META):])
+    if key.startswith(_PREFIX_PER_META):
+        return os.path.join(_PER_META_DIR, key[len(_PREFIX_PER_META):])
     if key.startswith(_PREFIX_PER):
         return os.path.join(_PER_DIR, key[len(_PREFIX_PER):])
+    if key == _SNAPSHOT_KEY:
+        return os.path.join(LOCAL_DIR, 'snapshot.json')
     return os.path.join(LOCAL_DIR, key.replace('/', '_'))
 
 
@@ -162,7 +198,8 @@ def _list_keys(prefix):
             if not marker:
                 break
         return keys
-    d = {_PREFIX_SRC: _SRC_DIR, _PREFIX_META: _META_DIR, _PREFIX_PER: _PER_DIR}.get(prefix, _PER_DIR)
+    d = {_PREFIX_SRC: _SRC_DIR, _PREFIX_META: _META_DIR,
+         _PREFIX_PER: _PER_DIR, _PREFIX_PER_META: _PER_META_DIR}.get(prefix, _PER_DIR)
     if not os.path.isdir(d):
         return []
     return [prefix + f for f in sorted(os.listdir(d)) if f.endswith('.json')]
@@ -209,6 +246,8 @@ def list_sources(meta_only=False):
                 'gen': int(m.get('gen') or 1),
                 'chunk': 0,
                 'updated_at': m.get('updated_at') or '',
+                'b64_size': int(m.get('b64_size') or 0),
+                'b64_md5': m.get('b64_md5') or '',
             })
         return out
     objs = _batch_get(keys)
@@ -281,6 +320,33 @@ def remove_source(src, store, file):
 # ---------------------------------------------------------------- 历史期
 def list_periods(meta_only=False):
     keys = _list_keys(_PREFIX_PER)
+    if meta_only:
+        # 轻量清单：只读几十字节的 periodmeta，绝不下载每期几 MB 的 b64。
+        meta_keys = [_period_meta_key(k) for k in keys]
+        metas = _batch_get(meta_keys)
+        out = []
+        for k, mk, m in zip(keys, meta_keys, metas):
+            if not m:
+                # 迁移前存量的期次没有 meta：回退读一次完整对象并补写（只慢这一次）
+                o = _get(k)
+                if not o:
+                    continue
+                m = _period_meta_obj(o)
+                try:
+                    _put(mk, m)
+                except Exception:
+                    pass
+            pid = m.get('period') or 0
+            out.append({
+                'id': pid,
+                'period': pid,
+                'date': m.get('date') or '',
+                'label': m.get('label') or '',
+                'chunk': 0,
+                'b64_size': int(m.get('b64_size') or 0),
+                'b64_md5': m.get('b64_md5') or '',
+            })
+        return out
     objs = _batch_get(keys)
     out = []
     for k, o in zip(keys, objs):
@@ -293,9 +359,8 @@ def list_periods(meta_only=False):
             'date': o.get('date') or '',
             'label': o.get('label') or '',
             'chunk': 0,
+            'data': o.get('b64') or '',
         }
-        if not meta_only:
-            rec['data'] = o.get('b64') or ''
         out.append(rec)
     return out
 
@@ -304,6 +369,8 @@ def sync_periods(periods):
     """整体同步历史期：先清空再全量写入（与资料库原语义一致）。"""
     with _LOCK:
         for k in _list_keys(_PREFIX_PER):
+            _delete(k)
+        for k in _list_keys(_PREFIX_PER_META):
             _delete(k)
         n = 0
         for p in (periods or []):
@@ -314,9 +381,105 @@ def sync_periods(periods):
                 'label': p.get('label') or '',
                 'b64': ''.join(p.get('chunks') or []),
             }
-            if _put(_PREFIX_PER + str(pid) + '.json', obj):
+            key = _PREFIX_PER + str(pid) + '.json'
+            if _put(key, obj):
                 n += 1
+                try:
+                    _put(_period_meta_key(key), _period_meta_obj(obj))
+                except Exception:
+                    pass
         return n
+
+
+# ---------------------------------------------------------------- 指纹 / 共享快照
+def _list_object_info(prefix):
+    """列对象元信息（OSS: ETag+size；本地: mtime_ns+size），绝不下载对象内容。
+
+    这是 /state-fp 能在几十毫秒内返回的关键：只靠 list_objects 的返回头即可感知
+    任何数据源 / 历史期被重写，不需要读一次几 MB 的 b64，也不需要 meta 自愈。
+    """
+    if _is_oss():
+        bucket = _st._oss_client()
+        full_prefix = _st._oss_key(prefix)
+        prefix_len = len(_st._OSS_PREFIX or '')
+        out = []
+        marker = ''
+        while True:
+            res = bucket.list_objects(prefix=full_prefix, marker=marker, max_keys=1000)
+            for o in (res.object_list or []):
+                k = o.key
+                if prefix_len and k.startswith(_st._OSS_PREFIX):
+                    k = k[prefix_len:]
+                if not k.startswith(prefix):
+                    continue
+                etag = (getattr(o, 'etag', '') or '').strip('"')
+                out.append((k, etag, int(getattr(o, 'size', 0) or 0)))
+            if not getattr(res, 'is_truncated', False):
+                break
+            marker = getattr(res, 'next_marker', '') or ''
+            if not marker:
+                break
+        return out
+    d = {_PREFIX_SRC: _SRC_DIR, _PREFIX_PER: _PER_DIR}.get(prefix)
+    if not d or not os.path.isdir(d):
+        return []
+    out = []
+    for name in sorted(os.listdir(d)):
+        if not name.endswith('.json'):
+            continue
+        p = os.path.join(d, name)
+        try:
+            st = os.stat(p)
+            out.append((prefix + name, str(int(st.st_mtime_ns)), int(st.st_size)))
+        except OSError:
+            pass
+    return out
+
+
+def fingerprint():
+    """整页数据指纹：只读对象列表元信息（几十毫秒），绝不下载 b64。
+
+    覆盖所有会改变红线价结果的输入：每个数据源对象 + 每期历史对象。
+    任何管理员上传 / 期次同步都会改写对象 → 指纹变化 → 前端快照立即作废。
+    """
+    try:
+        h = hashlib.md5()
+        for prefix in (_PREFIX_SRC, _PREFIX_PER):
+            h.update(prefix.encode('utf-8'))
+            for key, tag, size in _list_object_info(prefix):
+                h.update(('%s|%s|%d\n' % (key, tag, size)).encode('utf-8'))
+        return h.hexdigest()[:20]
+    except Exception:
+        # 指纹算不出来就返回空串：前端「无指纹 = 不走快速通道」，自动回退完整链路
+        return ''
+
+
+def _snapshot_exists():
+    """只判存在，不要把几 MB 的快照下载下来（健康检查会频繁调用）。"""
+    if _is_oss():
+        try:
+            return bool(_st._oss_client().object_exists(_st._oss_key(_SNAPSHOT_KEY)))
+        except Exception:
+            return False
+    return os.path.exists(os.path.join(LOCAL_DIR, 'snapshot.json'))
+
+
+def get_snapshot():
+    """读共享计算快照（所有登录用户可用，避免每个浏览器都冷算一次）。"""
+    return _get(_SNAPSHOT_KEY)
+
+
+def save_snapshot(fp, b64):
+    """写共享计算快照；b64 是前端 pako 压缩后的完整页面快照。"""
+    if not fp or not b64:
+        return False
+    obj = {
+        'fp': fp,
+        'b64': b64,
+        'updated_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    with _LOCK:
+        return bool(_put(_SNAPSHOT_KEY, obj))
 
 
 def stats():
@@ -326,4 +489,6 @@ def stats():
         'sources': len(_list_keys(_PREFIX_SRC)),
         'metas': len(_list_keys(_PREFIX_META)),
         'periods': len(_list_keys(_PREFIX_PER)),
+        'period_metas': len(_list_keys(_PREFIX_PER_META)),
+        'snapshot': _snapshot_exists(),
     }
