@@ -21,8 +21,12 @@
   .nav-foot button { width: 100%; padding: 9px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
   .nav-foot button:hover { background: rgba(255,255,255,.2); }
   .content { flex: 1; min-width: 0; background: #f1f5f9; position: relative; }
-  .content iframe { width: 100%; height: 100%; border: 0; display: block; }
-  /* 阶段0：切换加载态 —— 199KB/252KB 模块整页重载期间给出明确反馈，不再「点了没反应」 */
+  /* 阶段0保活：多个 iframe 叠放，只显示当前一个。首次点开才加载，
+     之后切换只改 active class —— 不再整页重载、不再重复取数。 */
+  .content iframe.mod-frame { position: absolute; inset: 0; width: 100%; height: 100%;
+                              border: 0; display: none; background: #f1f5f9; }
+  .content iframe.mod-frame.active { display: block; }
+  /* 阶段0：首次打开的加载态（已保活的模块切换时不再出现） */
   .loading { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column;
              align-items: center; justify-content: center; gap: 10px; background: #f8fafc;
              color: #334155; font-size: 14px; }
@@ -69,11 +73,11 @@
       <button onclick="doLogout()">退出登录</button>
     </div>
   </div>
-  <div class="content">
-    <iframe id="frame" src="{% if is_admin %}/?embed=1&v={{ ASSET_VER }}{% else %}/na/?view=xp&embed=1&v={{ ASSET_VER }}{% endif %}"></iframe>
+  <div class="content" id="frameHost">
+    <iframe id="frame" class="mod-frame active" data-initial-view="{% if is_admin %}clean{% else %}xp{% endif %}" src="{% if is_admin %}/?embed=1&v={{ ASSET_VER }}{% else %}/na/?view=xp&embed=1&v={{ ASSET_VER }}{% endif %}"></iframe>
     <div class="loading" id="loading" hidden>
       <div class="spinner"></div>
-      <div>正在打开 <b id="loadingName">模块</b></div>
+      <div>首次打开 <b id="loadingName">模块</b></div>
       <div class="sub" id="loadingSub">正在加载模块…</div>
       <button type="button" id="loadingRetry" hidden onclick="retryLoad()">重新加载</button>
     </div>
@@ -81,9 +85,17 @@
 </div>
 <script>
 var frame = document.getElementById('frame');
+var host = document.getElementById('frameHost');
 var loading = document.getElementById('loading');
-var pendingSrc = '', navStart = 0, slowTimer = null;
-window.__moduleLoadMs = [];   // 模块切换耗时埋点，供后续性能优化取样（最多留 20 条）
+var pendingSrc = '', navStart = 0, slowTimer = null, hideTimer = null;
+var frameMap = {};               // view -> iframe；创建后一直保活，切走不销毁
+var activeView = frame ? (frame.getAttribute('data-initial-view') || '') : '';
+if (frame && activeView) {
+  frame.setAttribute('data-view', activeView);   // 运行时补齐，模板文本里仍只有 5 个导航 data-view
+  frame.setAttribute('data-src', frame.getAttribute('src') || '');
+  frameMap[activeView] = frame;
+}
+window.__moduleLoadMs = [];   // 首次打开的耗时埋点，供后续性能优化取样（最多留 20 条）
 
 function loadStart(name){
   if (!loading) return;
@@ -99,9 +111,12 @@ function loadStart(name){
     var b = document.getElementById('loadingRetry');
     if (b) b.hidden = false;
   }, 6000);
+  // 兜底：load 事件没来（缓存命中 / 网络异常）也不让遮罩永久盖住内容
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(function(){ if (loading && !loading.hidden) loadEnd(); }, 15000);
 }
 function loadEnd(){
-  clearTimeout(slowTimer);
+  clearTimeout(slowTimer); clearTimeout(hideTimer);
   if (loading) loading.hidden = true;
   if (navStart) {
     window.__moduleLoadMs.push(Math.round(performance.now() - navStart));
@@ -110,23 +125,56 @@ function loadEnd(){
   }
   pendingSrc = '';
 }
+function showFrame(f, view){
+  if (!host) return;
+  host.querySelectorAll('iframe.mod-frame').forEach(function(x){
+    x.classList.toggle('active', x === f);
+  });
+  activeView = view;
+  // 隐藏态下图表 / 表格拿不到实际宽度，切回来时通知子页重排一次
+  setTimeout(function(){
+    try { f.contentWindow.dispatchEvent(new f.contentWindow.Event('resize')); } catch (err) {}
+  }, 60);
+}
 function navigate(el){
   var src = el.getAttribute('data-src');
   if (!src) return;
   if (pendingSrc === src) return;    // 重复点击防抖
+  var view = el.getAttribute('data-view') || '';
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
   el.classList.add('active');
   pendingSrc = src;
+  var f = frameMap[view];
+  if (f && f.getAttribute('data-src') === src) {
+    showFrame(f, view);   // 已打开过：只切显示，不重载、不重复取数、不弹加载态
+    loadEnd();
+    return;
+  }
+  if (!f) {
+    f = document.createElement('iframe');
+    f.className = 'mod-frame';
+    f.setAttribute('data-view', view);
+    f.setAttribute('title', (el.textContent || '').trim());
+    f.addEventListener('load', function(){ if (activeView === view) loadEnd(); });
+    host.insertBefore(f, loading);
+    frameMap[view] = f;
+  }
+  f.setAttribute('data-src', src);
+  showFrame(f, view);
   loadStart((el.textContent || '').trim());
-  frame.src = src;
+  f.src = src;
 }
 function go(el){ navigate(el); }
 function retryLoad(){
-  if (!pendingSrc) return;
+  var f = frameMap[activeView];
+  var src = pendingSrc || (f && f.getAttribute('data-src')) || '';
+  if (!src || !f) return;
   loadStart(document.getElementById('loadingName').textContent);
-  frame.src = pendingSrc;
+  f.src = src;
 }
-frame.addEventListener('load', loadEnd);
+if (frame) frame.addEventListener('load', function(){
+  if (activeView === (frame.getAttribute('data-view') || '')) loadEnd();
+});
 
 function doLogout(){
   fetch('/logout').then(function(){ location.href = '/login'; }).catch(function(){ location.href = '/login'; });

@@ -146,6 +146,23 @@ S6=$(count_in "$APP/redline_app/index.html" "本地模式：数据仅保存在�
 [ "$S6" -eq 0 ] && ok "红线价旧 SaaS 文案已清理" || warn "红线价页面仍有 $S6 处旧 SaaS 文案"
 echo "  提示：/console 外壳已设 no-store；模块页版本号由 app.py 自动计算，改前端后无需再手升 6 处 v=cN。"
 
+say "4.7 阶段0补修自查（2026-11-09 · 卡死出口 / 视觉残留 / 顶部Tab / iframe保活）"
+T1=$(count_in "$APP/static/app.js" "function fetchWithTimeout")
+[ "$T1" -ge 1 ] && ok "清洗看板请求已加超时护栏" || bad "app.js 缺少超时护栏，明细载入仍可能永久转圈"
+T2=$(count_in "$APP/templates/index.html" 'id="pg-actions"')
+[ "$T2" -ge 1 ] && ok "明细载入失败有「重新载入」出口" || warn "index.html 缺少失败出口"
+T3=$(count_in "$APP/templates/na_index.html" "45000")
+[ "$T3" -ge 2 ] && ok "新品报告 / 新色取数已加 45 秒超时" || warn "na_index.html 超时出口数量异常 ($T3，期望 2)"
+T4=$(count_in "$APP/templates/console_index.html" "var frameMap = {}")
+[ "$T4" -ge 1 ] && ok "工作台 iframe 已保活（切回不重载）" || bad "console_index.html 缺少 frameMap，切模块仍会整页重载"
+T5=$(count_in "$APP/redline_app/index.html" 'id="rlTabs"')
+[ "$T5" -ge 1 ] && ok "红线价嵌入态已改顶部横向 Tab" || warn "redline_app/index.html 缺少顶部 Tab"
+T6=$(count_in "$APP/redline_app/index.html" "共享空间")
+[ "$T6" -eq 0 ] && ok "红线价旧共享空间文案已清零" || warn "红线价仍有 $T6 处旧文案"
+T7=$(count_in "$APP/templates/index.html" 'id="file-input" class="hide"')
+[ "$T7" -ge 1 ] && ok "看板旧上传触发器已隐藏" || warn "index.html 仍裸露「选择文件」"
+echo "  提示：改前端后 ASSET_VER 会自动换号；本脚本末尾已含 restart，无需手工重启。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

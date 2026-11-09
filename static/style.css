@@ -138,6 +138,9 @@ select,input[type=text]{padding:6px 8px;border:1px solid var(--line);border-radi
   transition:width .25s ease}
 .pg-stage{margin:10px 0 2px;font-size:13px;color:var(--text)}
 .pg-meta{margin:0;font-size:11.5px;color:var(--muted)}
+/* 阶段0补修：载入失败/超时出口（默认隐藏，showProgressFailure 时显示） */
+.pg-actions{display:flex;gap:10px;justify-content:center;margin-top:16px}
+.pg-actions.hide{display:none}
 
 /* 缺失平台信息异常（独立面板） */
 .missing-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;

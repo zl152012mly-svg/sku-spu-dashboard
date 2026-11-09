@@ -47,11 +47,35 @@ function escAttr(s) {
 /* ---------- 访问口令（轻级鉴权） ---------- */
 const AUTH_KEY = 'sku_spu_auth_token';
 
+/* 2026-11-09 阶段0补修：原生 fetch 没有超时，后端繁忙 / 云端唤醒时请求会永久挂起，
+   进度遮罩停在 60% 且 .catch() 永远不触发（用户反馈「有时一直转不出来」）。
+   统一用 AbortController 设上限；单个大接口可用 opts.timeoutMs 覆盖。 */
+function fetchWithTimeout(url, opts, ms) {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const reqOpts = ctrl ? Object.assign({}, opts, { signal: ctrl.signal }) : opts;
+  let timer = null;
+  if (ctrl) timer = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, ms);
+  const done = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const p = fetch(url, reqOpts);
+  return p.then(v => { done(); return v; }, e => { done(); throw e; });
+}
+
 async function apiCall(url, opts = {}) {
-  opts.headers = Object.assign({}, opts.headers || {});
+  const ms = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 30000;
+  const clean = Object.assign({}, opts);
+  delete clean.timeoutMs;                       // 不把自定义字段透传给 fetch
+  clean.headers = Object.assign({}, clean.headers || {});
   const tok = localStorage.getItem(AUTH_KEY);
-  if (tok) opts.headers['X-Auth-Token'] = tok;
-  const r = await fetch(url, opts);
+  if (tok) clean.headers['X-Auth-Token'] = tok;
+  let r;
+  try {
+    r = await fetchWithTimeout(url, clean, ms);
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) {
+      throw new Error('请求超时（' + Math.round(ms / 1000) + ' 秒），服务器暂未响应；请点「重新载入」再试');
+    }
+    throw e;
+  }
   if (r.status === 401) { showLogin(); }
   return r;
 }
@@ -113,6 +137,7 @@ function showProgress(title, poll) {
   m.classList.remove('hide');
   if (PG_TIMER) clearInterval(PG_TIMER);
   PG_TIMER = (poll === false) ? null : setInterval(pollProgress, 500);  // 每 0.5s 轮询后端真实进度
+  clearProgressFailure();
 }
 
 function hideProgress() {
@@ -120,6 +145,24 @@ function hideProgress() {
   if (m) m.classList.add('hide');
   if (PG_TIMER) { clearInterval(PG_TIMER); PG_TIMER = null; }
 }
+
+/* 载入失败 / 超时：不直接 hideProgress（遮罩消失后用户没有任何出口），
+   改成把遮罩切成失败态，给「重新载入 / 关闭遮罩」两个明确动作。 */
+function clearProgressFailure() {
+  const box = $$('#pg-actions');
+  if (box) box.classList.add('hide');
+}
+function showProgressFailure(reason) {
+  if (PG_TIMER) { clearInterval(PG_TIMER); PG_TIMER = null; }
+  const m = $$('#prog-mask');
+  if (m) m.classList.remove('hide');
+  const t = $$('#pg-title'); if (t) t.textContent = '明细数据没能载入';
+  const s = $$('#pg-stage'); if (s) s.textContent = reason || '服务器暂未响应';
+  const mt = $$('#pg-meta'); if (mt) mt.textContent = '可点「重新载入」重试，或关闭遮罩查看当前页面';
+  const box = $$('#pg-actions'); if (box) box.classList.remove('hide');
+}
+function retryLoadState() { clearProgressFailure(); loadState(null, ''); }
+function closeProgress() { clearProgressFailure(); hideProgress(); }
 
 function setProgress(pct, stage, elapsed) {
   const fill = $$('#pg-fill'), st = $$('#pg-stage'), mt = $$('#pg-meta');
@@ -676,13 +719,24 @@ function upload(file) {
  *  msgEl: 可选，用于显示完成/失败提示的元素
  *  doneNote: 可选，完成时追加的说明文字 */
 function loadState(msgEl, doneNote) {
+  let guard = null;
   showProgress('正在载入看板…', false);   // 不轮询后端进度（见 showProgress 注释）
   setProgress(60, '正在下载明细数据…');
-  apiCall('/api/state')
+  // 整链看门狗：fetch 有超时了，但 r.text() 解析 / 大 JSON 反序列化仍可能挂住，
+  // 70 秒还没结束就强制把遮罩切成失败态，保证「永远转不出来」不会发生。
+  guard = setTimeout(() => {
+    showProgressFailure('加载超过 70 秒仍未完成，可能是明细数据过大或服务器繁忙');
+    if (msgEl) {
+      msgEl.className = 'msg err';
+      msgEl.textContent = '✗ 明细数据加载超时，请点遮罩里的「重新载入」重试';
+    }
+  }, 70000);
+  apiCall('/api/state', { timeoutMs: 60000 })
     .then(safeJson)
     .then(({ ok, d }) => {
+      clearTimeout(guard); guard = null;
       if (!ok || !d || !d.ready) {
-        hideProgress();
+        showProgressFailure((d && d.msg) || '服务器没有返回可用的看板数据');
         if (msgEl) {
           msgEl.className = 'msg err';
           msgEl.textContent = '✗ 数据载入失败，请重试或刷新页面';
@@ -707,8 +761,9 @@ function loadState(msgEl, doneNote) {
       }
     })
     .catch(err => {
-      hideProgress();
+      clearTimeout(guard); guard = null;
       console.error('loadState', err);
+      showProgressFailure('数据载入失败：' + ((err && err.message) || err));
       if (msgEl) {
         msgEl.className = 'msg err';
         msgEl.textContent = '✗ 数据载入失败：' + ((err && err.message) || err);

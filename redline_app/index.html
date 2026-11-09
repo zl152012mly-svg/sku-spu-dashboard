@@ -549,6 +549,27 @@
   #rdLoading .rlbtns button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   @keyframes rdspin { to { transform: rotate(360deg); } }
 
+  /* ===== 工作台嵌入态（/console 的 iframe 带 ?embed=1）=====
+     外层工作台已有左侧导航，这里不再渲染自带深色侧栏，改成模块内顶部横向 Tab；
+     独立访问 /redline/ 时保持原来的侧栏布局，两种入口互不干扰。 */
+  .rl-tabs { display: none; }
+  .rl-embed .sidebar { display: none !important; }
+  .rl-embed .content { margin-left: 0; max-width: 100vw; padding: 14px 18px; }
+  .rl-embed .rl-tabs {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 14px; padding: 8px 10px; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 10px;
+  }
+  .rl-tab {
+    padding: 7px 14px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: #475569; font-size: 13px; cursor: pointer;
+    white-space: nowrap; font-family: inherit;
+  }
+  .rl-tab:hover { background: #f1f5f9; color: #0f172a; }
+  .rl-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+  .rl-tabs .rl-brand { font-size: 12px; color: #94a3b8; margin-right: 4px; padding-right: 10px;
+                       border-right: 1px solid #e2e8f0; }
+
   /* ===== Sticky 筛选 + 表头 ===== */
   .sticky-filters {
     position: -webkit-sticky; position: sticky !important; top: 0 !important; z-index: 100 !important; background: var(--bg);
@@ -704,6 +725,15 @@
   .calc-bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--blue), #6aa0ff); border-radius: 4px; transition: width .25s ease; }
   .calc-step { font-size: 13px; color: var(--muted); min-height: 20px; }
 </style>
+<script>
+/* 尽早标记嵌入态：让 CSS 在首屏绘制前就隐藏自带侧栏，避免深色导航闪一下再消失。
+   只有 /console 的 iframe 会带 embed=1；独立访问 /redline/ 不受影响。 */
+try {
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.documentElement.classList.add('rl-embed');
+  }
+} catch (e) {}
+</script>
 </head>
 <body>
 <div id="rdLoading"><div class="box"><div class="spin"></div><div id="rdLoadingText">正在加载数据…</div><div class="rlerr" id="rdLoadingErr"></div><div class="rlbtns"><button type="button" class="primary" id="rdRetry">重新加载</button><button type="button" id="rdSkip">先用本机缓存</button></div></div></div>
@@ -746,6 +776,16 @@
 
   <!-- 右侧内容区 -->
   <main class="content">
+    <!-- 工作台嵌入态的顶部横向 Tab；独立访问时由 CSS 隐藏，仍用左侧栏。
+         复用 switchModule()，五个子功能与侧栏完全一致，权限收敛同时作用于两套导航。 -->
+    <div class="rl-tabs" id="rlTabs" role="tablist" aria-label="红线价模块导航">
+      <span class="rl-brand">红线价监控</span>
+      <button type="button" class="rl-tab active" data-module="upload" onclick="switchModule('upload')">📤 数据上传</button>
+      <button type="button" class="rl-tab" data-module="dashboard" onclick="switchModule('dashboard')">📊 看板</button>
+      <button type="button" class="rl-tab" data-module="abnormal" onclick="switchModule('abnormal')">⚠️ 异常</button>
+      <button type="button" class="rl-tab" data-module="detail" onclick="switchModule('detail')">📋 SKU明细</button>
+      <button type="button" class="rl-tab" data-module="history" onclick="switchModule('history')">📈 趋势分析</button>
+    </div>
     <div class="toast" id="toast"></div>
     <div class="cloud-banner" id="cloudBanner" style="display:none"></div>
 
@@ -755,7 +795,7 @@
       <div class="period-panel" id="periodPanel" style="display:none;">
         <h3>📅 多期数据管理（最多保留4期）</h3>
         <div class="period-list" id="periodList"></div>
-        <div class="upload-hint">覆盖 = 替换当前最新期数据；调整分析 = 保存为上期数据，本次为当期，进行变动趋势对比；点期次标签上的 <b>✕</b> 可撤回该期（本机与共享空间同步删除，两步确认）</div>
+        <div class="upload-hint">覆盖 = 替换当前最新期数据；调整分析 = 保存为上期数据，本次为当期，进行变动趋势对比；点期次标签上的 <b>✕</b> 可撤回该期（本机与工作台共享存储同步删除，两步确认）</div>
       </div>
   <div class="card">
     <h2><span class="step">1</span> 上传数据（红线价表 + SKU平台信息表 + 各平台清单）</h2>
@@ -1703,9 +1743,9 @@ function bannerText(msg, cloudOn) {
 
 const toast = msg => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600); };
 /* 首屏加载遮罩：避免云端数据未到位时把页面「空白 / 全部未上传」误判成没数据。
-   线上出现过「一直显示正在读取云端数据源…」——原生 fetch 无超时 + 写回堵在读阶段，
+   线上出现过「一直显示正在读取数据源…」——原生 fetch 无超时 + 写回堵在读阶段，
    页面被永久盖住且没有任何出口。现在：① 秒数实时可见（能判断卡在哪段）
-   ② 20s 起给「先用本机缓存」出口 ③ 失败/超时进入 fail 态，给「重新加载」。 */
+   ② 10s 起给「先用本机缓存」出口 ③ 失败/超时进入 fail 态，给「重新加载」。 */
 let _rlLoadBase = '', _rlLoadTimer = null, _rlLoadStart = 0, _rlLoadDone = false;
 function _rlRenderLoadText() {
   const t = $('rdLoadingText');
@@ -1713,7 +1753,7 @@ function _rlRenderLoadText() {
   const sec = Math.floor((Date.now() - _rlLoadStart) / 1000);
   t.textContent = _rlLoadBase + (sec >= 2 ? '（已 ' + sec + ' 秒）' : '');
   const el = $('rdLoading');
-  if (el && sec >= 20 && !el.classList.contains('fail')) el.classList.add('has-btns');
+  if (el && sec >= 10 && !el.classList.contains('fail')) el.classList.add('has-btns');
 }
 function showLoading(text) {
   const el = $('rdLoading');
@@ -2342,7 +2382,7 @@ function cloudSave(src, store, kind, fileId, quiet) {
     ? Cloud.saveSource(src, store || '', obj)
     : Cloud.removeSource(SRC_TEMU, '', fileId).then(() => Cloud.saveSource(src, store || '', obj, fileId));
   p.then(ok => {
-      if (ok) { if (!quiet) toast('✓ 已保存到共享空间（协作者可见）'); }
+      if (ok) { if (!quiet) toast('✓ 已保存到工作台共享存储（协作者可见）'); }
       else toast('⚠ 云端未保存成功，记录已存本机（刷新后仍可恢复）');
     })
    .catch(e => { console.error('云端保存失败', e); toast('⚠ 云端保存失败：' + (e && e.message || e)); });
@@ -3388,7 +3428,7 @@ function startModuleGuard(name) {
 /* 运营（sub）权限收敛：隐藏「数据上传 / 异常」导航与容器，并强制落在「看板」 */
 function applyRoleRestrictions() {
   if (RL_IS_ADMIN) return;
-  document.querySelectorAll('.nav-item[data-module]').forEach(el => {
+  document.querySelectorAll('.nav-item[data-module], .rl-tab[data-module]').forEach(el => {
     if (!RL_ALLOWED_MODULES[el.dataset.module]) {
       el.classList.add('rl-hide');
       el.style.setProperty('display', 'none', 'important');
@@ -3410,7 +3450,8 @@ function switchModule(name) {
   // 运营（sub）只能看看板 / SKU明细 / 趋势分析 / 异常（只读），其余模块直接忽略
   if (!RL_IS_ADMIN && !RL_ALLOWED_MODULES[name]) return;
   // 更新导航高亮
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.module === name));
+  // 侧栏与嵌入态顶部 Tab 用同一份高亮状态，避免两套导航显示不一致
+  document.querySelectorAll('.nav-item, .rl-tab').forEach(el => el.classList.toggle('active', el.dataset.module === name));
   
   // 核心修复：inline style 直接控制显示；所有模块永久保持 active class；守护定时器持续对抗平台重置
   applyModuleDisplay(name);
@@ -3475,11 +3516,11 @@ function pushPeriod(label, rows) {
   _periods.unshift({ id: Date.now(), date: new Date().toLocaleString('zh-CN'), label: label || '未命名', rows: compact });
   if (_periods.length > MAX_PERIODS) _periods = _periods.slice(0, MAX_PERIODS);
   savePeriods();
-  // 云端模式：把多期历史同步到共享空间（协作者可见）
+  // 云端模式：把多期历史同步到工作台共享存储（协作者可见）
   if (Cloud.available && !_cloudRestoring) {
-    toast('正在保存「上期」并同步到共享空间…');
+    toast('正在保存「上期」并同步到工作台共享存储…');
     Cloud.syncPeriods(_periods)
-      .then(() => toast('✓ 已保存为「上期」并同步到共享空间'))
+      .then(() => toast('✓ 已保存为「上期」并同步到工作台共享存储'))
       .catch(e => { console.error('历史期云端同步失败', e); toast('⚠ 历史期同步失败：' + e.message); });
   }
 }
@@ -3493,9 +3534,9 @@ function removePeriod(idx) {
   savePeriods();
   renderTrendInit();
   if (Cloud.available && !_cloudRestoring) {
-    toast('正在同步撤回结果到共享空间…');
+    toast('正在同步撤回结果到工作台共享存储…');
     Cloud.syncPeriods(_periods)
-      .then(() => toast('✓ 已撤回「' + p.label + '（' + p.date + '）」并同步到共享空间'))
+      .then(() => toast('✓ 已撤回「' + p.label + '（' + p.date + '）」并同步到工作台共享存储'))
       .catch(e => { console.error('撤回同步失败', e); toast('⚠ 已在本机撤回，但云端同步失败：' + e.message); });
   } else {
     toast('✓ 已撤回「' + p.label + '（' + p.date + '）」');
@@ -3526,7 +3567,7 @@ function renderPeriodPanel() {
   if (!_periods.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${i === 0 ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>` : ''}
+    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -4264,7 +4305,7 @@ function renderTrendInit() {
   const list = $('trendPeriodList');
   if (!_periods.length) { list.innerHTML = '<span class="upload-hint">暂无历史数据。请先在数据上传页点击「调整分析」保存上期数据。</span>'; return; }
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${_selectedPeriods.includes(i) ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与共享空间删除，趋势对比中不再出现">✕</button>` : ''}
+    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -4499,7 +4540,7 @@ function renderWithModules() {
   render();
   renderAbnormal();
   // 自动切换到有数据的模块（如果当前在upload模块且已有结果）
-  if (state.result && state.result.rows.length && document.querySelector('.nav-item.active')?.dataset.module === 'upload') {
+  if (state.result && state.result.rows.length && document.querySelector('.nav-item.active, .rl-tab.active')?.dataset.module === 'upload') {
     // 保持当前模块，不自动切换
   }
 }
@@ -4507,18 +4548,23 @@ function renderWithModules() {
 /* ================= 启动 ================= */
 window.addEventListener('resize', () => { if (pieChart) pieChart.resize(); if (barChart) barChart.resize(); });
 $('calcBtn').addEventListener('click', doCalc);
-  // 调试：添加状态检查
-  setInterval(() => {
-    if (state && state.redLine && state.redLine.rows) {
-      console.log('State check:', {
-        redLineRows: state.redLine.rows.length,
-        mappingRows: state.mapping.rows.length,
-        amazonRows: state.amazon.rows.length,
-        walmartRows: state.walmart.rows.length,
-        temuRows: state.temu.length
-      });
+  // 调试状态检查：工作台 iframe 保活后隐藏页也会继续存活，默认不跑定时器，
+  // 只有显式带 ?debug=1 才每 5 秒打印一次，避免后台空转刷日志。
+  try {
+    if (new URLSearchParams(location.search).get('debug') === '1') {
+      setInterval(() => {
+        if (state && state.redLine && state.redLine.rows) {
+          console.log('State check:', {
+            redLineRows: state.redLine.rows.length,
+            mappingRows: state.mapping.rows.length,
+            amazonRows: state.amazon.rows.length,
+            walmartRows: state.walmart.rows.length,
+            temuRows: state.temu.length
+          });
+        }
+      }, 5000);
     }
-  }, 5000);
+  } catch (e) {}
 // 注：原看板「导出当前结果」按钮已随明细表移至独立 SKU明细模块（exportDetailBtn → exportDetailData）
 if ($('exportBtn')) $('exportBtn').addEventListener('click', doExport);
 $('exportDetailBtn').addEventListener('click', exportDetailData);
@@ -4564,7 +4610,7 @@ if (importPriceFixFile) importPriceFixFile.addEventListener('change', e => {
   const f = e.target.files && e.target.files[0];
   if (f) importPriceFixFromFile(f);
 });
-// 手动重推到共享空间：云端字段选项缺失等情况导致保存失败时可一键补推
+// 手动重推到工作台共享存储：云端字段选项缺失等情况导致保存失败时可一键补推
 const resyncPriceFixBtn = $('resyncPriceFixBtn');
 if (resyncPriceFixBtn) resyncPriceFixBtn.addEventListener('click', async () => {
   savePriceFixLocal();
@@ -4573,7 +4619,7 @@ if (resyncPriceFixBtn) resyncPriceFixBtn.addEventListener('click', async () => {
   if (!Cloud.available) { toast('⚠ 云端暂不可用，记录已保存在本机浏览器'); return; }
   try {
     const ok = await Cloud.saveSource(SRC_PRICEFIX, '', serializeSource('pricefix'));
-    toast(ok ? `✓ 已同步 ${n} 条人工填价到共享空间` : '⚠ 同步失败，请稍后重试');
+    toast(ok ? `✓ 已同步 ${n} 条人工填价到工作台共享存储` : '⚠ 同步失败，请稍后重试');
   } catch (e) { toast('⚠ 同步失败：' + (e && e.message || e)); }
 });
 const exportTrendBtn = $('exportTrendBtn');
@@ -4669,20 +4715,21 @@ function waitLibs(timeoutMs) {
     }, 100);
   });
 }
-// 云端优先：资料库环境 → 加载共享数据；否则本地模式
+// 工作台数据优先：共享存储可用时读最新数据，否则回落本机缓存
 (async () => {
   // 角色限制「立刻」生效：不等数据加载完成，避免运营在慢加载期间看到全部模块
   applyRoleRestrictions();
   if (!RL_IS_ADMIN) switchModule('dashboard');
-  // 遮罩兜底：60s 还没完成 → 进入失败态（有「重新加载 / 先用本机缓存」出口），不再无限转圈
+  // 遮罩兜底：单个源已有 20~30s 超时，35s 仍未完成就进入失败态
+  // （有「重新加载 / 先用本机缓存」出口），不再无限转圈。
   if (Cloud.available) {
-    showLoading('正在从云端加载数据…');
+    showLoading('正在读取工作台数据…');
     setTimeout(() => {
       const el = $('rdLoading');
       if (el && el.classList.contains('on') && !el.classList.contains('fail')) {
-        failLoading('云端响应超过 60 秒仍未完成，后端可能繁忙。可点「重新加载」再试，或先看本机缓存。');
+        failLoading('数据响应超过 35 秒仍未完成，后端可能繁忙。可点「重新加载」再试，或先看本机缓存。');
       }
-    }, 60000);
+    }, 35000);
   }
   const libsOk = await waitLibs(15000);
   // 外部组件没加载成功 → 云端数据根本没法解压，与其空转不如直接说清楚（过去这里会白屏/空表）
@@ -4696,12 +4743,12 @@ function waitLibs(timeoutMs) {
   }
   if (Cloud.available) {
     bannerText(RL_IS_ADMIN
-      ? '☁️ 云端共享模式：数据实时保存到共享空间，多人可同时查看和编辑同一份数据'
-      : '☁️ 云端共享模式：数据只读，实时同步管理员上传的最新数据', true);
+      ? '☁️ 数据已接入工作台共享存储，多人查看同一份数据'
+      : '☁️ 数据已接入工作台共享存储（只读），与管理员上传的最新数据保持一致', true);
     try { await cloudLoadAll(); hideLoading(); }
     catch (e) {
       console.error('云端加载失败', e);
-      failLoading('云端数据加载失败：' + ((e && e.message) || e) + '\n（后端单进程 worker，若有别人正在上传大文件，稍等后点「重新加载」即可）');
+      failLoading('工作台数据加载失败：' + ((e && e.message) || e) + '\n（后端单进程 worker，若有别人正在上传大文件，稍等后点「重新加载」即可）');
     }
     // 存量 Walmart 全列记录：静默回写裁剪版（只跑一次；下次带 cols 元信息就不再触发）
     if (RL_IS_ADMIN && _wmtNeedsShrink) {
@@ -4710,7 +4757,7 @@ function waitLibs(timeoutMs) {
       console.info('[Walmart] 存量全列记录已按计算所需列裁剪并回写云端');
     }
   } else {
-    bannerText(libsOk ? '⚠️ 云端数据暂不可用，正在使用本机缓存；可刷新或点「重新加载」重试' : '⚠️ 部分组件加载失败，请刷新页面重试', false);
+    bannerText(libsOk ? '⚠️ 工作台数据暂不可用，正在使用本机缓存；可刷新或点「重新加载」重试' : '⚠️ 部分组件加载失败，请刷新页面重试', false);
     loadPeriods();
     loadHistory();
     // 本地模式同样从本机备份恢复人工填价记录（刷新不丢）

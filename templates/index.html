@@ -143,13 +143,16 @@
       </div>
 
     </div>
-    <input type="file" id="file-input" accept=".csv,text/csv">
-    <input type="file" id="ref-input" accept=".xlsx,.xlsm">
-    <input type="file" id="lx-input" accept=".xlsx,.xlsm">
-    <input type="file" id="wm-input" accept=".csv,.zip">
-    <input type="file" id="admin-input" accept=".xlsx,.xlsm,.csv">
-    <input type="file" id="temu-input" accept=".xlsx,.xlsm" multiple>
-    <input type="file" id="ops-input" accept=".xlsx,.xlsm">
+    <!-- 2026-11-09 阶段0补修：这 7 个 file input 是旧多步上传面板的触发器，
+         入口统一时只把 .steps 加了 hide，漏了它们 → 引导卡下方一直露着一排「选择文件」。
+         不能删（app.js 仍用 $$('#xxx-input').click() 绑定），加 .hide 只做视觉隐藏。 -->
+    <input type="file" id="file-input" class="hide" accept=".csv,text/csv">
+    <input type="file" id="ref-input" class="hide" accept=".xlsx,.xlsm">
+    <input type="file" id="lx-input" class="hide" accept=".xlsx,.xlsm">
+    <input type="file" id="wm-input" class="hide" accept=".csv,.zip">
+    <input type="file" id="admin-input" class="hide" accept=".xlsx,.xlsm,.csv">
+    <input type="file" id="temu-input" class="hide" accept=".xlsx,.xlsm" multiple>
+    <input type="file" id="ops-input" class="hide" accept=".xlsx,.xlsm">
   </section>
 
   <!-- 看板 -->
@@ -278,6 +281,11 @@
     <div class="pg-bar"><div class="pg-fill" id="pg-fill"></div></div>
     <p class="pg-stage" id="pg-stage">准备中…</p>
     <p class="pg-meta" id="pg-meta"></p>
+    <!-- 阶段0补修：明细载入超时/失败时给明确出口，不再无限转圈 -->
+    <div id="pg-actions" class="hide pg-actions">
+      <button type="button" class="btn" onclick="retryLoadState()">重新载入</button>
+      <button type="button" class="btn ghost" onclick="closeProgress()">关闭遮罩</button>
+    </div>
   </div>
 </div>
 

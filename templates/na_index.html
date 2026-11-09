@@ -462,8 +462,8 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                 <div id="reportContent">
                     <div class="report-loading" id="reportLoading">
                         <div class="spinner"></div>
-                        <div>加载报告数据...</div>
-                        <div style="font-size:12px;color:#999;margin-top:8px;">首次加载需从云端取数并重算，可能需要数十秒，请勿关闭页面</div>
+                        <div>正在加载报告数据…</div>
+                        <div style="font-size:12px;color:#999;margin-top:8px;">正在读取工作台数据，超过 45 秒会自动给出重试入口</div>
                     </div>
                 </div>
             </div>
@@ -480,7 +480,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                     <button class="btn btn-primary" onclick="recalcFromSources()">按当前数据源重算</button>
                 </div>
                 {% endif %}
-                <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>加载新色数据...<div style="font-size:12px;color:#999;margin-top:8px;">首次加载需从云端取数，可能需要数十秒，请勿关闭页面</div></div></div>
+                <div id="ncLoading" class="report-loading" style="display:none;"><div class="spinner"></div><div>正在加载新色数据…<div style="font-size:12px;color:#999;margin-top:8px;">工作台数据读取中，超过 45 秒会自动给出重新加载入口</div></div></div>
                 <div id="ncEmpty" style="display:none;text-align:center;padding:60px;color:#999;">
                     <div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div>
                     <p style="font-size:13px;color:#aaa;margin-bottom:20px;">请先在"数据管理"页面上传数据源并点击"处理并生成报告"</p>
@@ -1215,14 +1215,25 @@ function recalcFromSources() { runProcess(); }
 function loadReport() {
     const loadingEl = document.getElementById('reportLoading');
     if (!loadingEl) return;
+    // 阶段0补修：报告取数同样加超时，避免加载层一直转圈；同时防重复触发
+    if (loadReport._inFlight) return;
+    loadReport._inFlight = true;
     loadingEl.style.display = 'block';
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let timedOut = false;
+    const timer = setTimeout(function () {
+        timedOut = true;
+        if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+    }, 45000);
+    const finish = function () { clearTimeout(timer); loadReport._inFlight = false; };
 
-    fetch('/na/api/report-data')
+    fetch('/na/api/report-data', ctrl ? { signal: ctrl.signal } : {})
         .then(r => {
             if (!r.ok) throw new Error('数据不存在');
             return r.json();
         })
         .then(data => {
+            finish();
             reportData = data;
             dataLoaded = true;
             renderReport();
@@ -1231,14 +1242,18 @@ function loadReport() {
             updateFilterBarHeight();
         })
         .catch(err => {
+            finish();
+            const why = timedOut ? '请求超时（45 秒），服务器暂未响应' : '报告数据尚未生成';
             let actionBtn = isAdmin
                 ? '<button class="btn btn-primary" onclick="switchView(\'upload\')">前往数据管理</button>'
                 : '<p style="font-size:13px;color:#aaa;">请联系管理员上传数据源并生成报告</p>';
             document.getElementById('reportContent').innerHTML =
                 '<div style="text-align:center;padding:60px;color:#999;">' +
-                '<p style="font-size:16px;margin-bottom:16px;">报告数据尚未生成</p>' +
+                '<p style="font-size:16px;margin-bottom:16px;">' + why + '</p>' +
                 '<p style="font-size:13px;color:#aaa;margin-bottom:20px;">' + (isAdmin ? '请先在"数据管理"页面上传数据源并点击"处理并生成报告"' : '当前无可用报告') + '</p>' +
-                actionBtn + '</div>';
+                actionBtn +
+                '<button class="btn" onclick="location.reload()" style="margin-left:10px;">刷新页面重试</button>' +
+                '</div>';
         });
 }
 
@@ -2790,12 +2805,27 @@ function loadNewColor() {
     const loadingEl = document.getElementById('ncLoading');
     const emptyEl = document.getElementById('ncEmpty');
     const contentEl = document.getElementById('ncContent');
+    // 阶段0补修：原生 fetch 无超时，取数挂起时加载层会永远转圈；同时防重复触发
+    if (loadNewColor._inFlight) return;
+    loadNewColor._inFlight = true;
     if (loadingEl) loadingEl.style.display = 'block';
     emptyEl.style.display = 'none';
     contentEl.style.display = 'none';
-    fetch('/na/api/new-color')
-        .then(r => { if (!r.ok) throw new Error('no data'); return r.json(); })
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let timedOut = false;
+    const timer = setTimeout(function () {
+        timedOut = true;
+        if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+    }, 45000);
+    const finish = function () { clearTimeout(timer); loadNewColor._inFlight = false; };
+    const escTxt = function (s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+    fetch('/na/api/new-color', ctrl ? { signal: ctrl.signal } : {})
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(data => {
+            finish();
             newColorData = data;
             ncDataLoaded = true;
             if (loadingEl) loadingEl.style.display = 'none';
@@ -2810,10 +2840,16 @@ function loadNewColor() {
             renderNcPending(data.pending_colors || []);
             renderNewColor();
         })
-        .catch(() => {
+        .catch(err => {
+            finish();
             if (loadingEl) loadingEl.style.display = 'none';
             emptyEl.style.display = 'block';
-            emptyEl.innerHTML = '<div style="font-size:16px;margin-bottom:16px;">新色数据尚未生成</div><p style="font-size:13px;color:#aaa;">请先在"数据管理"页面上传数据源并点击"处理并生成报告"</p>';
+            const why = timedOut ? '请求超时（45 秒），服务器暂未响应'
+                                 : ('加载失败：' + escTxt((err && err.message) || '未知错误'));
+            emptyEl.innerHTML = '<div style="font-size:16px;margin-bottom:12px;">新色数据暂时没能加载</div>'
+                + '<p style="font-size:13px;color:#aaa;">' + why + '</p>'
+                + '<p style="font-size:13px;color:#aaa;">若尚未生成报告，请先在数据源管理上传数据并点击「处理并生成报告」</p>'
+                + '<button type="button" class="btn" onclick="loadNewColor()" style="margin-top:14px;padding:8px 18px;">重新加载</button>';
         });
 }
 
