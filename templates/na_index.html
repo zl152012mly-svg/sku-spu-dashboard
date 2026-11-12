@@ -2859,16 +2859,22 @@ function renderNcSource() {
     const gen = newColorData.generated_at || '';
     const fm = newColorData.snapshot_file_mtime || '';
     const tr = (sf.transit || {}).file || null;
+    const err = newColorData.new_color_error || null;
     el.style.display = 'block';
+    // 上一次处理时新色判定失败 → 页面读的是旧快照, 这里把失败原因直接摆在最上面
+    const errHtml = err ? ('<div style="color:#c62828;font-weight:600;margin-bottom:4px;">'
+        + '⚠ 上次新色判定失败（' + escA(err.at || '') + '）：' + escA(err.error)
+        + '<br><span style="font-weight:400;">页面显示的仍是上一次成功的旧快照。'
+        + '请核对动态库存表列名（需含 SKU / 数量 / 预计到仓时间）后重跑「处理并生成报告」。</span></div>') : '';
     if (!gen || !tr) {
-        el.innerHTML = '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
+        el.innerHTML = errHtml + '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
             + '　快照文件最后更新：' + escA(fm || '未知')
             + '<br>请到【系统设置 → 数据源管理】确认动态库存表已上传，再点「处理并生成报告」重新生成快照；'
             + '在新快照生成前，页面显示的仍是旧判定结果。';
         return;
     }
     const n = function(v) { return escA(v == null ? '-' : v); };
-    let html = '<div><span style="font-weight:600;color:#2c5282;">本次判定所用数据源</span>'
+    let html = errHtml + '<div><span style="font-weight:600;color:#2c5282;">本次判定所用数据源</span>'
         + '　快照生成 ' + escA(gen) + '　快照文件更新 ' + escA(fm || '-')
         + '　<a href="javascript:void(0)" onclick="toggleNcSource(this)" style="color:#1a73e8;">展开查看全部文件 ▾</a></div>';
     html += '<div style="margin-top:2px;">动态库存表：<b>' + escA(tr.name) + '</b>'

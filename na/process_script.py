@@ -1466,10 +1466,30 @@ def process_all():
             print(f"  [数据源警告] {_w}")
         if pending_n:
             print("  [提示] 新色跟进页面「颜色待确认」面板需人工确认后存档, 下次处理生效")
+        # 本次成功 → 清掉上一次的失败标记, 避免页面一直挂着过期的红字
+        try:
+            _err_file = OUTPUT_DIR / "new_color_error.json"
+            if _err_file.exists():
+                _err_file.unlink()
+        except OSError:
+            pass
     except Exception as e:
         import traceback
         print(f"[WARNING] 新色跟进判定失败(不影响主报告): {e}")
         traceback.print_exc()
+        # v8 (2026-11-12): 失败只打 WARNING 时, 页面会继续展示旧冻结快照,
+        # 运营完全看不到「为什么动态库存表里的新色没识别」。把原因落盘并回传页面,
+        # 常见原因就是上传的动态库存表列名不含 SKU / 数量 / 预计到仓时间。
+        _err_text = "%s: %s" % (type(e).__name__, e)
+        try:
+            with open(OUTPUT_DIR / "new_color_error.json", 'w', encoding='utf-8') as _f:
+                json.dump({'at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                           'error': _err_text,
+                           'traceback': traceback.format_exc()[-2000:]},
+                          _f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        result['data_sources']['new_color_error'] = _err_text
 
     output_file = OUTPUT_DIR / "report_data.json"
     with open(output_file, 'w', encoding='utf-8') as f:

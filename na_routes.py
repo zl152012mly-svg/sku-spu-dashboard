@@ -1243,6 +1243,16 @@ def api_new_color():
             path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
     except OSError:
         data['snapshot_file_mtime'] = ''
+    # v8 (2026-11-12): 上一次「处理并生成报告」若新色判定失败(只打 WARNING),
+    # 页面展示的仍是旧冻结快照。把失败原因一起回传, 让运营直接在诊断栏看到,
+    # 不必登录 ECS 翻日志 —— 最常见就是上传的动态库存表列名不匹配。
+    try:
+        with open(OUTPUT_DIR / "new_color_error.json", 'r', encoding='utf-8') as f:
+            _nc_err = json.load(f)
+        if _nc_err.get('error'):
+            data['new_color_error'] = _nc_err
+    except (OSError, ValueError, AttributeError):
+        pass
     data['style_options'] = load_style_options()
     # 2026-10-27: 新色页新增三列 (SPU包裹情况/预计到仓时间/新色是否需要上架) 的
     # 新品报表侧数据; 每次请求现算, 保证与新品页最新数据一致(含SKU异常确认)

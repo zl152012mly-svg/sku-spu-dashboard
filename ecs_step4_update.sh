@@ -223,6 +223,9 @@ X5=$(count_in "$APP/na_routes.py" "snapshot_file_mtime")
 X6=$(count_in "$APP/templates/na_index.html" "function ncNote(r)")
 X7=$(count_in "$APP/na_routes.py" "def note_rec(spu, store)")
 [ "$X6" -ge 1 ] && [ "$X7" -ge 1 ] && ok "同一 SPU 多店铺备注按 SPU|店铺 独立存储" || bad "多店铺备注改造未完整部署"
+X8=$(count_in "$APP/na/process_script.py" "new_color_error.json")
+X9=$(count_in "$APP/na_routes.py" "new_color_error")
+[ "$X8" -ge 1 ] && [ "$X9" -ge 1 ] && ok "新色判定失败原因会回传页面（不再只打 WARNING）" || bad "失败原因回传链路不完整，旧快照问题无法自查"
 echo "  提示：新色仍是后台冻结快照。部署后请重跑「处理并生成报告」，再到新色页核对顶部"
 echo "        「本次判定所用数据源」里的动态库存表文件名、在途行数与快照生成时间；"
 echo "        若显示「当前新色快照不含数据源信息」，说明快照未重算或新色判定失败（日志只打 WARNING）。"
