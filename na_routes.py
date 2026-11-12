@@ -1236,6 +1236,13 @@ def api_new_color():
         return jsonify({'error': '新色数据不存在, 请先处理数据'}), 404
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
+    # v8 (2026-11-12): 即使是很老的冻结快照(没有 generated_at), 也能从文件 mtime
+    # 判断「处理并生成报告」是否真的重写过 new_color_data.json, 避免把旧结果当成新判定。
+    try:
+        data['snapshot_file_mtime'] = datetime.datetime.fromtimestamp(
+            path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+    except OSError:
+        data['snapshot_file_mtime'] = ''
     data['style_options'] = load_style_options()
     # 2026-10-27: 新色页新增三列 (SPU包裹情况/预计到仓时间/新色是否需要上架) 的
     # 新品报表侧数据; 每次请求现算, 保证与新品页最新数据一致(含SKU异常确认)
@@ -1376,7 +1383,11 @@ def _read_local_nc_note():
 
 
 def load_nc_note():
-    """读取新色跟进备注: 云端 → 本机镜像 (后读覆盖, 按 SPU 键合并)"""
+    """读取新色跟进备注: 云端 → 本机镜像 (后读覆盖, 按键合并)
+
+    键口径 2026-11-12: 新写入一律是「SPU|店铺」(同一SPU多店铺备注不共用);
+    历史遗留的纯 SPU 键仍保留在文件里, 由前端/导出端作为只读默认值回退, 不删除。
+    """
     merged = {}
     for data in (cloud_store.read_json(
             cloud_store.BUCKET_OUTPUTS, "new_color_note.json", NC_NOTE_FILE),
@@ -1429,7 +1440,9 @@ def api_nc_note_get():
 @auth.role_required('sub')
 def api_nc_note_post():
     """保存新色跟进备注 (所有账户可编辑, 与新品跟进 stock_note 完全独立)
-    接收: {notes: {spu: {field: value, ...}}, updated_by: ...}"""
+    接收: {notes: {"SPU|店铺": {field: value, ...}}, updated_by: ...}
+    键由前端按 SPU|店铺 传入; 兼容旧的纯 SPU 键(只读历史值, 新编辑不再写纯 SPU 键)。
+    """
     data = request.get_json(silent=True) or {}
     notes = data.get('notes', {})
     by = data.get('updated_by', '')
@@ -2272,9 +2285,13 @@ def download_nc_excel():
         for c in range(1, ncols + 1):
             ws.cell(row=row_idx, column=c).fill = fill
 
-    def note_val(spu, key, default=''):
-        n = nc_notes.get(spu) or {}
-        return n.get(key) or default
+    # 2026-11-12: 新色备注按「SPU|店铺」独立存储; 旧 SPU 级备注仅作只读默认值
+    def note_rec(spu, store):
+        return (nc_notes.get(str(spu) + '|' + str(store))
+                or nc_notes.get(str(spu)) or {})
+
+    def note_val(spu, store, key, default=''):
+        return note_rec(spu, store).get(key) or default
 
     # ================= Sheet1: 需上架新色 =================
     ws1 = wb.active
@@ -2287,14 +2304,15 @@ def download_nc_excel():
                      key=lambda r: (str(r.get('SPU', '')), str(r.get('店铺', ''))))
     for r in nc_rows:
         spu = r.get('SPU', '')
-        m = spu_meta_for(spu, r.get('店铺', ''))
+        store = r.get('店铺', '')
+        m = spu_meta_for(spu, store)
         st = str(r.get('库存状态') or '')
         ws1.append([
             spu,
-            r.get('店铺', ''),
-            note_val(spu, 'operator_group') or m.get('运营组', ''),
-            note_val(spu, 'operator') or m.get('运营', ''),
-            m.get('已上架店铺', '') or r.get('店铺', ''),
+            store,
+            note_val(spu, store, 'operator_group') or m.get('运营组', ''),
+            note_val(spu, store, 'operator') or m.get('运营', ''),
+            m.get('已上架店铺', '') or store,
             r.get('新色', ''),
             st,
             r.get('数量', ''),
@@ -2302,8 +2320,8 @@ def download_nc_excel():
             r.get('在途库存', ''),
             r.get('在途最早预计到仓', '') or r.get('预计到仓', ''),
             r.get('库存SKU', ''),
-            note_val(spu, 'launch_completed', '未完成'),
-            note_val(spu, 'content'),
+            note_val(spu, store, 'launch_completed', '未完成'),
+            note_val(spu, store, 'content'),
         ])
         _f = fill_transit if '在途' in st else (fill_instock if '在库' in st else None)
         if _f:
@@ -2323,6 +2341,7 @@ def download_nc_excel():
     ws2.append(h2)
     for r in data.get('spu_rows', []):
         spu = r.get('SPU', '')
+        store = r.get('店铺', '')
         _rec = na_map.get(spu)
         _se = (data.get('spu_eval') or {}).get(spu)
         if _rec and (_rec.get('pkg') or _rec.get('launch')):
@@ -2334,18 +2353,18 @@ def download_nc_excel():
             _eta = _nc_eta_from_sku_rows(data.get('sku_rows'), spu)
         ws2.append([
             spu,
-            r.get('店铺', ''),
-            note_val(spu, 'operator_group') or r.get('运营组', ''),
-            note_val(spu, 'operator') or r.get('运营', ''),
+            store,
+            note_val(spu, store, 'operator_group') or r.get('运营组', ''),
+            note_val(spu, store, 'operator') or r.get('运营', ''),
             r.get('已上架店铺', ''),
             r.get('新色数', ''),
             r.get('新色列表', ''),
             r.get('待上架SKU数', ''),
             _pkg,
             _eta,
-            nc_launch_text(spu, na_map, nc_notes.get(spu), data.get('spu_eval')),
-            note_val(spu, 'launch_completed', '未完成'),
-            note_val(spu, 'content'),
+            nc_launch_text(spu, na_map, note_rec(spu, store), data.get('spu_eval')),
+            note_val(spu, store, 'launch_completed', '未完成'),
+            note_val(spu, store, 'content'),
         ])
     style_header(ws2, len(h2))
     autosize(ws2, len(h2))
@@ -2373,7 +2392,7 @@ def download_nc_excel():
         if key not in need_keys:
             continue
         status = r.get('上架状态', '')
-        lc_note = note_val(spu, 'launch_completed', '未完成')
+        lc_note = note_val(spu, r.get('店铺', ''), 'launch_completed', '未完成')
         is_new = '是' if (status == '未上架' and lc_note != '无需上架') else '否'
         ws3.append([
             spu,
@@ -2388,7 +2407,7 @@ def download_nc_excel():
             r.get('在库库存', ''),
             r.get('在途库存', ''),
             r.get('在途最早预计到仓', '') or r.get('预计到仓', ''),
-            note_val(spu, 'content'),
+            note_val(spu, r.get('店铺', ''), 'content'),
         ])
         if is_new == '是':
             fill_row(ws3, ws3.max_row, len(h3), fill_newflag)

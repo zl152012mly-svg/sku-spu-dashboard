@@ -69,9 +69,21 @@ v7 (2026-11-10 与用户确认: 转单后新色漏判修复):
         只归并无上架记录、且不在款式表主SPU里的孤儿 SPU, 歧义组跳过。
   3) 口径不变: 转单组级覆盖 (group_listed_names / covered_transfer) 保持原样 ——
         US-NS1918-OAK-XYA 与已在售的 NSCL1389-CHE 同组, 仍判「已上架」, 不算新色。
+
+v8 (2026-11-12: 数据源可诊断 + 多文件选取口径):
+  用户反馈「SFAY1385 / BEAY1832 动态库存表里明明有新色, 系统没识别」时,
+  本地用同一份数据复跑判定内核是可以识别的 —— 真正的高发原因是:
+    a) ECS 上的 new_color_data.json 冻结快照没重跑/新色判定失败只打 WARNING, 页面仍在读旧快照;
+    b) 同 pattern 存在多份文件, 旧口径 sorted()[0] 按字母序取第一份, 实际读到的是旧文件。
+  1) _glob1 改为按 mtime 取最新一份 (并列时文件名倒序), 转单/款式表仍按原逻辑多文件合并;
+  2) compute_new_colors() 返回 generated_at / source_files / source_rows / source_warnings,
+     写进冻结快照, 网页端「本次判定所用数据源」直接显示实际文件名、修改时间与行数;
+  3) /na/api/new-color 另附 snapshot_file_mtime (快照文件本身的磁盘更新时间),
+     即使老快照没有 generated_at, 也能判断「处理并生成报告」有没有真的重写文件。
 """
 import os
 import glob
+from datetime import datetime
 from collections import defaultdict
 
 import pandas as pd
@@ -439,8 +451,33 @@ def _build_variant_index(archive):
 
 
 def _glob1(folder, pattern):
-    hits = sorted(glob.glob(os.path.join(folder, pattern)))
-    return hits[0] if hits else None
+    """取同 pattern 下「最新修改」的一份 (2026-11-12)。
+
+    历史口径是 sorted(glob)[0] 字母序第一份。用户重新上传动态库存表后, 若目录里还
+    留着旧月份文件 (共享数据源、手工放文件等场景), 字母序第一份可能仍是旧文件 →
+    判定读的是旧数据, 页面表现就是「动态库存表里明明有新色, 系统没识别出来」。
+    上传链路会清理同 pattern 旧文件, 但这里仍以 mtime 兜底; 并列时用文件名倒序保证确定性。
+    """
+    hits = glob.glob(os.path.join(str(folder), pattern))
+    if not hits:
+        return None
+    hits.sort(key=lambda p: (os.path.getmtime(p), p), reverse=True)
+    return hits[0]
+
+
+def _file_meta(path):
+    """数据源文件的可读元信息, 供网页端「本次判定所用数据源」展示"""
+    if not path:
+        return None
+    try:
+        st = os.stat(path)
+        return {
+            'name': os.path.basename(str(path)),
+            'mtime': datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+            'size': st.st_size,
+        }
+    except OSError:
+        return {'name': os.path.basename(str(path)), 'mtime': '', 'size': 0}
 
 
 def _read_csv_any(path, **kw):
@@ -482,6 +519,8 @@ def compute_new_colors(base_dir, color_archive=None):
                   档案中不存在、需人工确认的新颜色码 (网页端「颜色待确认」面板)
        warn_unmatched: [ (店铺, 未命中套件的非删除平台SKU, 状态), ... ]
        warn_unparse: [ (店铺, SKU, SPU, 状态), ... ]  (已上架SPU的在库/在途SKU无法解析颜色)
+       generated_at / source_files / source_rows / source_warnings (v8): 本次判定实际使用的
+           数据源文件名、修改时间、读入行数与多文件告警, 供网页端「本次判定所用数据源」展示
     """
     archive = color_archive if color_archive is not None else load_color_archive(base_dir)
     _canon_set, variant_map = _build_variant_index(archive)
@@ -521,6 +560,36 @@ def compute_new_colors(base_dir, color_archive=None):
                               ('动态库存表', f_transit)] if not p]
     if missing:
         raise FileNotFoundError('缺少数据文件: ' + ', '.join(missing))
+
+    # ---- 数据源可诊断性 (v8, 2026-11-12) ----
+    # 把「本次到底读了哪份文件」写进冻结快照, 页面直接显示; 排查「动态库存表有新色却没识别」
+    # 时不必登录服务器翻目录。同 pattern 多份文件时明确告警, 避免旧文件被字母序选中。
+    _generated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    _src_specs = [
+        ('listing', 'Listing 上架表', '*Listing*.xlsx', f_listing),
+        ('item_report', 'Walmart ItemReport', '*ItemReport*.csv', f_wm),
+        ('suite', '套件成员表', '*套件成员*.csv', f_suite),
+        ('inventory', '库存清单(在库)', '库存清单*.xlsx', f_inv),
+        ('transit', '动态库存表(在途)', '动态库存表*.xlsx', f_transit),
+        ('transfer', '转单关系表', '转单*.xlsx', None),      # 多文件全读, 不取其一
+        ('style', '款式表', '款式表*.xlsx', None),            # 由 process_script 通配读取
+    ]
+    _src_files = {}
+    _src_warnings = []
+    for _key, _label, _pat, _chosen in _src_specs:
+        _hits = sorted(glob.glob(os.path.join(str(base_dir), _pat)))
+        _src_files[_key] = {
+            'label': _label,
+            'pattern': _pat,
+            'file': _file_meta(_chosen),
+            'candidates': len(_hits),
+            'candidate_names': [os.path.basename(p) for p in _hits[:10]],
+        }
+        if _chosen and len(_hits) > 1:
+            _src_warnings.append(
+                '%s 匹配到 %d 份，已按修改时间取最新一份「%s」；其余 %d 份未参与本次判定'
+                % (_label, len(_hits), os.path.basename(_chosen), len(_hits) - 1))
+            print('[new_color_module] 数据源警告: ' + _src_warnings[-1])
 
     # ---- 转单关系 (可选数据源) ----
     # 转单*.xlsx: 同一行的所有名字 = 同一实物 SKU (不同工厂/渠道换名), 往往落到不同 SPU。
@@ -994,7 +1063,24 @@ def compute_new_colors(base_dir, color_archive=None):
     groups = sorted({v.get('group', '') for v in all_existing_map.values() if v.get('group')})
     operators = sorted({v.get('operator', '') for v in all_existing_map.values() if v.get('operator')})
 
+    # 各数据源实际读入行数 (v8): 尤其「动态库存表在途行数」可直接比对用户截图
+    _src_rows = {
+        'listing': len(listing_status),          # Amazon Listing + Walmart ItemReport 合并后的上架状态记录
+        'item_report': len(wm),
+        'suite': len(suite_dedup),
+        'inventory': len(inv),
+        'transit': len(tr),
+        'transfer_groups': len(transfer_group_names),
+        'spu_rows': len(spu_rows),
+        'sku_rows': len(sku_rows),
+        'new_colors': len(new_color_rows),
+    }
+
     return {
+        'generated_at': _generated_at,
+        'source_files': _src_files,
+        'source_rows': _src_rows,
+        'source_warnings': _src_warnings,
         'spu_rows': spu_rows,
         'sku_rows': sku_rows,
         'spu_eval': spu_eval,

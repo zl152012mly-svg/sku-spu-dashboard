@@ -495,6 +495,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
                         </div>
                         <div id="ncPendingBody" style="margin-top:8px;"></div>
                     </div>
+                    <div id="ncSourceBar" style="display:none;margin-bottom:10px;font-size:12px;color:#4a5568;background:#f7f9fc;border:1px solid #e3e8f0;border-radius:8px;padding:8px 12px;line-height:1.8;"></div>
                     <div class="filters" id="ncFilters"></div>
                     <div class="table-container" style="overflow:auto;max-height:660px;">
                         <table class="data-table" id="ncTable"></table>
@@ -2764,8 +2765,11 @@ let newColorData = null;
 // ncDataLoaded 已上移到脚本顶部声明区（TDZ 修复，勿移回）
 let ncFieldFilters = {};   // key -> Set(选中的筛选值)
 let ncExpanded = {};        // SPU|店铺 -> 是否展开
-let ncSpuQuery = '';        // SPU 搜索关键字(子串匹配)
+let ncSpuQuery = '';        // 搜索关键字(子串匹配; 2026-11-12 起同时匹配 SPU、店铺、颜色、库存SKU、上架SKU)
+let ncAutoExpandKeys = {};  // SKU 命中而 SPU 未命中时自动展开明细 (2026-11-12)
 // 新色跟进备注: 独立于新品跟进 stock_note (2026-09-21 用户确认)
+// 2026-11-12 用户确认: 同一 SPU 多店铺备注不共用 → 键改为 SPU|店铺 (与展开/筛选同一把键)。
+// 历史 SPU 级备注保留为只读默认值: 该店铺尚无独立备注时才显示, 一旦该店铺编辑过就独立保存。
 // 字段: launch_completed(未完成/已完成/无需上架) / content(特殊备注) / operator / operator_group
 let ncNotes = {};
 let ncLocalOverrides = {};  // 本地覆盖守卫 (防 Supabase 读延迟闪回, 与 stock_note 守卫独立)
@@ -2777,7 +2781,7 @@ const NC_FILTER_DEFS = [
     {key:'store', label:'上架店铺'},
     {key:'completed', label:'是否完成上架'},
     {key:'launch', label:'新色是否需要上架'},
-    {key:'spu', label:'SPU', search:true},
+    {key:'spu', label:'SPU / SKU', search:true},
 ];
 const NC_STORE_LABELS = {
     'US-Amazon-HLLdeco-KH':'DECO','US-Amazon-Home Nest-KH':'HN',
@@ -2785,21 +2789,128 @@ const NC_STORE_LABELS = {
     'US-Amazon-JYT-KH':'JYT','US-Walmart':'Walmart'
 };
 const NC_COMPLETED_OPTS = ['未完成', '已完成', '无需上架'];
-let ncSpuIndex = {};        // SPU -> {statuses:Set, stores:Set}
+let ncSpuIndex = {};        // SPU|店铺 -> {statuses:Set, text:string, skuText:string}
 function ncStoreLabel(store){ return NC_STORE_LABELS[store] || store; }
 function escA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// 预建 (SPU|店铺) -> 明细状态 索引 (供"状态"筛选使用)
+// 预建 (SPU|店铺) 索引:
+//   statuses 供「状态」筛选; text 供 SPU/SKU 搜索; skuText 仅含 SKU 明细, 用于判断是否需自动展开
+// 2026-11-12 用户要求「搜索可以按 SPU / SKU」: 库存SKU、上架SKU、颜色、新色列表都进可搜索文本,
+// 命中某个具体 SKU 时, 该行自动展开, 否则用户还得手动点开才知道命中的是哪一条。
 function buildNcIndex() {
     ncSpuIndex = {};
+    function bucket(k) {
+        if (!ncSpuIndex[k]) ncSpuIndex[k] = { statuses: new Set(), parts: [], skuParts: [] };
+        return ncSpuIndex[k];
+    }
     (newColorData.sku_rows || []).forEach(function(s) {
-        const k = s['SPU'] + '|' + s['店铺'];
-        if (!ncSpuIndex[k]) ncSpuIndex[k] = { statuses: new Set() };
-        if (s['上架状态']) ncSpuIndex[k].statuses.add(s['上架状态']);
+        const b = bucket(s['SPU'] + '|' + s['店铺']);
+        if (s['上架状态']) b.statuses.add(s['上架状态']);
+        ['库存SKU', '上架SKU', '颜色'].forEach(function(f) {
+            if (s[f]) { const v = String(s[f]); b.parts.push(v); b.skuParts.push(v); }
+        });
+    });
+    (newColorData.spu_rows || []).forEach(function(r) {
+        const b = bucket(ncRowKey(r));
+        ['SPU', '店铺', '新色列表'].forEach(function(f) {
+            if (r[f]) b.parts.push(String(r[f]));
+        });
+    });
+    Object.keys(ncSpuIndex).forEach(function(k) {
+        const b = ncSpuIndex[k];
+        b.text = b.parts.join(' ').toLowerCase();
+        b.skuText = b.skuParts.join(' ').toLowerCase();
     });
 }
 
+// 一行的可搜索文本 (索引未覆盖时也能按 SPU/店铺命中, 保证旧快照不报错)
+function ncRowText(r) {
+    const idx = ncSpuIndex[ncRowKey(r)] || {};
+    return (String(r['SPU'] || '') + ' ' + String(r['店铺'] || '') + ' ' +
+            String(r['新色列表'] || '') + ' ' + (idx.text || '')).toLowerCase();
+}
+
+// 仅当「SKU 明细命中、但 SPU/店铺/新色列表本身没命中」时才自动展开
+function ncRowHitSku(r) {
+    if (!ncSpuQuery) return false;
+    const base = (String(r['SPU'] || '') + ' ' + String(r['店铺'] || '') + ' ' +
+                  String(r['新色列表'] || '')).toLowerCase();
+    if (base.indexOf(ncSpuQuery) >= 0) return false;
+    const idx = ncSpuIndex[ncRowKey(r)] || {};
+    return (idx.skuText || '').indexOf(ncSpuQuery) >= 0;
+}
+
 function ncRowKey(r) { return r['SPU'] + '|' + r['店铺']; }
+
+// 备注键 = SPU|店铺 (2026-11-12); 旧 SPU 级备注仅作只读默认值, 不删除历史数据
+function ncNote(r) {
+    return ncNotes[ncRowKey(r)] || ncNotes[r['SPU']] || {};
+}
+
+// ---- 数据源诊断栏 (v8, 2026-11-12) ----
+// 冻结快照里写入「本次实际用了哪份文件 / 各读了多少行」, 排查「动态库存表有新色却没识别」
+// 时先确认: 快照是不是刚重跑的、动态库存表是不是刚上传的那一份。
+function renderNcSource() {
+    const el = document.getElementById('ncSourceBar');
+    if (!el || !newColorData) return;
+    const sf = newColorData.source_files || {};
+    const sr = newColorData.source_rows || {};
+    const warns = newColorData.source_warnings || [];
+    const gen = newColorData.generated_at || '';
+    const fm = newColorData.snapshot_file_mtime || '';
+    const tr = (sf.transit || {}).file || null;
+    el.style.display = 'block';
+    if (!gen || !tr) {
+        el.innerHTML = '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
+            + '　快照文件最后更新：' + escA(fm || '未知')
+            + '<br>请到【系统设置 → 数据源管理】确认动态库存表已上传，再点「处理并生成报告」重新生成快照；'
+            + '在新快照生成前，页面显示的仍是旧判定结果。';
+        return;
+    }
+    const n = function(v) { return escA(v == null ? '-' : v); };
+    let html = '<div><span style="font-weight:600;color:#2c5282;">本次判定所用数据源</span>'
+        + '　快照生成 ' + escA(gen) + '　快照文件更新 ' + escA(fm || '-')
+        + '　<a href="javascript:void(0)" onclick="toggleNcSource(this)" style="color:#1a73e8;">展开查看全部文件 ▾</a></div>';
+    html += '<div style="margin-top:2px;">动态库存表：<b>' + escA(tr.name) + '</b>'
+        + '（' + escA(tr.mtime || '-') + '，在途 ' + n(sr.transit) + ' 行）'
+        + '　库存清单 ' + escA(((sf.inventory || {}).file || {}).name || '-')
+        + '（' + n(sr.inventory) + ' 行）'
+        + '　本次待上架新色 ' + n(sr.new_colors) + ' 行</div>';
+    if (warns.length) {
+        html += '<div style="color:#bf360c;">' + warns.map(function(w) { return '⚠ ' + escA(w); }).join('<br>') + '</div>';
+    }
+    html += '<div id="ncSourceDetail" style="display:none;margin-top:6px;border-top:1px dashed #d7dde6;padding-top:6px;">'
+        + '<table style="font-size:12px;border-collapse:collapse;"><tr style="color:#888;">'
+        + '<td style="padding:2px 14px 2px 0;">数据源</td><td style="padding:2px 14px 2px 0;">实际文件 / 修改时间</td>'
+        + '<td style="padding:2px 14px 2px 0;">读入行数</td><td>候选文件数</td></tr>';
+    const order = [
+        ['listing', 'listing'], ['item_report', 'item_report'], ['suite', 'suite'],
+        ['inventory', 'inventory'], ['transit', 'transit'], ['transfer', 'transfer_groups'],
+        ['style', ''],
+    ];
+    order.forEach(function(pair) {
+        const s = sf[pair[0]] || {};
+        const f = s.file || {};
+        let detail;
+        if (f.name) detail = escA(f.name) + '　' + escA(f.mtime);
+        else if (s.candidates) detail = '<span style="color:#666;">' + escA((s.candidate_names || []).join('、')) + '（多文件全读）</span>';
+        else detail = '<span style="color:#999;">未使用</span>';
+        html += '<tr><td style="padding:2px 14px 2px 0;">' + escA(s.label || pair[0]) + '</td>'
+            + '<td style="padding:2px 14px 2px 0;">' + detail + '</td>'
+            + '<td style="padding:2px 14px 2px 0;">' + n(pair[1] ? sr[pair[1]] : null) + '</td>'
+            + '<td>' + n(s.candidates) + '</td></tr>';
+    });
+    html += '</table></div>';
+    el.innerHTML = html;
+}
+
+function toggleNcSource(a) {
+    const d = document.getElementById('ncSourceDetail');
+    if (!d) return;
+    const show = (d.style.display === 'none');
+    d.style.display = show ? 'block' : 'none';
+    if (a) a.textContent = show ? '收起全部文件 ▴' : '展开查看全部文件 ▾';
+}
 
 function loadNewColor() {
     const loadingEl = document.getElementById('ncLoading');
@@ -2838,6 +2949,7 @@ function loadNewColor() {
             buildNcIndex();
             buildNcFilters();
             renderNcPending(data.pending_colors || []);
+            renderNcSource();
             renderNewColor();
         })
         .catch(err => {
@@ -2855,14 +2967,14 @@ function loadNewColor() {
 
 // 运营/运营组: 默认取店铺规则计算值(数据字段 运营组/运营), 有新色备注编辑值则覆盖
 function ncOperator(r, field) {
-    const note = ncNotes[r['SPU']] || {};
+    const note = ncNote(r);
     if (field === 'operator_group') return note.operator_group || r['运营组'] || '';
     return note.operator || r['运营'] || '';
 }
 
 // 是否完成上架: 默认"未完成", 有新色备注编辑值则覆盖 (独立于新品跟进)
 function ncCompleted(r) {
-    const note = ncNotes[r['SPU']] || {};
+    const note = ncNote(r);
     return note.launch_completed || '未完成';
 }
 
@@ -2898,7 +3010,7 @@ function ncEta(r) {
     return hasStock ? '已到仓' : (earliest || '-');
 }
 function ncNeedLaunch(r) {
-    const note = ncNotes[r['SPU']] || {};
+    const note = ncNote(r);
     // ① 运营评估无需上架: 手动选「无需上架」+ 新色特殊备注有内容 (人工结论, 优先级最高)
     if (note.launch_completed === '无需上架' && String(note.content || '').trim() !== '') {
         return '运营评估无需上架';
@@ -2924,21 +3036,23 @@ function loadNcNote() {
             const polled = data || {};
             const now = Date.now();
             const merged = {};
-            for (const spu in polled) {
-                if (polled.hasOwnProperty(spu)) merged[spu] = Object.assign({}, polled[spu]);
+            for (const nk in polled) {
+                if (polled.hasOwnProperty(nk)) merged[nk] = Object.assign({}, polled[nk]);
             }
             for (const key in ncLocalOverrides) {
                 if (!ncLocalOverrides.hasOwnProperty(key)) continue;
                 const o = ncLocalOverrides[key];
                 if (now - o.ts > NC_OVERRIDE_GUARD_MS) { delete ncLocalOverrides[key]; continue; }
-                const idx = key.indexOf('|');
-                const spu = key.substring(0, idx);
+                // 覆盖守卫键 = SPU|店铺|字段, 字段永远是最后一段 (2026-11-12 改用 lastIndexOf)
+                const idx = key.lastIndexOf('|');
+                if (idx < 1) continue;
+                const noteKey = key.substring(0, idx);
                 const field = key.substring(idx + 1);
-                if (!merged[spu]) merged[spu] = {};
-                if (polled[spu] && polled[spu][field] === o.value) {
+                if (!merged[noteKey]) merged[noteKey] = {};
+                if (polled[noteKey] && polled[noteKey][field] === o.value) {
                     delete ncLocalOverrides[key];
                 } else {
-                    merged[spu][field] = o.value;
+                    merged[noteKey][field] = o.value;
                 }
             }
             const changed = JSON.stringify(ncNotes) !== JSON.stringify(merged);
@@ -2988,7 +3102,7 @@ function buildNcFilters() {
     let html = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
     NC_FILTER_DEFS.forEach(function(f) {
         if (f.search) {
-            html += '<input type="text" placeholder="搜索 SPU..." value="' + escA(ncSpuQuery) + '" oninput="onNcSpuSearch(this.value)" style="width:180px;height:30px;padding:4px 12px;border:1px solid #ddd;border-radius:15px;font-size:13px;outline:none;">';
+            html += '<input type="text" placeholder="搜索 SPU / SKU（支持库存SKU、上架SKU）" value="' + escA(ncSpuQuery) + '" oninput="onNcSpuSearch(this.value)" style="width:290px;height:30px;padding:4px 12px;border:1px solid #ddd;border-radius:15px;font-size:13px;outline:none;">';
             return;
         }
         const set = new Set();
@@ -3067,21 +3181,26 @@ function ncRowMatch(r) {
             if (!v.some(function(x) { return sel.has(x); })) return false;
         }
     }
-    if (ncSpuQuery && String(vals.spu[0] || '').toLowerCase().indexOf(ncSpuQuery) < 0) return false;
+    if (ncSpuQuery && ncRowText(r).indexOf(ncSpuQuery) < 0) return false;
     return true;
 }
 
 function renderNewColor() {
     if (!newColorData) return;
     const rows = ncJoinedSpu().filter(ncRowMatch);
+    // SKU 命中(而非 SPU 命中)时自动展开, 让用户直接看到命中的库存SKU/上架SKU
+    ncAutoExpandKeys = {};
+    rows.forEach(function(r) { if (ncRowHitSku(r)) ncAutoExpandKeys[ncRowKey(r)] = true; });
     renderNcTable(rows);
     const statEl = document.getElementById('ncStat');
     if (statEl) {
         const newSku = rows.reduce(function(a, r) { return a + (Number(r['待上架SKU数']) || 0); }, 0);
         const spuSet = {};
         rows.forEach(function(r) { spuSet[r['SPU']] = true; });
+        const autoN = Object.keys(ncAutoExpandKeys).length;
         statEl.textContent = '共 ' + rows.length + ' 条记录（' + Object.keys(spuSet).length +
-            ' 个 SPU，一行 = 一个店铺），待上架新色 SKU ' + newSku + ' 个（点击行展开查看该店铺该 SPU 的 SKU 明细）';
+            ' 个 SPU，一行 = 一个店铺），待上架新色 SKU ' + newSku + ' 个（点击行展开查看该店铺该 SPU 的 SKU 明细）' +
+            (autoN ? '；其中 ' + autoN + ' 条按 SKU 命中，已自动展开明细' : '');
     }
 }
 
@@ -3174,12 +3293,13 @@ function renderNcTable(rows) {
     rows.forEach(function(r, idx) {
         const spu = r['SPU'];
         const key = ncRowKey(r);
-        const note = ncNotes[spu] || {};
-        const expanded = !!ncExpanded[key];
-        const og = buildNcSelect(spu, 'operator_group', ncOperator(r, 'operator_group'), groups);
-        const op = buildNcSelect(spu, 'operator', ncOperator(r, 'operator'), operators);
-        const lc = buildNcSelect(spu, 'launch_completed', note.launch_completed || '未完成', completedOpts);
-        const remark = '<input class="cell-input" type="text" value="' + escA(note.content || '') + '" onchange="saveNcField(\'' + escA(spu) + '\',\'content\',this.value)" placeholder="填写特殊备注...">';
+        const note = ncNote(r);
+        // 用户手动展开/收起优先; 未手动操作过的行, 按 SKU 搜索命中状态自动展开
+        const expanded = (ncExpanded[key] === undefined) ? !!ncAutoExpandKeys[key] : !!ncExpanded[key];
+        const og = buildNcSelect(key, 'operator_group', ncOperator(r, 'operator_group'), groups);
+        const op = buildNcSelect(key, 'operator', ncOperator(r, 'operator'), operators);
+        const lc = buildNcSelect(key, 'launch_completed', note.launch_completed || '未完成', completedOpts);
+        const remark = '<input class="cell-input" type="text" data-note-key="' + escA(key) + '" value="' + escA(note.content || '') + '" onchange="saveNcField(this.dataset.noteKey,\'content\',this.value)" placeholder="填写特殊备注...">';
         html += '<tr class="spu-row' + (expanded ? ' expanded' : '') + '" data-idx="' + idx + '" onclick="toggleNcExpand(\'' + escA(key) + '\')">' +
             '<td><span class="expand-icon">&#9654;</span></td>' +
             '<td style="font-weight:600;">' + escA(spu) + '</td>' +
@@ -3287,23 +3407,27 @@ function renderNcTable(rows) {
 }
 
 function toggleNcExpand(key) {
-    ncExpanded[key] = !ncExpanded[key];
+    // 自动展开的行第一次点击应该是「收起」, 因此要把自动状态算进当前值
+    const cur = (ncExpanded[key] === undefined) ? !!ncAutoExpandKeys[key] : !!ncExpanded[key];
+    ncExpanded[key] = !cur;
     renderNewColor();
 }
 
-function buildNcSelect(spu, field, value, options) {
+// noteKey = SPU|店铺 (2026-11-12 起备注按店铺独立); 用 dataset 传参避免键里特殊字符破坏内联 JS
+function buildNcSelect(noteKey, field, value, options) {
     const opts = [''].concat(options || []);
     // 当前值不在选项里时必须补入 (如店铺规则固定值 综合组-WLM/Chloris 不在款式表选项中,
     // 否则 select 没有匹配 option 会显示第一个 '-'), 补入的值也可被用户改回空/其它值
     if (value && opts.indexOf(value) < 0) opts.push(value);
-    return '<select class="cell-select" data-spu="' + escA(spu) + '" data-field="' + field + '" onchange="saveNcField(\'' + escA(spu) + '\',\'' + field + '\',this.value)">' +
+    return '<select class="cell-select" data-note-key="' + escA(noteKey) + '" data-field="' + escA(field) +
+        '" onchange="saveNcField(this.dataset.noteKey, this.dataset.field, this.value)">' +
         opts.map(function(o){ return '<option value="'+escA(o)+'"'+(o===value?' selected':'')+'>'+(o||'-')+'</option>'; }).join('') +
         '</select>';
 }
 
-function saveNcField(spu, field, value) {
-    if (!spu || !field) return;
-    const payload = {}; payload[spu] = {}; payload[spu][field] = value;
+function saveNcField(noteKey, field, value) {
+    if (!noteKey || !field) return;
+    const payload = {}; payload[noteKey] = {}; payload[noteKey][field] = value;
     fetch('/na/api/nc-note', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ notes: payload, updated_by: isAdmin ? 'admin' : 'user' })
@@ -3312,10 +3436,10 @@ function saveNcField(spu, field, value) {
     .then(res => {
         if (res.success) {
             ncNotes = res.notes || {};
-            ncLocalOverrides[spu + '|' + field] = { value: value, ts: Date.now() };
+            ncLocalOverrides[noteKey + '|' + field] = { value: value, ts: Date.now() };
             buildNcFilters();   // 编辑值立即进入筛选维度 (保留勾选)
             renderNewColor();
-            showNoteStatus('已保存 ' + spu + ' 的 ' + field + ' 字段', 'ok');
+            showNoteStatus('已保存 ' + noteKey.replace('|', ' / ') + ' 的 ' + field + ' 字段', 'ok');
         } else {
             showNoteStatus('⚠ 保存失败: ' + (res.error || ''), 'warn');
         }
@@ -3336,7 +3460,7 @@ function exportNcCSV() {
     let csv = '\ufeff' + header.join(',') + '\n';
     rows.forEach(function(r) {
         const m = meta[r['SPU'] + '|' + r['店铺']] || {};
-        const note = ncNotes[r['SPU']] || {};
+        const note = ncNote(r);
         csv += header.map(function(c) {
             let v;
             if (c === '店铺') v = r['店铺'] || '';
@@ -3355,7 +3479,9 @@ function exportNcCSV() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = '新色跟进_SKU明细_' + (newColorData.generated_at || '') + '.csv';
+    // generated_at 含空格/冒号, Windows 文件名非法; 只保留数字做时间戳
+    const tag = String(newColorData.generated_at || '').replace(/[^\d]/g, '').slice(0, 12);
+    a.download = '新色跟进_SKU明细_' + tag + '.csv';
     a.click();
     showNoteStatus('已导出 ' + rows.length + ' 行 SKU 明细（' + spus.length + ' 条 SPU×店铺 记录）', 'ok');
 }

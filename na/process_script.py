@@ -1456,6 +1456,14 @@ def process_all():
         pending_n = len(nc.get('pending_colors', []))
         print(f"\n新色跟进判定完成: SPU主行 {len(nc['spu_rows'])}, SKU明细 {len(nc['sku_rows'])} 行, 待上架新色 {len(nc['new_colors'])} 行")
         print(f"  颜色待确认: {pending_n} 个色码, 未命中套件: {len(nc['warn_unmatched'])} 条, 颜色无法解析: {len(nc['warn_unparse'])} 条")
+        # v8 (2026-11-12): 把「本次实际用了哪份数据源」打到日志, 便于核对是否读到刚上传的动态库存表
+        _srows = nc.get('source_rows') or {}
+        _sfiles = nc.get('source_files') or {}
+        _tr = (_sfiles.get('transit') or {}).get('file') or {}
+        print(f"  数据源: 动态库存表「{_tr.get('name', '?')}」在途 {_srows.get('transit', '?')} 行,"
+              f" 库存清单 {_srows.get('inventory', '?')} 行, 快照生成 {nc.get('generated_at', '?')}")
+        for _w in (nc.get('source_warnings') or []):
+            print(f"  [数据源警告] {_w}")
         if pending_n:
             print("  [提示] 新色跟进页面「颜色待确认」面板需人工确认后存档, 下次处理生效")
     except Exception as e:

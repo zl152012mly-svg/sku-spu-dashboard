@@ -209,6 +209,24 @@ W4=$(count_in "$APP/na/new_color_module.py" "covered_transfer = bool(")
 echo "  提示：新色是后台冻结快照 new_color_data.json，部署后必须在【系统设置】重跑「处理并生成报告」才生效。"
 echo "  重跑日志应出现 [new_color_module] 转单 SPU 归并: 别名 N 条；失败只打 WARNING，须主动确认。"
 
+say "4.11 新色跟进 v8 数据源诊断 / SPU-SKU 搜索 / 多店铺备注自查（2026-11-12）"
+X1=$(count_in "$APP/templates/na_index.html" "ncRowHitSku")
+[ "$X1" -ge 1 ] && ok "新色搜索支持按 SKU 命中并自动展开明细" || bad "新色页缺少 SKU 搜索，前端文件可能漏拉"
+X2=$(count_in "$APP/templates/na_index.html" "ncSourceBar")
+[ "$X2" -ge 1 ] && ok "新色页数据源诊断栏已就位" || bad "新色页缺少数据源诊断栏"
+X3=$(count_in "$APP/na/new_color_module.py" "os.path.getmtime(p)")
+[ "$X3" -ge 1 ] && ok "同名多份数据源按修改时间取最新一份" || bad "新色模块仍是字母序取第一份，可能读到旧动态库存表"
+X4=$(count_in "$APP/na/new_color_module.py" "source_warnings")
+[ "$X4" -ge 1 ] && ok "冻结快照写入数据源文件名/行数/多文件告警" || bad "新色模块缺少数据源诊断字段"
+X5=$(count_in "$APP/na_routes.py" "snapshot_file_mtime")
+[ "$X5" -ge 1 ] && ok "接口返回冻结快照文件的磁盘更新时间" || bad "na_routes.py 缺少快照时间，旧快照无法判断"
+X6=$(count_in "$APP/templates/na_index.html" "function ncNote(r)")
+X7=$(count_in "$APP/na_routes.py" "def note_rec(spu, store)")
+[ "$X6" -ge 1 ] && [ "$X7" -ge 1 ] && ok "同一 SPU 多店铺备注按 SPU|店铺 独立存储" || bad "多店铺备注改造未完整部署"
+echo "  提示：新色仍是后台冻结快照。部署后请重跑「处理并生成报告」，再到新色页核对顶部"
+echo "        「本次判定所用数据源」里的动态库存表文件名、在途行数与快照生成时间；"
+echo "        若显示「当前新色快照不含数据源信息」，说明快照未重算或新色判定失败（日志只打 WARNING）。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"
