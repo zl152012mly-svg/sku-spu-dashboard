@@ -59,6 +59,16 @@ v6 (2026-10-06 与用户确认: 生命周期 / 淘汰 收敛):
      仅淘汰 / 无有效在售 → baseline 为空 → 整行不进新色跟进 (自然也无需上架新色)
   4) 上架SKU 增加「后台状态」字段(原始 Listing/ItemReport 状态: 在售/停售/PUBLISHED/UNPUBLISHED…),
      供网页端「上架SKU 汇总」表格展示
+
+v7 (2026-11-10 与用户确认: 转单后新色漏判修复):
+  问题: 转单后库存 SKU 改名为 US-NS1916-OAK-XYA 这类「国家码前缀 + 新SPU + 渠道后缀」,
+        Listing 仍挂旧母体 NSCL1710-*, 导致新色完全不进「待上架」。
+  1) 颜色解析: extract_spu_from_sku 剥掉国家码前缀后, 同步剥掉 SKU 前缀再解析颜色;
+        SPU 本身保留前缀时不动。-XYA/-QYA 渠道后缀按用户口径保留原码, 标「待确认」。
+  2) SPU 归并: 从转单组自动推导「新名SPU → 母体SPU」, 款式表人工别名优先;
+        只归并无上架记录、且不在款式表主SPU里的孤儿 SPU, 歧义组跳过。
+  3) 口径不变: 转单组级覆盖 (group_listed_names / covered_transfer) 保持原样 ——
+        US-NS1918-OAK-XYA 与已在售的 NSCL1389-CHE 同组, 仍判「已上架」, 不算新色。
 """
 import os
 import glob
@@ -517,15 +527,20 @@ def compute_new_colors(base_dir, color_archive=None):
     # 语义: 同组内任一名字在某店铺非删除非淘汰上架 → 全组该颜色都视为已上架 → 不算新色。
     _transfer = load_transfer_groups(base_dir)
     transfer_sku_to_group = (_transfer[0] if _transfer else {}) or {}
+    transfer_group_names = (_transfer[1] if _transfer else {}) or {}
     _transfer_enabled = bool(transfer_sku_to_group)
 
     from process_script import (  # noqa: E402
         extract_spu_from_sku, parse_sku_color_suffix, load_existing_spu_list,
+        _strip_country_prefix,
     )
 
     style = load_existing_spu_list()
     known_spus = set(style['spu_set']) | set(style['spu_to_aliases'].keys()) | set(style['alias_to_spu'].keys())
     alias_to_spu = dict(style['alias_to_spu'])
+    # 转单组推导出的「新名SPU → 母体SPU」别名, 在 listing_status 读完后填充。
+    # norm_spu 是闭包, 调用时才读取该字典, 因此这里先占位不存在时序问题。
+    transfer_spu_alias = {}
 
     def norm_spu(spu):
         # 子件规则: 若该码本身就是款式表 A 列的独立 SPU (如套件 Z6SFRCCT0685 的子件
@@ -533,11 +548,22 @@ def compute_new_colors(base_dir, color_archive=None):
         # 判新色 (不同 SPU 各自出待上架新色); 仅「非独立SPU的别名码」才归并到母体。
         if spu in style['spu_set']:
             return spu
-        return alias_to_spu.get(spu, spu)
+        if spu in alias_to_spu:          # 款式表「新SPU-1/2/3」人工别名优先
+            return alias_to_spu[spu]
+        return transfer_spu_alias.get(spu, spu)   # 转单组自动归并兜底
 
     def sku_to_spu_color(sku):
         spu = extract_spu_from_sku(sku, known_spus)
-        color, _sfx = parse_sku_color_suffix(sku, spu)
+        # 2026-11-10 修复: extract_spu_from_sku 会剥掉国家码前缀
+        # (US-NS1916-OAK-XYA → NS1916), 但颜色解析原来仍拿原 SKU 去匹配 SPU,
+        # 前缀对不上 → 颜色恒为空 → 转单新名 SKU 连明细行都不会生成。
+        # SPU 不含前缀时同步剥掉 SKU 前缀再解析; SPU 本身保留前缀
+        # (如 US-SA-SW-…) 时维持原样, 不影响既有口径。
+        probe = sku
+        if not (sku == spu or sku.startswith(spu)):
+            probe = _strip_country_prefix(sku)
+        color, _sfx = parse_sku_color_suffix(probe, spu)
+        # -XYA / -QYA 等渠道后缀按用户口径保留原码, 由颜色档案判为「待确认」
         return norm_spu(spu), (color.upper() if color else '')
 
     # ---- 套件成员映射 (含生命周期) ----
@@ -576,6 +602,39 @@ def compute_new_colors(base_dir, color_archive=None):
             continue
         st = str(r['Publish Status'] or '').strip()
         listing_status[(WALMART_STORE[0], sku)] = st
+
+    # ---- 转单组自动推导「新名SPU → 母体SPU」别名 (2026-11-10) ----
+    # 背景: 转单后库存 SKU 改用新名 (US-NS1916-OAK-XYA), Listing 仍挂在旧母体
+    # (NSCL1710-*)。两个 SPU 不同 → 新 SPU 名下没有已上架基准 → 真新色被整行跳过。
+    # 款式表「新SPU-1」常写成 NSXY1916 之类, 与实际 SKU 前缀 NS1916 对不上,
+    # 因此这里从转单组自动补一层别名; 款式表人工别名始终优先 (见 norm_spu)。
+    # 安全边界: 只归并「款式表主SPU里没有、也没有任何上架记录」的孤儿 SPU;
+    # 组内候选母体不唯一 (两边都已上架 / 都是独立主SPU) 时整组跳过, 不误并。
+    listed_spus = set()
+    for (_store, _k14) in listing_status:
+        _s = extract_spu_from_sku(_k14, known_spus)
+        if _s:
+            listed_spus.add(_s)
+    _amb = 0
+    for _gid, _names in transfer_group_names.items():
+        _spus = {extract_spu_from_sku(n, known_spus) for n in _names}
+        _spus.discard('')
+        if len(_spus) < 2:
+            continue
+        _mothers = sorted(s for s in _spus if s in listed_spus)
+        if not _mothers:
+            _mothers = sorted(s for s in _spus if s in style['spu_set'])
+        if len(_mothers) != 1:
+            _amb += 1
+            continue
+        _mother = _mothers[0]
+        for _s in _spus - {_mother}:
+            if _s in style['spu_set'] or _s in listed_spus or _s in alias_to_spu:
+                continue
+            transfer_spu_alias[_s] = _mother
+    if transfer_spu_alias or _amb:
+        print('[new_color_module] 转单 SPU 归并: 别名 %d 条, 歧义组跳过 %d 组'
+              % (len(transfer_spu_alias), _amb))
 
     # ---- 在库 + 在途 池 (提前读取, 用于生命周期解析 + 后续建池) ----
     inv = pd.read_excel(f_inv, engine='openpyxl')

@@ -197,6 +197,18 @@ V6=$(count_in "$APP/redline_app/index.html" "> 3000) return")
 echo "  提示：部署后第一次仍会走完整链路一次并生成共享快照；之后关网页重进应秒开。"
 echo "  浏览器里访问 /redline/api/state-fp 可看到 20 位指纹；/redline/api/health 的 snapshot=true 表示共享快照已生成。"
 
+say "4.10 新色跟进 v7 转单后新色漏判修复自查（2026-11-12）"
+W1=$(count_in "$APP/na/new_color_module.py" "_strip_country_prefix")
+[ "$W1" -ge 1 ] && ok "US 国家码前缀已同步剥离（颜色不再恒为空）" || bad "新色模块缺少前缀修复，转单新名 SKU 仍不出行"
+W2=$(count_in "$APP/na/new_color_module.py" "transfer_spu_alias")
+[ "$W2" -ge 2 ] && ok "转单组自动推导 新SPU→母体SPU 别名" || bad "新色模块缺少 SPU 自动归并，真新色仍会被整行跳过"
+W3=$(count_in "$APP/na/new_color_module.py" "len(_mothers) != 1")
+[ "$W3" -ge 1 ] && ok "歧义转单组跳过（不会误并两个独立在售 SPU）" || warn "缺少歧义保护，建议核对 na/new_color_module.py"
+W4=$(count_in "$APP/na/new_color_module.py" "covered_transfer = bool(")
+[ "$W4" -ge 1 ] && ok "转单组级覆盖保持原样（旧名在售仍判已上架）" || warn "转单组级覆盖被改动，请复核业务口径"
+echo "  提示：新色是后台冻结快照 new_color_data.json，部署后必须在【系统设置】重跑「处理并生成报告」才生效。"
+echo "  重跑日志应出现 [new_color_module] 转单 SPU 归并: 别名 N 条；失败只打 WARNING，须主动确认。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"
