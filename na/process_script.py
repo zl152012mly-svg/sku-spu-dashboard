@@ -1478,8 +1478,10 @@ def process_all():
         print(f"[WARNING] 新色跟进判定失败(不影响主报告): {e}")
         traceback.print_exc()
         # v8 (2026-11-12): 失败只打 WARNING 时, 页面会继续展示旧冻结快照,
-        # 运营完全看不到「为什么动态库存表里的新色没识别」。把原因落盘并回传页面,
-        # 常见原因就是上传的动态库存表列名不含 SKU / 数量 / 预计到仓时间。
+        # 运营完全看不到「为什么动态库存表里的新色没识别」。把原因落盘并回传页面。
+        # 常见原因: 动态库存表列名不含 SKU / 数量 / 预计到仓时间; 或「预计到仓时间」
+        # 混了 Excel 真日期与文本/占位符 → object dtype, pandas agg('min') 抛 TypeError
+        # (v8.1 已修)。
         _err_text = "%s: %s" % (type(e).__name__, e)
         try:
             with open(OUTPUT_DIR / "new_color_error.json", 'w', encoding='utf-8') as _f:

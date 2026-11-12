@@ -230,6 +230,17 @@ echo "  提示：新色仍是后台冻结快照。部署后请重跑「处理并
 echo "        「本次判定所用数据源」里的动态库存表文件名、在途行数与快照生成时间；"
 echo "        若显示「当前新色快照不含数据源信息」，说明快照未重算或新色判定失败（日志只打 WARNING）。"
 
+say "4.12 新色跟进 v8.1 动态库存表日期列 dtype 修复自查（2026-11-12）"
+Y0=$(count_in "$APP/na/new_color_module.py" "eta=('预计到仓时间', 'min')")
+[ "$Y0" -eq 0 ] && ok "旧的 groupby.agg('min') 已移除（不再因 object dtype 整段失败）" || bad "仍存在旧写法，ECS 上会继续报 TypeError"
+Y1=$(count_in "$APP/na/new_color_module.py" "def _eta_text(v):")
+Y2=$(count_in "$APP/na/new_color_module.py" "def _num(s, idx):")
+[ "$Y1" -ge 1 ] && [ "$Y2" -ge 1 ] && ok "日期/数量逐行归一，与 pandas 版本无关" || bad "dtype 兼容修复未完整部署"
+Y3=$(count_in "$APP/templates/na_index.html" "日期列不要混文本")
+[ "$Y3" -ge 1 ] && ok "失败提示已指向真实排查方向" || warn "失败提示仍是旧文案，不影响功能但会误导排查"
+echo "  提示：本次修的是 ECS 诊断栏实报的 TypeError: agg function failed [how->min,dtype->object]。"
+echo "        修完后仍须重跑「处理并生成报告」；成功则红字自动消失，诊断栏改显示动态库存表文件名/在途行数。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

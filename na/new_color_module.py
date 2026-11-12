@@ -80,6 +80,16 @@ v8 (2026-11-12: 数据源可诊断 + 多文件选取口径):
      写进冻结快照, 网页端「本次判定所用数据源」直接显示实际文件名、修改时间与行数;
   3) /na/api/new-color 另附 snapshot_file_mtime (快照文件本身的磁盘更新时间),
      即使老快照没有 generated_at, 也能判断「处理并生成报告」有没有真的重写文件。
+
+v8.1 (2026-11-12 傍晚: 判定整体失败的 dtype 兼容修复, 零业务口径变更):
+  ECS 截图诊断栏报 `TypeError: agg function failed [how->min,dtype->object]`,
+  冻结快照停在 2026-10-28 → 说明「动态库存表有新色但页面没识别」的真因是
+  新色判定从那天起每次都整段失败(只打 WARNING), 根本没生成新快照, 不是判定逻辑。
+  原因: 「预计到仓时间」列 = Excel 真日期 + 文本日期/占位符混排 → read_excel 推断
+  为 object dtype, 而 pandas 2.x/3.x 的 `groupby.agg('min')` 不支持 object 列。
+  修复: 去掉 `tr.groupby('SKU').agg(qty=..., eta=('预计到仓时间','min'))`,
+  改为逐行归一成 'YYYY-MM-DD' 字符串后由 Python 取最早; 数量/库存量 `to_numeric`
+  防文本数字被 sum 成拼接字符串。输出格式、求和口径、最早口径与原实现一致。
 """
 import os
 import glob
@@ -816,18 +826,56 @@ def compute_new_colors(base_dir, color_archive=None):
                             group_listed_names[store][_g].add(_nm)
 
     # ---- 在库 + 在途 池 (inv/tr 已在上文提前读取并提取生命周期) ----
-    inv_qty = inv.groupby(inv['SKU'].astype(str).str.strip())['库存量'].sum().to_dict()
-
-    def fmt_eta(v):
-        if pd.isna(v):
+    # v8.1 (2026-11-12): 修复 ECS 上新色判定整体失败
+    #   TypeError: agg function failed [how->min,dtype->object]
+    # 根因: 动态库存表「预计到仓时间」常是 Excel 真日期 + 文本日期 + "-" / 空值混排,
+    #   read_excel 会把整列推断成 object; pandas 2.x/3.x 的 groupby.agg('min') 不支持
+    #   object 列。旧写法一抛异常, process_script 只打 WARNING → 冻结快照一直不重算
+    #   (2026-11-12 实测 ECS 上 new_color_data.json 停在 2026-10-28 17:33:55)。
+    # 修复: 不再让 pandas 对混合 dtype 列做 min。逐行归一成与旧 fmt_eta 等价的字符串,
+    #   由 Python 取字典序最小(=日期最早); 数量/库存量统一 to_numeric, 防文本数字被
+    #   sum 成字符串拼接后在 float() 处二次崩溃。
+    # 业务口径零改动: 在途量=按SKU求和, 在途ETA=按SKU最早, 输出仍是 'YYYY-MM-DD'。
+    def _eta_text(v):
+        """任意单元格 → 'YYYY-MM-DD' / 原文前10位 / '' (与旧 fmt_eta 等价)"""
+        if v is None:
             return ''
-        if hasattr(v, 'strftime'):
-            return v.strftime('%Y-%m-%d')
+        try:
+            if pd.isna(v):
+                return ''
+        except (TypeError, ValueError):
+            pass
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(v).strip()[:10]      # Excel 序列号等: 维持旧行为, 不猜日期
+        ts = pd.to_datetime(v, errors='coerce')
+        try:
+            if ts is not None and not pd.isna(ts):
+                return ts.strftime('%Y-%m-%d')
+        except (TypeError, ValueError, AttributeError):
+            pass
         return str(v).strip()[:10]
 
-    tr_g = tr.groupby('SKU').agg(qty=('数量', 'sum'), eta=('预计到仓时间', 'min')).reset_index()
-    transit_qty = dict(zip(tr_g['SKU'], tr_g['qty']))
-    transit_eta = {r['SKU']: fmt_eta(r['eta']) for _, r in tr_g.iterrows()}
+    def _num(s, idx):
+        if s is None:
+            return pd.Series(0.0, index=idx)
+        return pd.to_numeric(s, errors='coerce').fillna(0)
+
+    _inv_q = _num(inv['库存量'] if '库存量' in inv.columns else None, inv.index)
+    inv_qty = (pd.DataFrame({'SKU': inv['SKU'].astype(str).str.strip(), '_q': _inv_q})
+               .groupby('SKU')['_q'].sum().to_dict())
+
+    _eta_col = ('预计到仓时间' if '预计到仓时间' in tr.columns
+                else ('ETA' if 'ETA' in tr.columns else None))
+    _tr_sku = tr['SKU'].astype(str).str.strip().tolist()
+    _tr_q = _num(tr['数量'] if '数量' in tr.columns else None, tr.index).tolist()
+    _tr_eta = tr[_eta_col].tolist() if _eta_col else [None] * len(tr)
+    transit_qty = {}
+    transit_eta = {}
+    for _sku, _q, _e in zip(_tr_sku, _tr_q, _tr_eta):
+        transit_qty[_sku] = transit_qty.get(_sku, 0.0) + float(_q or 0)
+        _d = _eta_text(_e)
+        if _d and (_sku not in transit_eta or _d < transit_eta[_sku]):
+            transit_eta[_sku] = _d
 
     pool = {}
     for sku, q in inv_qty.items():

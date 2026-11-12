@@ -1245,7 +1245,7 @@ def api_new_color():
         data['snapshot_file_mtime'] = ''
     # v8 (2026-11-12): 上一次「处理并生成报告」若新色判定失败(只打 WARNING),
     # 页面展示的仍是旧冻结快照。把失败原因一起回传, 让运营直接在诊断栏看到,
-    # 不必登录 ECS 翻日志 —— 最常见就是上传的动态库存表列名不匹配。
+    # 不必登录 ECS 翻日志 —— 常见于动态库存表列名不匹配 / 日期列 dtype 混排(v8.1 已修)。
     try:
         with open(OUTPUT_DIR / "new_color_error.json", 'r', encoding='utf-8') as f:
             _nc_err = json.load(f)

@@ -2865,7 +2865,8 @@ function renderNcSource() {
     const errHtml = err ? ('<div style="color:#c62828;font-weight:600;margin-bottom:4px;">'
         + '⚠ 上次新色判定失败（' + escA(err.at || '') + '）：' + escA(err.error)
         + '<br><span style="font-weight:400;">页面显示的仍是上一次成功的旧快照。'
-        + '请核对动态库存表列名（需含 SKU / 数量 / 预计到仓时间）后重跑「处理并生成报告」。</span></div>') : '';
+        + '请确认动态库存表已上传、表头含 SKU / 数量 / 预计到仓时间，且日期列不要混文本与「-」占位符；'
+        + '修复后重跑「处理并生成报告」。若仍失败，把上面这行异常原文截图发技术支持。</span></div>') : '';
     if (!gen || !tr) {
         el.innerHTML = errHtml + '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
             + '　快照文件最后更新：' + escA(fm || '未知')
