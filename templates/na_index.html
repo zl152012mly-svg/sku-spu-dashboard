@@ -453,6 +453,7 @@ tbody td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle;
             <div class="view {% if not is_admin_bool %}active{% endif %}" id="view-new-arrival">
                 <!-- 备货备注同步状态提示 -->
                 <div id="stockNoteStatusBar" class="sn-status" style="margin-bottom:12px;font-size:12px;"></div>
+                <div id="rpSourceBar" style="display:none;margin-bottom:10px;font-size:12px;color:#4a5568;background:#f7f9fc;border:1px solid #e3e8f0;border-radius:8px;padding:8px 12px;line-height:1.8;"></div>
                 {% if is_admin_bool %}
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;">
                     <button class="btn btn-secondary" onclick="goSourceMgr()">更换数据源</button>
@@ -1237,6 +1238,7 @@ function loadReport() {
             finish();
             reportData = data;
             dataLoaded = true;
+            renderRpSource();
             renderReport();
             buildFieldFilters();
             // chips 填充后 .filters 高度变化, 重新测量
@@ -2847,6 +2849,51 @@ function ncNote(r) {
     return ncNotes[ncRowKey(r)] || ncNotes[r['SPU']] || {};
 }
 
+// ---- 数据源时间横幅 (v9, 2026-11-12): 每个模块都告知「看板生成时间 + 数据源上传时间」 ----
+// 背景: 新色跟进整段失败半个月没人发现(快照停在 10-28)。核心不是展示, 而是对比:
+// 数据源上传时间晚于快照生成时间 = 「传了但没重新生成」, 黄字提醒, 消除盲区。
+// modified 与快照 mtime 都截到分钟级比较, 同一分钟内「上传→生成」不会误报。
+function staleSourceCount(sources, snapshotMtime) {
+    const snap = String(snapshotMtime || '').slice(0, 16);
+    let count = 0, latest = '', total = 0;
+    if (!snap) return { count: 0, latest: '', total: 0 };
+    (sources || []).forEach(function(s) {
+        const m = String(s.modified || '').slice(0, 16);
+        if (s.found) total++;
+        if (s.found && m && m > snap) { count++; if (m > latest) latest = m; }
+    });
+    return { count: count, latest: latest, total: total };
+}
+
+function staleWarnHtml(stale, actionText) {
+    if (!stale || !stale.count) return '';
+    return '<div style="color:#b45309;font-weight:600;">⚠ 有 ' + stale.count +
+        ' 个数据源在本次看板生成之后上传过（最新 ' + escA(stale.latest) +
+        '），当前看到的是旧数据 —— ' + escA(actionText) + '。</div>';
+}
+
+// 新品跟进横幅: report_data.json 的生成时间 + 数据源实时上传时间 (接口 source_files)
+function renderRpSource() {
+    const el = document.getElementById('rpSourceBar');
+    if (!el || !reportData) return;
+    const gen = reportData.generated_at || '';
+    const fm = reportData.snapshot_file_mtime || '';
+    const srcs = reportData.source_files || [];
+    const stale = staleSourceCount(srcs, fm);
+    const rows = srcs.map(function(s) {
+        if (!s.found) return '<span style="color:#c62828;">' + escA(s.label) + '：未找到</span>';
+        return escA(s.label) + ' <b>' + escA(s.file) + '</b>（上传于 ' + escA(s.modified || '-') + '）';
+    });
+    let html = '<div><span style="font-weight:600;color:#2c5282;">本次报表所用数据源</span>'
+        + '　报表生成 ' + escA(gen || '-')
+        + '　快照文件更新 ' + escA(fm || '-')
+        + '　数据源就绪 ' + escA(srcs.filter(function(s) { return s.found; }).length) + '/' + escA(srcs.length) + '</div>';
+    html += staleWarnHtml(stale, isAdmin ? '请点上方「按当前数据源重算」' : '请联系管理员重新生成报表');
+    html += '<div style="margin-top:2px;">' + (rows.join('　｜　') || '暂无数据源') + '</div>';
+    el.innerHTML = html;
+    el.style.display = 'block';
+}
+
 // ---- 数据源诊断栏 (v8, 2026-11-12) ----
 // 冻结快照里写入「本次实际用了哪份文件 / 各读了多少行」, 排查「动态库存表有新色却没识别」
 // 时先确认: 快照是不是刚重跑的、动态库存表是不是刚上传的那一份。
@@ -2860,6 +2907,8 @@ function renderNcSource() {
     const fm = newColorData.snapshot_file_mtime || '';
     const tr = (sf.transit || {}).file || null;
     const err = newColorData.new_color_error || null;
+    // v9: 即使快照很老, 接口附的 source_files_live 也能对比出「数据源比快照新」
+    const stale = staleSourceCount(newColorData.source_files_live || [], fm);
     el.style.display = 'block';
     // 上一次处理时新色判定失败 → 页面读的是旧快照, 这里把失败原因直接摆在最上面
     const errHtml = err ? ('<div style="color:#c62828;font-weight:600;margin-bottom:4px;">'
@@ -2868,14 +2917,16 @@ function renderNcSource() {
         + '请确认动态库存表已上传、表头含 SKU / 数量 / 预计到仓时间，且日期列不要混文本与「-」占位符；'
         + '修复后重跑「处理并生成报告」。若仍失败，把上面这行异常原文截图发技术支持。</span></div>') : '';
     if (!gen || !tr) {
-        el.innerHTML = errHtml + '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
+        el.innerHTML = errHtml + staleWarnHtml(stale, '请重跑「处理并生成报告」')
+            + '<span style="color:#c62828;font-weight:600;">⚠ 当前新色快照不含数据源信息</span>'
             + '　快照文件最后更新：' + escA(fm || '未知')
             + '<br>请到【系统设置 → 数据源管理】确认动态库存表已上传，再点「处理并生成报告」重新生成快照；'
             + '在新快照生成前，页面显示的仍是旧判定结果。';
         return;
     }
     const n = function(v) { return escA(v == null ? '-' : v); };
-    let html = errHtml + '<div><span style="font-weight:600;color:#2c5282;">本次判定所用数据源</span>'
+    let html = errHtml + staleWarnHtml(stale, '请重跑「处理并生成报告」')
+        + '<div><span style="font-weight:600;color:#2c5282;">本次判定所用数据源</span>'
         + '　快照生成 ' + escA(gen) + '　快照文件更新 ' + escA(fm || '-')
         + '　<a href="javascript:void(0)" onclick="toggleNcSource(this)" style="color:#1a73e8;">展开查看全部文件 ▾</a></div>';
     html += '<div style="margin-top:2px;">动态库存表：<b>' + escA(tr.name) + '</b>'

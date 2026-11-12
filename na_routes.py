@@ -567,6 +567,49 @@ def find_current_file(pattern):
     return cloud_store.find_file_info(pattern, cloud_store.BUCKET_UPLOADS)
 
 
+# v9 (2026-11-12): 各模块看板头部显示「本次报表所用数据源」——
+# 背景: 2026-11-12 新色跟进整段失败半个月没人发现(快照停在 10-28), 用户要求
+# 每个模块都告知「看板生成时间 + 各数据源上传时间」, 避免再出现
+# 「上传成功、重新生成没报错、但看板一直用旧数据」的盲区。
+_SRC_SNAP = {'at': 0.0, 'data': None}
+_SRC_SNAP_TTL = 60.0          # 秒; 数据源管理页上传后由 _SRC_SNAP['at']=0 立即失效
+
+
+def _sources_snapshot(used_key):
+    """按用途取「数据源当前文件」实时快照 (带 60 秒进程内缓存)。
+
+    used_key: 'na'(新品) / 'nc'(新色) / 'clean'(清洗看板运营查询)。
+    每项: {id, label, found, file, modified, size_mb, shared}
+    modified 格式 'YYYY-MM-DD HH:MM' (与 find_file_info 一致)。
+    报表/新色接口是高频接口, 不能每个请求都打 8 次 OSS list —— 缓存 60 秒;
+    上传/重新处理路径会主动置空缓存, 保证「刚传完刷新就能看到新时间」。
+    """
+    now = datetime.datetime.now().timestamp()
+    if _SRC_SNAP['data'] is not None and now - _SRC_SNAP['at'] < _SRC_SNAP_TTL:
+        return [dict(x) for x in _SRC_SNAP['data'].get(used_key, [])]
+    snap = {k: [] for k in ('na', 'nc', 'clean')}
+    for s in DATA_SOURCES:
+        try:
+            info = _source_file_info(s)
+        except Exception:
+            info = {'found': False, 'name': '', 'modified': '', 'size_mb': 0}
+        item = {
+            'id': s['id'],
+            'label': s.get('name', s['id']),
+            'found': bool(info.get('found')),
+            'file': info.get('name', '') or '',
+            'modified': info.get('modified', '') or '',
+            'size_mb': info.get('size_mb', 0) or 0,
+            'shared': bool(s.get('shared')),
+        }
+        for k in ('na', 'nc', 'clean'):
+            if k in (s.get('used_by') or []):
+                snap[k].append(item)
+    _SRC_SNAP['data'] = snap
+    _SRC_SNAP['at'] = now
+    return [dict(x) for x in snap.get(used_key, [])]
+
+
 def auto_slim_xlsx(file_path):
     """自动剥离 xlsx 中的 xl/media/ 内嵌图片 (如果有)
     增长产品清单.xlsx 原始 216MB 含 200 张产品图, 处理脚本从不读取这些图片。
@@ -643,6 +686,7 @@ def save_uploaded_file(file, pattern):
     """
     original = file.filename
     filename = _clean_filename(original)
+    _SRC_SNAP['data'] = None      # v9: 上传后立刻失效数据源时间快照, 看板横幅即时反映
     file.save(str(BASE_DIR / filename))
     # 自动瘦身: 剥离 xlsx 内嵌图片 (如增长产品清单的 200 张产品图)
     slim_info = auto_slim_xlsx(BASE_DIR / filename)
@@ -1201,6 +1245,17 @@ def api_report_data():
     with open(report_data_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
+    # v9 (2026-11-12): 看板头部横幅 ——「报表生成时间 + 各数据源上传时间」。
+    # snapshot_file_mtime = report_data.json 的磁盘更新时间 (老快照没有 generated_at 也能判断);
+    # source_files = 按用途过滤的数据源实时快照 (文件名/上传时间), 60 秒进程内缓存。
+    # 前端用两者对比, 数据源比快照新时黄字提醒「请重新处理」, 避免本次这种盲区。
+    try:
+        data['snapshot_file_mtime'] = datetime.datetime.fromtimestamp(
+            report_data_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+    except OSError:
+        data['snapshot_file_mtime'] = ''
+    data['source_files'] = _sources_snapshot('na')
+
     # 附加 style_options (款式表中的运营组/运营 distinct 集合)
     data['style_options'] = load_style_options()
 
@@ -1243,6 +1298,10 @@ def api_new_color():
             path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
     except OSError:
         data['snapshot_file_mtime'] = ''
+    # v9 (2026-11-12): 接口侧另附数据源实时快照(文件名/上传时间)。快照内嵌的
+    # source_files 只有重跑后才有, 老快照用它无法判断「数据源是不是刚传的」;
+    # 这份 live 快照让前端即使面对老快照也能对比出「数据源比快照新」。
+    data['source_files_live'] = _sources_snapshot('nc')
     # v8 (2026-11-12): 上一次「处理并生成报告」若新色判定失败(只打 WARNING),
     # 页面展示的仍是旧冻结快照。把失败原因一起回传, 让运营直接在诊断栏看到,
     # 不必登录 ECS 翻日志 —— 常见于动态库存表列名不匹配 / 日期列 dtype 混排(v8.1 已修)。
@@ -1937,6 +1996,7 @@ def upload():
 def process():
     if not is_admin():
         return jsonify({'success': False, 'error': '权限不足: 仅管理员可处理数据'}), 403
+    _SRC_SNAP['data'] = None      # v9: 重新处理后快照 mtime 会变, 让横幅即时取新值
     results = run_scripts()
     all_success = all(r['success'] for r in results)
     report_data_path = OUTPUT_DIR / "report_data.json"

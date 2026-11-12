@@ -2014,6 +2014,23 @@ async function cloudLoadAll() {
     } else if (fp && !complete) {
       console.warn('部分数据源未恢复成功，本次不生成快照，下次将重新校验');
     }
+    // v9 (2026-11-12): 横幅带上「数据源 N 个 · 最新上传时间」——
+    // 与新品/新色看板的「看板生成时间 + 数据源上传时间」对齐, 一眼看出数据新旧。
+    try {
+      let latest = '', n = 0;
+      Object.keys(srcUpdated || {}).forEach(function (k) {
+        const t = String(srcUpdated[k] || '');
+        if (!t) return;
+        n++;
+        if (t > latest) latest = t;
+      });
+      if (n) {
+        const base = RL_IS_ADMIN
+          ? '数据源：ECS 工作台共享存储 · 由本模块「数据上传」独立维护（与清洗看板的数据源分开）'
+          : '数据源：ECS 工作台共享存储（只读）· 与管理员在本模块上传的最新数据一致';
+        bannerText(base + '｜ 数据源 ' + n + ' 个 · 最新上传 ' + latest.slice(5, 16), true);
+      }
+    } catch (e) {}
   } finally {
     _cloudRestoring = false;
   }

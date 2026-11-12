@@ -241,6 +241,18 @@ Y3=$(count_in "$APP/templates/na_index.html" "日期列不要混文本")
 echo "  提示：本次修的是 ECS 诊断栏实报的 TypeError: agg function failed [how->min,dtype->object]。"
 echo "        修完后仍须重跑「处理并生成报告」；成功则红字自动消失，诊断栏改显示动态库存表文件名/在途行数。"
 
+say "4.13 各模块看板数据源时间横幅自查（2026-11-12 v9）"
+Z1=$(count_in "$APP/templates/na_index.html" "rpSourceBar")
+Z2=$(count_in "$APP/templates/na_index.html" "staleSourceCount")
+[ "$Z1" -ge 1 ] && [ "$Z2" -ge 1 ] && ok "新品页横幅 + 数据源比快照新的自动提醒" || bad "新品页数据源时间横幅未部署"
+Z3=$(count_in "$APP/na_routes.py" "_sources_snapshot")
+Z4=$(count_in "$APP/na_routes.py" "source_files_live")
+[ "$Z3" -ge 1 ] && [ "$Z4" -ge 1 ] && ok "report-data / new-color 附数据源实时快照（60s 缓存）" || bad "后端数据源快照未部署"
+Z5=$(count_in "$APP/redline_app/index.html" "最新上传")
+[ "$Z5" -ge 1 ] && ok "红线价横幅显示数据源最新上传时间" || bad "红线价横幅未追加数据源时间"
+echo "  提示：横幅的核心是对比——数据源上传时间晚于快照生成时间 = 传了但没重新生成，黄字提醒。"
+echo "        上传/重新处理会立即失效 60 秒缓存，刚传完刷新就能看到新时间。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"
