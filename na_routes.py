@@ -462,7 +462,7 @@ DATA_SOURCES = [
         'name': 'SKU尺寸信息',
         'pattern': 'SKU尺寸货品查询运营结果*.csv',
         'accept': '.csv',
-        'desc': 'SKU重量和尺寸数据 (WeightOz+L/W/H)',
+        'desc': 'SKU重量和尺寸数据 (L/W/H 英寸; WeightOz 列名是历史遗留, 数值实际为磅 lb, 系统按磅判定 FedEx 类型)',
         'used_by': ['na', 'nc'],   # 用途: 新品跟进 + 新色跟进 (2026-10-27 起新色也用)
     },
     {

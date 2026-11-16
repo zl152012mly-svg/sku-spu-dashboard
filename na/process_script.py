@@ -81,13 +81,21 @@ def open_text_file(path):
 # ============================================================
 # 1. FedEx 包裹类型判定 (2026年规则)
 # ============================================================
+# ⚠ 单位铁律（2026-11-16 修正）：数据源「SKU尺寸货品查询运营结果*.csv」的
+#   `WeightOz` 列名是历史遗留（源自 Amazon 模板表头），**数值实际是磅(lb)**。
+#   三条证据：①3,000 个同 SKU 与 Walmart ItemReport 的 Shipping Weight（单位明确 LB）
+#   比值中位数 1.00（p10 1.00 / p90 1.03）；②若按盎司÷16，全量密度仅 3.1 kg/m³
+#   （比泡沫轻一个量级，物理不可能），按磅则约 50 kg/m³（带包装家具典型值）；
+#   ③CTTM1903 源值 176.37 与页面旧值 11.02 恰为 ÷16 关系。
+#   旧实现 `weight_oz / 16` 让全部重量缩小 16 倍 → 757 个 SKU 判定偏差，
+#   其中 71 个应判 LTL（不可上架）被漏判。此处改为按磅直取，勿再除 16。
 
-def determine_fedex_package_type(weight_oz, length, width, height):
-    """FedEx 2026: Standard / AHS-Dimension / Oversize / LTL"""
-    if not all(v is not None and v > 0 for v in [weight_oz, length, width, height]):
+def determine_fedex_package_type(weight_lb, length, width, height):
+    """FedEx 2026: Standard / AHS-Dimension / Oversize / LTL
+    weight_lb 单位为磅（直接取尺寸表 WeightOz 列数值，该列即磅）。"""
+    if not all(v is not None and v > 0 for v in [weight_lb, length, width, height]):
         return "Unknown"
 
-    weight_lb = weight_oz / 16.0
     dims = sorted([length, width, height], reverse=True)
     longest = dims[0]
     second_longest = dims[1]
@@ -106,21 +114,21 @@ def determine_fedex_package_type(weight_oz, length, width, height):
 
 
 
-def get_package_type_details(weight_oz, length, width, height):
-    """返回包裹类型及详细尺寸信息"""
-    if not all(v is not None and v > 0 for v in [weight_oz, length, width, height]):
+def get_package_type_details(weight_lb, length, width, height):
+    """返回包裹类型及详细尺寸信息（weight_lb 单位：磅）"""
+    if not all(v is not None and v > 0 for v in [weight_lb, length, width, height]):
         return {
             "package_type": "Unknown",
             "weight_lb": None, "longest_in": None,
             "second_longest_in": None, "length_plus_girth_in": None,
             "volume_cu_in": None,
         }
-    weight_lb = round(weight_oz / 16.0, 2)
+    weight_lb = round(weight_lb, 2)
     dims = sorted([length, width, height], reverse=True)
     longest, second_longest, shortest = dims[0], dims[1], dims[2]
     girth = 2 * (second_longest + shortest)
     return {
-        "package_type": determine_fedex_package_type(weight_oz, length, width, height),
+        "package_type": determine_fedex_package_type(weight_lb, length, width, height),
         "weight_lb": weight_lb,
         "longest_in": longest,
         "second_longest_in": second_longest,
@@ -134,7 +142,11 @@ def get_package_type_details(weight_oz, length, width, height):
 # ============================================================
 
 def load_sku_dimensions():
-    """读取SKU尺寸信息CSV"""
+    """读取SKU尺寸信息CSV
+
+    列约定：WeightOz = 重量，**数值单位为磅(lb)**（列名为历史遗留，见上方单位铁律）；
+    Length / Width / Height 单位英寸。
+    """
     filepath = find_data_file("SKU尺寸货品查询运营结果*.csv")
     if not filepath:
         print("[WARNING] SKU尺寸信息文件未找到")

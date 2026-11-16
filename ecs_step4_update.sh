@@ -253,6 +253,22 @@ Z5=$(count_in "$APP/redline_app/index.html" "最新上传")
 echo "  提示：横幅的核心是对比——数据源上传时间晚于快照生成时间 = 传了但没重新生成，黄字提醒。"
 echo "        上传/重新处理会立即失效 60 秒缓存，刚传完刷新就能看到新时间。"
 
+say "4.14 FedEx 包裹重量单位自查（2026-11-16 重量按磅）"
+W1=$(count_in "$APP/na/process_script.py" "/ 16.0")
+W2=$(count_in "$APP/na/process_script.py" "def determine_fedex_package_type(weight_lb")
+[ "$W1" -eq 0 ] && ok "重量换算已移除 ÷16（WeightOz 列数值即磅 lb）" || bad "仍存在 / 16.0 换算，重量会被缩小 16 倍"
+[ "$W2" -ge 1 ] && ok "判定函数已按 weight_lb 磅判定" || bad "判定函数签名未更新"
+W3=$(cd "$APP/na" 2>/dev/null && /usr/bin/python3 -c "
+import process_script as ps
+d = ps.get_package_type_details(176.37, 36.61, 36.61, 20.08)
+print('%s|%s' % (d['weight_lb'], d['package_type']))" 2>/dev/null)
+echo "  CTTM1903 实算: ${W3:-<计算失败>}"
+[ "$W3" = "176.37|LTL" ] && ok "CTTM1903 → 176.37 lb / LTL（与大件规则一致）" \
+  || bad "CTTM1903 实算不符（应 176.37|LTL），检查 na/process_script.py 是否为最新版"
+echo "  提示：本次修的是「数据源 WeightOz 列名是历史遗留，数值实际是磅」——旧实现 ÷16 让重量缩小 16 倍，"
+echo "        导致 757 个 SKU 判定偏差、71 个应判 LTL（不可上架）被漏判。"
+echo "        改完必须重跑「处理并生成报告」，新品页/新色页/Excel 导出的重量与 FedEx 类型才会更新。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"
