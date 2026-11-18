@@ -317,6 +317,21 @@ V6=$(count_in "$APP/redline_app/index.html" 'input.click();')
 echo "  提示：正确顺序=先在旧数据上点「归档当前期为历史期」→ 再上传新文件 → 再点计算；"
 echo "        趋势分析里「当前数据」始终可选，不需要先归档。"
 
+say "4.18 红线价趋势 v5 自查（搜索框 + 计算按钮 + 全量SKU补齐）"
+W1=$(count_in "$APP/redline_app/index.html" 'id="fSearchTrend"')
+W2=$(count_in "$APP/redline_app/index.html" 'id="calcTrendBtn"')
+W3=$(count_in "$APP/redline_app/index.html" 'function markTrendDirty()')
+W4=$(count_in "$APP/redline_app/index.html" 'const NO_LISTING_SENTINEL')
+W5=$(count_in "$APP/redline_app/index.html" 'const rlIndex = {};')
+W6=$(count_in "$APP/redline_app/index.html" '<th>上架SKU</th><th>平台</th><th>店铺</th><th>运营</th><th>运营组</th>')
+[ "$W1" -ge 1 ] && ok "趋势筛选行有搜索框（与 SKU 明细同规则：上架SKU + 库存SKU）" || bad "fSearchTrend 缺失"
+[ "$W2" -ge 1 ] && ok "「计算趋势」按钮已就位（勾选不再触发全量重绘，消除点不动）" || bad "calcTrendBtn 缺失"
+[ "$W3" -ge 1 ] && ok "条件变更只打脏标记，点计算按钮才刷新表格" || bad "markTrendDirty 缺失"
+[ "$W4" -ge 1 ] && [ "$W5" -ge 1 ] && ok "红线价表全量 SKU 补齐：无匹配行三列=无上架记录，指标取表内原列" || bad "全量补齐逻辑缺失"
+[ "$W6" -ge 1 ] && ok "趋势表新增运营/运营组两列（前 5 列固定）" || bad "运营/运营组列缺失"
+echo "  提示：历史期无上架记录行按当前红线价表补值；比较价/状态因无上架记录显示「—」；"
+echo "        周期/筛选/搜索选好后必须点「📊 计算趋势」才刷新，导出沿用同一口径。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

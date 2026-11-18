@@ -647,27 +647,28 @@
     max-height: calc(100vh - 260px);
     overflow: auto;
   }
-  #module-history #trendTable { min-width: 1880px; border-collapse: separate; border-spacing: 0; }
+  #module-history #trendTable { min-width: 2080px; border-collapse: separate; border-spacing: 0; }
   #module-history #trendTable th { background: #f0f3f9; position: sticky; top: 0; z-index: 4; white-space: nowrap; }
-  /* 前 3 列（SKU/平台/店铺）横向滚动时固定，右侧滚动条常驻框底 */
+  /* 前 5 列（SKU/平台/店铺/运营/运营组）横向滚动时固定，右侧滚动条常驻框底 */
   #module-history #trendTable th:nth-child(1), #module-history #trendTable td:nth-child(1) { position: sticky; left: 0; z-index: 5; background: #fff; }
   #module-history #trendTable th:nth-child(2), #module-history #trendTable td:nth-child(2) { position: sticky; left: 96px; z-index: 5; background: #fff; }
   #module-history #trendTable th:nth-child(3), #module-history #trendTable td:nth-child(3) { position: sticky; left: 168px; z-index: 5; background: #fff; }
-  #module-history #trendTable th:nth-child(1), #module-history #trendTable th:nth-child(2), #module-history #trendTable th:nth-child(3) { z-index: 6; background: #f0f3f9; }
+  #module-history #trendTable th:nth-child(4), #module-history #trendTable td:nth-child(4) { position: sticky; left: 353px; z-index: 5; background: #fff; }
+  #module-history #trendTable th:nth-child(5), #module-history #trendTable td:nth-child(5) { position: sticky; left: 453px; z-index: 5; background: #fff; }
+  #module-history #trendTable th:nth-child(-n+5) { z-index: 6; background: #f0f3f9; }
   .trend-up { color: var(--red); font-weight: 600; }   /* 差额变大=更差 */
   .trend-down { color: var(--green); font-weight: 600; } /* 差额变小=好转 */
   .trend-same { color: var(--muted); }
+  .trend-filters input[type=search] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 220px; }
+  .trend-dirty-hint { color: #b45309; font-size: 12px; font-weight: 600; }
+  .trend-note { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.6; margin-bottom: 10px; }
   /* 多期宽表：期次分组表头 + 波动列 */
   #trendTable thead tr.period-head th { background: var(--primary, #2563eb); color: #fff; text-align: center; font-weight: 600; }
   /* v3: 双行表头分层——第一行指标组(top:0)、第二行周期日期(top:34px)，避免滚动重叠 */
   #module-history #trendTable thead tr.period-head th { position: sticky; top: 0; z-index: 8; height: 34px; line-height: 34px; padding: 0 8px; background: var(--primary, #2563eb); color: #fff; text-align: center; font-weight: 600; }
   #module-history #trendTable thead tr.metric-head th { position: sticky; top: 34px; z-index: 7; height: 34px; line-height: 34px; padding: 0 8px; background: #e6ecf7; color: #1e3a8a; text-align: center; font-weight: 600; }
-  #module-history #trendTable thead tr.period-head th:nth-child(1) { z-index: 10; }
-  #module-history #trendTable thead tr.period-head th:nth-child(2) { z-index: 10; }
-  #module-history #trendTable thead tr.period-head th:nth-child(3) { z-index: 10; }
-  #module-history #trendTable thead tr.metric-head th:nth-child(1) { z-index: 9; }
-  #module-history #trendTable thead tr.metric-head th:nth-child(2) { z-index: 9; }
-  #module-history #trendTable thead tr.metric-head th:nth-child(3) { z-index: 9; }
+  #module-history #trendTable thead tr.period-head th:nth-child(-n+5) { z-index: 10; }
+  #module-history #trendTable thead tr.metric-head th:nth-child(-n+5) { z-index: 9; }
   #trendTable td.trend-delta-up { color: var(--red); font-weight: 600; }
   #trendTable td.trend-delta-down { color: var(--green); font-weight: 600; }
   #trendTable td.trend-delta-same { color: var(--muted); }
@@ -1114,14 +1115,18 @@ try {
         <div class="ms" id="msOpTrend" data-ph="全部运营"><button type="button" class="ms-btn"><span class="ms-label">全部运营</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
         <label>运营组筛选：</label>
         <div class="ms" id="msOgTrend" data-ph="全部运营组"><button type="button" class="ms-btn"><span class="ms-label">全部运营组</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
+        <input type="search" id="fSearchTrend" placeholder="搜索上架SKU / 库存SKU…">
+        <button id="calcTrendBtn" class="btn btn-primary">📊 计算趋势</button>
+        <span id="trendDirtyHint" class="trend-dirty-hint"></span>
         <button id="exportTrendBtn" class="btn btn-primary">导出趋势数据</button>
       </div>
       <div class="card" id="trendResultCard" style="display:none;">
         <h2>趋势对比表</h2>
+        <div class="trend-note">红线价表内的 SKU 全部纳入：未匹配到上架记录的 SKU，店铺 / 运营 / 运营组显示「无上架记录」，红线价 / 标准DDP / 选用DDP 取红线价表原列；比较价与状态因无上架记录显示「—」。<b>历史期无上架记录行按当前红线价表补值</b>。</div>
         <div class="table-wrap">
           <table id="trendTable">
             <thead class="sticky-thead" id="trendHead">
-              <tr><th>上架SKU</th><th>平台</th><th>店铺</th><th>请选择周期后生成</th></tr>
+              <tr><th>上架SKU</th><th>平台</th><th>店铺</th><th>运营</th><th>运营组</th><th>请选择周期后点「计算趋势」生成</th></tr>
             </thead>
             <tbody id="trendBody"></tbody>
           </table>
@@ -3548,24 +3553,12 @@ function initMultiSelects() {
   msInit('msOg', detail);
   msInit('msStoreAbnormal', () => renderAbnormal());
   msInit('msStoreMissing', () => renderAbnormal());
-  msInit('msPeriodTrend', () => {
-    const ids = msGet('msPeriodTrend');
-    if (ids.length > 8) { toast('最多同时对比 8 个周期，已忽略多余选择'); }
-    const periods = getTrendPeriods();
-    // 选中态直接存期次 id：当前数据出现/消失都不会让历史选择错位
-    _selectedPeriods = ids.slice(0, 8).filter(id => periods.some(p => String(p.id) === String(id)));
-    _selectedPeriods.sort((a, b) => {
-      const pa = periods.find(p => String(p.id) === String(a));
-      const pb = periods.find(p => String(p.id) === String(b));
-      return trendPeriodSortKey(pa).localeCompare(trendPeriodSortKey(pb));
-    });
-    renderTrendInit();   // 只刷下拉选项与筛选项（msSetSelected 不触发本回调）
-    if (_selectedPeriods.length >= 2) renderTrendTable();
-    else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) ddpTrendChart.clear(); }
-  });
-  msInit('msStoreTrend', () => renderTrendTable());
-  msInit('msOpTrend', () => renderTrendTable());
-  msInit('msOgTrend', () => renderTrendTable());
+  // v5：周期/筛选勾选只记录选择并提示「待计算」，绝不在这里重绘表格或重建下拉 DOM
+  //     （原实现每次勾选都同步渲染 1.9 万行宽表 + msSetOptions 重建 checkbox，导致下拉「点不动」）
+  msInit('msPeriodTrend', () => { _selectedPeriods = msGet('msPeriodTrend'); markTrendDirty(); });
+  msInit('msStoreTrend', () => markTrendDirty());
+  msInit('msOpTrend', () => markTrendDirty());
+  msInit('msOgTrend', () => markTrendDirty());
   if (!_msOutsideBound) {
     _msOutsideBound = true;
     document.addEventListener('click', () => {
@@ -4849,6 +4842,8 @@ function exportMissingData() {
 /* ================= 趋势分析模块 ================= */
 let _selectedPeriods = []; // 选中的期次 id（字符串），可含虚拟「当前数据」
 const CURRENT_PERIOD_ID = '__current__';
+/* v5：无法匹配到上架记录/运营/运营组时三列统一显示该文案；筛选项也含此值 */
+const NO_LISTING_SENTINEL = '无上架记录';
 /* 趋势对比用的完整期次表：虚拟当前数据 + 已归档历史期（不写入 _periods/云端） */
 function getTrendPeriods() {
   const hasCur = !!(state && state.result && state.result.rows && state.result.rows.length);
@@ -4891,15 +4886,28 @@ function renderTrendInit() {
   msSetOptions('msPeriodTrend', periodOpts);
   msSetSelected('msPeriodTrend', _selectedPeriods.map(String));
   // 筛选项覆盖「当前数据 + 历史期」，避免当前期新增店铺/运营选不到
+  // v5：红线价表全量补齐后，三列都可能出现「无上架记录」，筛选项必须含该值才能筛得到
   const allRows = periods.flatMap(p => p.rows || []);
-  const stores = [...new Set(allRows.map(r => r.store))].sort();
-  const operators = [...new Set(allRows.map(r => r.operator))].filter(Boolean).sort();
-  const operatorGroups = [...new Set(allRows.map(r => r.operatorGroup))].filter(Boolean).sort();
+  const stores = [...new Set(allRows.map(r => r.store).concat([NO_LISTING_SENTINEL]))].filter(Boolean).sort();
+  const operators = [...new Set(allRows.map(r => r.operator).concat([NO_LISTING_SENTINEL]))].filter(Boolean).sort();
+  const operatorGroups = [...new Set(allRows.map(r => r.operatorGroup).concat([NO_LISTING_SENTINEL]))].filter(Boolean).sort();
 
   const optsOf = items => items.map(v => ({ value: v, label: v }));
   msSetOptions('msStoreTrend', optsOf(stores));
   msSetOptions('msOpTrend', optsOf(operators));
   msSetOptions('msOgTrend', optsOf(operatorGroups));
+}
+/* v5：周期/筛选/搜索变更后只打脏标记，点「计算趋势」才真正渲染 */
+let _trendDirty = false;
+function markTrendDirty() {
+  _trendDirty = true;
+  const h = $('trendDirtyHint');
+  if (h) h.textContent = '⚠ 条件已变更，请点「计算趋势」刷新';
+}
+function clearTrendDirty() {
+  _trendDirty = false;
+  const h = $('trendDirtyHint');
+  if (h) h.textContent = '';
 }
 
 // 导出趋势数据
@@ -4915,7 +4923,9 @@ function exportTrendData() {
     build: () => {
       const sel = selectedTrendPeriods();
       const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
-      const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
+      const qEl = $('fSearchTrend');
+      const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
+                                               q: qEl ? qEl.value : '' });
       const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
                        { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
       const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
@@ -4997,28 +5007,64 @@ function rlDelta(curr, prev) {
   return c - p;
 }
 /* 返回 { rows:[{sku,platform,store,operator,operatorGroup,cells:{[periodId]:{price,totalRedLine,biaoDdp,xuanDdp,status}}}], totals:{[periodId]:{biaoDdp,xuanDdp,totalRedLine,n}} }
-   cells 中缺失值为 null；totals 只对有数值的取平均，供折线图用。 */
+   cells 中缺失值为 null；totals 只对有数值的取平均，供折线图用。
+   v5：红线价表全量 SKU 纳入——某期无匹配上架记录的 SKU 补「无上架记录」行，指标取红线价表原列。 */
 function rlBuildTrendMatrix(sel, filters) {
   const f = filters || {};
+  const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+  // 搜索规则与 SKU 明细一致：clean(上架SKU) + 所有 bom 成员库存SKU，大小写不敏感、去首尾空格
+  const q = clean(f.q || '');
+  const hitSearch = r => {
+    if (!q) return true;
+    const hay = clean(r.sku) + (r.bom ? r.bom.map(b => clean(b.shipSku)).join('') : '');
+    return hay.indexOf(q) >= 0;
+  };
   const flt = r => {
     if (f.store && f.store.length && f.store.indexOf(r.store) < 0) return false;
     if (f.operator && f.operator.length && f.operator.indexOf(r.operator) < 0) return false;
     if (f.operatorGroup && f.operatorGroup.length && f.operatorGroup.indexOf(r.operatorGroup) < 0) return false;
-    return true;
+    return hitSearch(r);
   };
-  const byKey = {}, totals = {};
-  sel.forEach(p => { totals[p.id] = { biaoDdp: 0, xuanDdp: 0, totalRedLine: 0, n: 0 }; });
+  const byKey = {}, totals = {}, seenSkuByPeriod = {};
+  sel.forEach(p => { totals[p.id] = { biaoDdp: 0, xuanDdp: 0, totalRedLine: 0, n: 0 }; seenSkuByPeriod[p.id] = {}; });
+  // 红线价表索引：SKU(大写) → 原列值（seller/biaoDdp/xuanDdp）
+  const rlIndex = {};
+  ((state && state.redLine && state.redLine.rows) || []).forEach(r => {
+    const s = clean(r.sku); if (!s) return;
+    if (!rlIndex[s]) rlIndex[s] = { sku: r.sku, seller: r.seller, biaoDdp: r.biaoDdp, xuanDdp: r.xuanDdp };
+  });
+
   sel.forEach(p => {
+    // 先登记该期全部真实 SKU（不受筛选影响），避免被筛掉的真实行又被补齐成重复行
+    (p.rows || []).forEach(r => { seenSkuByPeriod[p.id][clean(r.sku)] = true; });
     (p.rows || []).filter(flt).forEach(r => {
       const k = r.sku + '|' + r.platform + '|' + r.store;
       if (!byKey[k]) byKey[k] = { sku: r.sku, platform: r.platform, store: r.store,
         operator: r.operator || '', operatorGroup: r.operatorGroup || '', cells: {} };
-      const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
       const cell = { price: num(r.price), totalRedLine: num(r.totalRedLine), biaoDdp: num(r.biaoDdp),
                      xuanDdp: num(r.xuanDdp), status: r.status || '' };
       byKey[k].cells[p.id] = cell;
       if (!byKey[k].operator && r.operator) byKey[k].operator = r.operator;
       if (!byKey[k].operatorGroup && r.operatorGroup) byKey[k].operatorGroup = r.operatorGroup;
+      const t = totals[p.id];
+      if (cell.biaoDdp !== null) { t.biaoDdp += cell.biaoDdp; t.n++; }
+      if (cell.xuanDdp !== null) t.xuanDdp += cell.xuanDdp;
+      if (cell.totalRedLine !== null) t.totalRedLine += cell.totalRedLine;
+    });
+    // 补齐：红线价表里存在、但该期没有任何匹配上架记录的 SKU
+    Object.keys(rlIndex).forEach(skuUp => {
+      if (seenSkuByPeriod[p.id][skuUp]) return;
+      const src = rlIndex[skuUp];
+      const synth = { sku: src.sku, platform: '', store: NO_LISTING_SENTINEL,
+                      operator: NO_LISTING_SENTINEL, operatorGroup: NO_LISTING_SENTINEL, bom: null };
+      if (!flt(synth)) return;
+      const k = src.sku + '|' + NO_LISTING_SENTINEL + '|' + NO_LISTING_SENTINEL;
+      if (!byKey[k]) byKey[k] = { sku: src.sku, platform: '', store: NO_LISTING_SENTINEL,
+        operator: NO_LISTING_SENTINEL, operatorGroup: NO_LISTING_SENTINEL, cells: {} };
+      // 无上架记录 → 比较价/状态无值；红线价取 Seller，标准/选用DDP 取红线价表原列（历史期同样按当前表补）
+      const cell = { price: null, totalRedLine: num(src.seller), biaoDdp: num(src.biaoDdp),
+                     xuanDdp: num(src.xuanDdp), status: '' };
+      byKey[k].cells[p.id] = cell;
       const t = totals[p.id];
       if (cell.biaoDdp !== null) { t.biaoDdp += cell.biaoDdp; t.n++; }
       if (cell.xuanDdp !== null) t.xuanDdp += cell.xuanDdp;
@@ -5044,18 +5090,20 @@ function rlDeltaHtml(d) {
   return '<td class="' + cls + '">' + (d > 0 ? '+' : '') + fmtMoney(d) + ' ' + arrow + '</td>';
 }
 function renderTrendTable() {
-  if (_selectedPeriods.length < 2) return;
   const sel = selectedTrendPeriods();
-  if (sel.length < 2) return;
+  if (sel.length < 2) { toast('请先在「周期筛选」选择至少 2 个周期，再点「计算趋势」'); return; }
   const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
-  const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
+  const qEl = $('fSearchTrend');
+  const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
+                                           q: qEl ? qEl.value : '' });
   $('trendResultCard').style.display = 'block';
-  // v3: 两级表头——第一行按【指标】分组，第二行各指标下按周期从左到右（远→近）
+  clearTrendDirty();
+  // v5: 两级表头——前 5 列固定（SKU/平台/店铺/运营/运营组），第一行按【指标】分组，第二行各指标下按周期从左到右（远→近）
   const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
                    { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
   const deltaKeys = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' }, { k: 'xuanDdp', label: '选用DDP' }];
-  let h1 = '<tr class="period-head"><th>上架SKU</th><th>平台</th><th>店铺</th>';
-  let h2 = '<tr class="metric-head"><th></th><th></th><th></th>';
+  let h1 = '<tr class="period-head"><th>上架SKU</th><th>平台</th><th>店铺</th><th>运营</th><th>运营组</th>';
+  let h2 = '<tr class="metric-head"><th></th><th></th><th></th><th></th><th></th>';
   metrics.forEach(m => {
     h1 += '<th colspan="' + sel.length + '">' + m.label + '</th>';
     sel.forEach(p => { h2 += '<th>' + trendPeriodLabel(p) + '</th>'; });
@@ -5067,7 +5115,9 @@ function renderTrendTable() {
   h1 += '</tr>'; h2 += '</tr>';
   $('trendHead').innerHTML = h1 + h2;
   $('trendBody').innerHTML = matrix.rows.map(row => {
-    let tds = '<td>' + esc(row.sku) + '</td><td>' + (PLATFORM_LABEL[row.platform] || row.platform) + '</td><td class="store-clip" title="' + esc(row.store) + '">' + esc(row.store) + '</td>';
+    let tds = '<td>' + esc(row.sku) + '</td><td>' + (row.platform ? (PLATFORM_LABEL[row.platform] || row.platform) : '—') + '</td>'
+      + '<td class="store-clip" title="' + esc(row.store) + '">' + esc(row.store) + '</td>'
+      + '<td>' + esc(row.operator || '—') + '</td><td>' + esc(row.operatorGroup || '—') + '</td>';
     // 同指标跨周期连排（与表头列序严格一致）
     metrics.forEach(m => {
       sel.forEach(p => {
@@ -5124,6 +5174,10 @@ function renderWithModules() {
 /* ================= 启动 ================= */
 window.addEventListener('resize', () => { if (pieChart) pieChart.resize(); if (barChart) barChart.resize(); });
 $('calcBtn').addEventListener('click', doCalc);
+// v5：趋势分析独立「计算趋势」按钮 + 搜索框（只打脏标记，不自动重绘）
+$('calcTrendBtn').addEventListener('click', () => { renderTrendTable(); });
+const trendSearchEl = $('fSearchTrend');
+if (trendSearchEl) trendSearchEl.addEventListener('input', markTrendDirty);
   // 调试状态检查：工作台 iframe 保活后隐藏页也会继续存活，默认不跑定时器，
   // 只有显式带 ?debug=1 才每 5 秒打印一次，避免后台空转刷日志。
   try {
