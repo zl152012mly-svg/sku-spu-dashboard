@@ -305,7 +305,7 @@ say "4.17 红线价趋势 v4 自查（去 chip + 只留区间 + 当前数据 + �
 V1=$(count_in "$APP/redline_app/index.html" 'id="trendPeriodPanel"')
 V2=$(count_in "$APP/redline_app/index.html" 'function trendPeriodLabel(p)')
 V3=$(count_in "$APP/redline_app/index.html" 'function getTrendPeriods()')
-V4=$(count_in "$APP/redline_app/index.html" 'const sel = selectedTrendPeriods();')
+V4=$(count_in "$APP/redline_app/index.html" 'const sel = o.sel || selectedTrendPeriods();')
 V5=$(count_in "$APP/redline_app/index.html" '归档当前期为历史期（不上传）')
 V6=$(count_in "$APP/redline_app/index.html" 'input.click();')
 [ "$V1" -eq 0 ] && ok "顶部「选择对比期数」chip 已移除" || bad "chip 仍在，趋势页会有两套选择入口"
@@ -346,6 +346,21 @@ X6=$(count_in "$APP/redline_app/index.html" "<th>最新上架SKU最低价</th>")
 [ "$X5" -ge 1 ] && ok "Walmart 促销过期改用 Comparison Price（原价）+ 运费，原价无效回退并标注" || bad "促销过期价口径未更新"
 echo "  提示：多期管理 chip 只显示 10-31~11-16；表头列显示 10-31、10-15、11-17（远→近）；"
 echo "        促销已结束行仍保留标记，说明文案已改为「已按原价计算」。"
+
+say "4.20 红线价趋势 v7 自查（固定列对齐 + 上次分析结果保留）"
+Y1=$(count_in "$APP/redline_app/index.html" 'function rlAlignTrendSticky()')
+Y2=$(count_in "$APP/redline_app/index.html" 'left: 558px; width: 92px')
+Y3=$(count_in "$APP/redline_app/index.html" 'left: 96px')
+Y4=$(count_in "$APP/redline_app/index.html" "const RL_TREND_SESSION_KEY = 'trend_session_v1';")
+Y5=$(count_in "$APP/redline_app/index.html" 'restoreTrendSession();')
+Y6=$(count_in "$APP/redline_app/index.html" 'window.__rlTrendDisplay')
+Y7=$(count_in "$APP/redline_app/index.html" 'id="trendSessionHint"')
+[ "$Y1" -ge 1 ] && [ "$Y2" -ge 1 ] && [ "$Y3" -eq 0 ] && ok "前 5 列定宽 + left 累计一致，JS 按真实列宽校准（横向滚动不再重叠）" || bad "固定列 left 偏移未修复"
+[ "$Y4" -ge 1 ] && [ "$Y5" -ge 1 ] && ok "点「计算趋势」的结果写入本机会话，进入趋势页默认恢复" || bad "趋势结果持久化缺失"
+[ "$Y6" -ge 3 ] && ok "导出直接复用屏幕展示矩阵，与页面同口径" || bad "导出未复用展示快照"
+[ "$Y7" -ge 1 ] && ok "筛选行显示「已恢复 xx 的分析结果」提示" || bad "会话提示缺失"
+echo "  提示：横向滚动时前 5 列（SKU/平台/店铺/运营/运营组）保持固定不重叠；"
+echo "        上次计算的选择/筛选/搜索/结果会保留，直到再次点「📊 计算趋势」才换新。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then

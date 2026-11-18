@@ -649,13 +649,19 @@
   }
   #module-history #trendTable { min-width: 2080px; border-collapse: separate; border-spacing: 0; }
   #module-history #trendTable th { background: #f0f3f9; position: sticky; top: 0; z-index: 4; white-space: nowrap; }
-  /* 前 5 列（SKU/平台/店铺/运营/运营组）横向滚动时固定，右侧滚动条常驻框底 */
-  #module-history #trendTable th:nth-child(1), #module-history #trendTable td:nth-child(1) { position: sticky; left: 0; z-index: 5; background: #fff; }
-  #module-history #trendTable th:nth-child(2), #module-history #trendTable td:nth-child(2) { position: sticky; left: 96px; z-index: 5; background: #fff; }
-  #module-history #trendTable th:nth-child(3), #module-history #trendTable td:nth-child(3) { position: sticky; left: 168px; z-index: 5; background: #fff; }
-  #module-history #trendTable th:nth-child(4), #module-history #trendTable td:nth-child(4) { position: sticky; left: 353px; z-index: 5; background: #fff; }
-  #module-history #trendTable th:nth-child(5), #module-history #trendTable td:nth-child(5) { position: sticky; left: 453px; z-index: 5; background: #fff; }
+  /* v7：前 5 列（SKU/平台/店铺/运营/运营组）横向滚动时固定。
+     固定宽度 + left 与累计宽度严格一致；JS rlAlignTrendSticky() 再按实际渲染宽度校准，
+     避免原来 left 偏移小于真实列宽时后面的数据列钻进固定列造成重叠错位。 */
+  #module-history #trendTable th:nth-child(-n+5), #module-history #trendTable td:nth-child(-n+5) {
+    position: sticky; z-index: 5; background: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #module-history #trendTable th:nth-child(1), #module-history #trendTable td:nth-child(1) { left: 0;    width: 190px; min-width: 190px; max-width: 190px; }
+  #module-history #trendTable th:nth-child(2), #module-history #trendTable td:nth-child(2) { left: 190px; width: 86px;  min-width: 86px;  max-width: 86px; }
+  #module-history #trendTable th:nth-child(3), #module-history #trendTable td:nth-child(3) { left: 276px; width: 190px; min-width: 190px; max-width: 190px; }
+  #module-history #trendTable th:nth-child(4), #module-history #trendTable td:nth-child(4) { left: 466px; width: 92px;  min-width: 92px;  max-width: 92px; }
+  #module-history #trendTable th:nth-child(5), #module-history #trendTable td:nth-child(5) { left: 558px; width: 92px;  min-width: 92px;  max-width: 92px; }
   #module-history #trendTable th:nth-child(-n+5) { z-index: 6; background: #f0f3f9; }
+  #module-history #trendTable td .store-clip { max-width: none; width: 100%; }
   .trend-up { color: var(--red); font-weight: 600; }   /* 差额变大=更差 */
   .trend-down { color: var(--green); font-weight: 600; } /* 差额变小=好转 */
   .trend-same { color: var(--muted); }
@@ -1118,6 +1124,7 @@ try {
         <input type="search" id="fSearchTrend" placeholder="搜索上架SKU / 库存SKU…">
         <button id="calcTrendBtn" class="btn btn-primary">📊 计算趋势</button>
         <span id="trendDirtyHint" class="trend-dirty-hint"></span>
+        <span id="trendSessionHint" class="trend-dirty-hint" style="color:var(--muted);font-weight:400;"></span>
         <button id="exportTrendBtn" class="btn btn-primary">导出趋势数据</button>
       </div>
       <div class="card" id="trendResultCard" style="display:none;">
@@ -3892,7 +3899,11 @@ function switchModule(name) {
     renderTable();
   }
   if (name === 'abnormal' && state.result) renderAbnormal();
-  if (name === 'history') renderTrendInit();
+  if (name === 'history') {
+    renderTrendInit();          // 先刷周期/筛选项
+    restoreTrendSession();      // v7：默认恢复上次「计算趋势」的结果，直到再次点计算
+    rlAlignTrendStickySoon();   // v7：模块由隐藏变可见，按真实列宽重新校准固定列
+  }
 }
 
 /* ================= 多期历史管理（周期归档，最多30期） ================= */
@@ -4869,6 +4880,74 @@ let _selectedPeriods = []; // 选中的期次 id（字符串），可含虚拟�
 const CURRENT_PERIOD_ID = '__current__';
 /* v5：无法匹配到上架记录/运营/运营组时三列统一显示该文案；筛选项也含此值 */
 const NO_LISTING_SENTINEL = '无上架记录';
+
+/* v7：上次趋势分析结果持久化（本机 IndexedDB，复用 redline_calc_cache/result 库，不升版本）
+   只有点「计算趋势」才写入；之后每次进入趋势分析默认恢复这份结果，直到再次点计算。
+   保存的是完整展示矩阵（含各期数值），因此即使期间上传了新数据，页面仍显示上次分析，
+   不会偷偷变成新数据；点「计算趋势」后按新数据重算并覆盖。 */
+const RL_TREND_SESSION_KEY = 'trend_session_v1';
+function rlTrendSessionGet() {
+  try {
+    return rlCalcDb().then(db => new Promise(resolve => {
+      try {
+        const r = db.transaction(RL_CALC_STORE, 'readonly').objectStore(RL_CALC_STORE).get(RL_TREND_SESSION_KEY);
+        r.onsuccess = () => { try { db.close(); } catch (e) {} resolve(r.result || null); };
+        r.onerror = () => { try { db.close(); } catch (e) {} resolve(null); };
+      } catch (e) { try { db.close(); } catch (e2) {} resolve(null); }
+    })).catch(() => null);
+  } catch (e) { return Promise.resolve(null); }
+}
+function rlTrendSessionPut(sess) {
+  try {
+    return rlCalcDb().then(db => new Promise(resolve => {
+      try {
+        const tx = db.transaction(RL_CALC_STORE, 'readwrite');
+        tx.objectStore(RL_CALC_STORE).put(sess, RL_TREND_SESSION_KEY);
+        tx.oncomplete = () => { try { db.close(); } catch (e) {} resolve(true); };
+        tx.onerror = () => { try { db.close(); } catch (e) {} resolve(false); };
+      } catch (e) { try { db.close(); } catch (e2) {} resolve(false); }
+    })).catch(() => false);
+  } catch (e) { return Promise.resolve(false); }
+}
+function setTrendSessionHint(txt) {
+  const el = $('trendSessionHint'); if (el) el.textContent = txt || '';
+}
+function trendSavedTime(at) {
+  try { return new Date(at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+  catch (e) { return ''; }
+}
+let _trendRestoring = false;
+async function restoreTrendSession() {
+  if (_trendRestoring) return;
+  _trendRestoring = true;
+  try {
+    const sess = await rlTrendSessionGet();
+    if (!sess || !sess.matrix || !sess.matrix.rows || !sess.ids || sess.ids.length < 2) { _trendRestoring = false; return; }
+    // 每次进入都把筛选/周期/搜索恢复到上次「计算趋势」时的状态（未点计算的临时勾选不保留）
+    _selectedPeriods = sess.ids.slice();
+    msSetSelected('msPeriodTrend', sess.ids.map(String));
+    const f = sess.filters || {};
+    msSetSelected('msStoreTrend', f.store || []);
+    msSetSelected('msOpTrend', f.operator || []);
+    msSetSelected('msOgTrend', f.operatorGroup || []);
+    const qEl = $('fSearchTrend'); if (qEl) qEl.value = sess.search || '';
+    clearTrendDirty();
+    const key = 'saved:' + sess.at;
+    setTrendSessionHint('已恢复 ' + trendSavedTime(sess.at) + ' 的分析结果；改条件后点「计算趋势」更新');
+    if (window.__rlTrendDisplay && window.__rlTrendDisplay.key === key) { _trendRestoring = false; return; }
+    const periods = getTrendPeriods();
+    const sel = sess.ids.map(id => periods.find(p => String(p.id) === String(id))).filter(Boolean);
+    if (sel.length !== sess.ids.length) {
+      // 期次被撤回/不存在：不展示过期矩阵，避免串期
+      const card = $('trendResultCard'); if (card) card.style.display = 'none';
+      window.__rlTrendDisplay = null;
+      setTrendSessionHint('上次结果的周期已变化，请重新点「计算趋势」');
+    } else {
+      renderTrendTable({ sel: sel, matrix: sess.matrix, restore: true, at: sess.at });
+    }
+  } catch (e) { console.warn('恢复上次趋势结果失败，保持空白等待重新计算', e); }
+  _trendRestoring = false;
+}
 /* 趋势对比用的完整期次表：虚拟当前数据 + 已归档历史期（不写入 _periods/云端） */
 function getTrendPeriods() {
   const hasCur = !!(state && state.result && state.result.rows && state.result.rows.length);
@@ -4953,16 +5032,14 @@ function exportTrendData() {
     label: '导出趋势数据',
     format: 'csv',
     precheck: () => {
-      if (_selectedPeriods.length < 2) return { error: '请先在趋势分析页选择至少两个周期再导出' };
-      if (selectedTrendPeriods().length !== _selectedPeriods.length) return { error: '所选期次数据不存在，请重新选择' };
+      const d = window.__rlTrendDisplay;
+      if (!d || !d.matrix || !d.matrix.rows || (d.ids || []).length < 2) return { error: '请先点「计算趋势」生成结果再导出' };
       return null;
     },
     build: () => {
-      const sel = selectedTrendPeriods();
-      const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
-      const qEl = $('fSearchTrend');
-      const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
-                                               q: qEl ? qEl.value : '' });
+      // v7：导出直接复用当前屏幕展示的矩阵（可能是上次保存的分析结果），与页面严格同口径
+      const d = window.__rlTrendDisplay;
+      const sel = d.sel, matrix = d.matrix;
       const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
                        { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '上架SKU最低成交价' }, { k: 'status', label: '状态' }];
       const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
@@ -5126,13 +5203,41 @@ function rlDeltaHtml(d) {
   const arrow = d > 0 ? '↑' : d < 0 ? '↓' : '';
   return '<td class="' + cls + '">' + (d > 0 ? '+' : '') + fmtMoney(d) + ' ' + arrow + '</td>';
 }
-function renderTrendTable() {
-  const sel = selectedTrendPeriods();
+/* v7：按实际渲染列宽校准前 5 列 sticky left。
+   CSS 已给固定列定宽，但缩放/字体/浏览器差异仍可能让累计宽度与 left 不一致；
+   以第一行表头的真实宽度为准重算 left，横向滚动时固定列与数据列不再重叠错位。 */
+function rlAlignTrendSticky() {
+  const table = $('trendTable');
+  if (!table || !table.offsetParent) return;            // 模块隐藏时宽度为 0，不校准
+  const headRow = table.querySelector('thead tr.period-head') || table.querySelector('thead tr');
+  if (!headRow || headRow.children.length < 5) return;
+  const lefts = []; let acc = 0;
+  for (let i = 0; i < 5; i++) { lefts.push(Math.round(acc)); acc += headRow.children[i].getBoundingClientRect().width; }
+  table.querySelectorAll('tr').forEach(tr => {
+    for (let i = 0; i < 5 && i < tr.children.length; i++) tr.children[i].style.left = lefts[i] + 'px';
+  });
+}
+function rlAlignTrendStickySoon() {
+  try { requestAnimationFrame(() => requestAnimationFrame(rlAlignTrendSticky)); }
+  catch (e) { setTimeout(rlAlignTrendSticky, 30); }
+}
+function renderTrendTable(opts) {
+  const o = opts || {};
+  const sel = o.sel || selectedTrendPeriods();
   if (sel.length < 2) { toast('请先在「周期筛选」选择至少 2 个周期，再点「计算趋势」'); return; }
   const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
   const qEl = $('fSearchTrend');
-  const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
-                                           q: qEl ? qEl.value : '' });
+  const matrix = o.matrix || rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
+                                                       q: qEl ? qEl.value : '' });
+  const at = o.restore ? o.at : Date.now();
+  // 当前展示的快照：导出直接复用，保证「屏幕看到什么就导出什么」
+  window.__rlTrendDisplay = { key: 'saved:' + at, ids: sel.map(p => String(p.id)), sel: sel.slice(), matrix: matrix };
+  if (!o.restore) {
+    rlTrendSessionPut({ at: at, ids: sel.map(p => String(p.id)), search: qEl ? qEl.value : '',
+      filters: { store: storeFilter, operator: opFilter, operatorGroup: ogFilter },
+      matrix: matrix, sig: window.__rlCalcSig || '' });
+    setTrendSessionHint('已保存 ' + trendSavedTime(at) + ' 的分析结果，下次进入默认显示');
+  }
   $('trendResultCard').style.display = 'block';
   clearTrendDirty();
   // v5: 两级表头——前 5 列固定（SKU/平台/店铺/运营/运营组），第一行按【指标】分组，第二行各指标下按周期从左到右（远→近）
@@ -5170,6 +5275,7 @@ function renderTrendTable() {
     return '<tr>' + tds + '</tr>';
   }).join('');
   renderDdpTrendChart(sel, matrix.totals);
+  rlAlignTrendStickySoon();
 }
 
 /* 标准DDP / 选用DDP 多周期趋势折线图（按各期平均值） */
@@ -5209,7 +5315,12 @@ function renderWithModules() {
 }
 
 /* ================= 启动 ================= */
-window.addEventListener('resize', () => { if (pieChart) pieChart.resize(); if (barChart) barChart.resize(); });
+window.addEventListener('resize', () => {
+  if (pieChart) pieChart.resize();
+  if (barChart) barChart.resize();
+  if (ddpTrendChart) ddpTrendChart.resize();
+  rlAlignTrendSticky();   // v7：窗口缩放后重新校准固定列 left，防止重叠错位
+});
 $('calcBtn').addEventListener('click', doCalc);
 // v5：趋势分析独立「计算趋势」按钮 + 搜索框（只打脏标记，不自动重绘）
 $('calcTrendBtn').addEventListener('click', () => { renderTrendTable(); });
