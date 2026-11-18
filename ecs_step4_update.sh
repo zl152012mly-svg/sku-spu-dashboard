@@ -286,6 +286,21 @@ echo "  提示：趋势分析现在支持多选周期（最多8期）宽表对�
 echo "        「调整分析」会先弹日期窗选周期，历史数据用多期面板的「补录历史期」上传带日期的旧红线价表。"
 echo "        前端改动，改完重启后版本号 ASSET_VER 会变化，用公网 app.js?v= 核对。"
 
+say "4.16 红线价趋势 v3 自查（周期筛选下拉 + 按指标分组 + 日期只到日）"
+U1=$(count_in "$APP/redline_app/index.html" 'id="msPeriodTrend"')
+U2=$(count_in "$APP/redline_app/index.html" 'function msSetSelected(id, values)')
+U3=$(count_in "$APP/redline_app/index.html" 'function rlDay(v)')
+U4=$(count_in "$APP/redline_app/index.html" '<tr class="period-head">')
+U5=$(count_in "$APP/redline_app/index.html" '<tr class="metric-head">')
+U6=$(count_in "$APP/redline_app/index.html" "metrics.forEach(m => { sel.forEach(p => { head1.push(m.label)")
+[ "$U1" -ge 1 ] && ok "周期筛选下拉已就位（与店铺/运营并排，多选）" || bad "msPeriodTrend 缺失"
+[ "$U2" -ge 1 ] && ok "chip 与下拉选中态双向同步函数就位" || bad "msSetSelected 缺失"
+[ "$U3" -ge 1 ] && ok "日期规范化 rlDay（跨 / 与 - 混排统一到年月日）" || bad "rlDay 缺失"
+[ "$U4" -ge 1 ] && [ "$U5" -ge 1 ] && ok "双行表头分层：指标组+周期日期，滚动不重叠" || bad "双行表头 class 缺失"
+[ "$U6" -ge 1 ] && ok "宽表/导出按指标分组（同指标跨周期连排，远→近）" || bad "按指标分组逻辑缺失"
+echo "  提示：趋势表头现在是「红线价 P1 P2 P3… | 标准DDP P1 P2 P3… | …」，每组内左→右时间由远及近；"
+echo "        周期只显示到年月日；「周期筛选」下拉与上方 chip 两处选择自动同步，最多 8 期。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

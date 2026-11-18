@@ -659,6 +659,15 @@
   .trend-same { color: var(--muted); }
   /* 多期宽表：期次分组表头 + 波动列 */
   #trendTable thead tr.period-head th { background: var(--primary, #2563eb); color: #fff; text-align: center; font-weight: 600; }
+  /* v3: 双行表头分层——第一行指标组(top:0)、第二行周期日期(top:34px)，避免滚动重叠 */
+  #module-history #trendTable thead tr.period-head th { position: sticky; top: 0; z-index: 8; height: 34px; line-height: 34px; padding: 0 8px; background: var(--primary, #2563eb); color: #fff; text-align: center; font-weight: 600; }
+  #module-history #trendTable thead tr.metric-head th { position: sticky; top: 34px; z-index: 7; height: 34px; line-height: 34px; padding: 0 8px; background: #e6ecf7; color: #1e3a8a; text-align: center; font-weight: 600; }
+  #module-history #trendTable thead tr.period-head th:nth-child(1) { z-index: 10; }
+  #module-history #trendTable thead tr.period-head th:nth-child(2) { z-index: 10; }
+  #module-history #trendTable thead tr.period-head th:nth-child(3) { z-index: 10; }
+  #module-history #trendTable thead tr.metric-head th:nth-child(1) { z-index: 9; }
+  #module-history #trendTable thead tr.metric-head th:nth-child(2) { z-index: 9; }
+  #module-history #trendTable thead tr.metric-head th:nth-child(3) { z-index: 9; }
   #trendTable td.trend-delta-up { color: var(--red); font-weight: 600; }
   #trendTable td.trend-delta-down { color: var(--green); font-weight: 600; }
   #trendTable td.trend-delta-same { color: var(--muted); }
@@ -1101,6 +1110,8 @@ try {
         <div class="period-list" id="trendPeriodList"></div>
       </div>
       <div class="filter-row trend-filters" id="trendFilters">
+        <label>周期筛选：</label>
+        <div class="ms" id="msPeriodTrend" data-ph="选择对比周期"><button type="button" class="ms-btn"><span class="ms-label">选择对比周期</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
         <label>店铺筛选：</label>
         <div class="ms" id="msStoreTrend" data-ph="全部店铺"><button type="button" class="ms-btn"><span class="ms-label">全部店铺</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
         <label>运营筛选：</label>
@@ -3509,6 +3520,13 @@ function msInit(id, onChange) {
   return st;
 }
 function msGet(id) { const st = MULTI[id]; return st ? st.sel.slice() : []; }
+/* v3: 程序化设置多选选中值（不触发 onChange，仅重绘） */
+function msSetSelected(id, values) {
+  const st = MULTI[id]; if (!st) return;
+  const want = (values || []).map(String);
+  st.sel = want.filter(v => st.options.some(o => o.value === v));
+  st.render();
+}
 function msSetOptions(id, opts) {
   const st = MULTI[id] || msInit(id);
   if (st) st.setOptions(opts);
@@ -3534,6 +3552,15 @@ function initMultiSelects() {
   msInit('msOg', detail);
   msInit('msStoreAbnormal', () => renderAbnormal());
   msInit('msStoreMissing', () => renderAbnormal());
+  msInit('msPeriodTrend', () => {
+    const ids = msGet('msPeriodTrend');
+    if (ids.length > 8) { toast('最多同时对比 8 个周期，已忽略多余选择'); }
+    _selectedPeriods = ids.slice(0, 8).map(id => _periods.findIndex(p => String(p.id) === String(id))).filter(i => i >= 0);
+    _selectedPeriods.sort((a, b) => rlPeriodTag(_periods[a]).localeCompare(rlPeriodTag(_periods[b])));
+    renderTrendInit();   // 同步 chip 高亮（内部会回写下拉选中态，不触发本回调）
+    if (_selectedPeriods.length >= 2) renderTrendTable();
+    else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) ddpTrendChart.clear(); }
+  });
   msInit('msStoreTrend', () => renderTrendTable());
   msInit('msOpTrend', () => renderTrendTable());
   msInit('msOgTrend', () => renderTrendTable());
@@ -3926,11 +3953,17 @@ function rlOpenDateDialog(mode, cb) {
   ov.classList.add('show');
 }
 
+/* v3 日期只到年月日：把 2026/11/16 17:27:19 与 2026-11-16 统一成 2026-11-16 */
+function rlDay(v) {
+  if (!v) return '';
+  const m = String(v).trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : String(v).trim().slice(0, 10);
+}
 function periodRangeLabel(p) {
   if (!p) return '';
-  if (p.pStart && p.pEnd) return p.pStart + ' ~ ' + p.pEnd;
-  if (p.pEnd) return '截至 ' + p.pEnd;
-  return p.date || '';
+  if (p.pStart && p.pEnd) return rlDay(p.pStart) + ' ~ ' + rlDay(p.pEnd);
+  if (p.pEnd) return '截至 ' + rlDay(p.pEnd);
+  return rlDay(p.date);
 }
 function loadPeriods() {
   try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); }
@@ -4812,6 +4845,11 @@ let _selectedPeriods = []; // 选中的期数索引
 function renderTrendInit() {
   const list = $('trendPeriodList');
   if (!_periods.length) { list.innerHTML = '<span class="upload-hint">暂无历史数据。请先在数据上传页点击「调整分析」保存上期数据。</span>'; return; }
+  // v3: 周期筛选下拉选项（按日期正序，只到年月日），选中态以 _selectedPeriods 为唯一真相源
+  const periodOpts = _periods.map((p, i) => ({ value: String(p.id),
+    label: rlPeriodTag(p) + ' ' + p.label + ' (' + p.rows.length + '条)' }));
+  msSetOptions('msPeriodTrend', periodOpts);
+  msSetSelected('msPeriodTrend', _selectedPeriods.map(i => _periods[i] && String(_periods[i].id)).filter(Boolean));
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${_selectedPeriods.includes(i) ? 'active' : ''}" data-idx="${i}">
     <span class="p-date">${periodRangeLabel(p)}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
@@ -4822,7 +4860,8 @@ function renderTrendInit() {
       else if (_selectedPeriods.length < 8) _selectedPeriods.push(idx);
       else { toast('最多同时对比 8 个周期，请先取消一个'); return; }
       // 按日期正序排列，保证宽表从左到右时间递增
-      _selectedPeriods.sort((a, b) => String(_periods[a].pEnd || _periods[a].date).localeCompare(String(_periods[b].pEnd || _periods[b].date)));
+      _selectedPeriods.sort((a, b) => rlPeriodTag(_periods[a]).localeCompare(rlPeriodTag(_periods[b])));
+      msSetSelected('msPeriodTrend', _selectedPeriods.map(i => String(_periods[i].id)));  // chip→下拉同步
       renderTrendInit();
       if (_selectedPeriods.length >= 2) renderTrendTable(); else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) { ddpTrendChart.clear(); } }
     });
@@ -4855,21 +4894,23 @@ function exportTrendData() {
       const sel = _selectedPeriods.map(i => _periods[i]).filter(Boolean);
       const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
       const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
-      const metrics = ['红线价', '标准DDP', '选用DDP', '比较价', '状态'];
+      const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
+                       { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
       const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
       const head2 = ['', '', '', '', ''];
-      sel.forEach(p => { const tag = rlPeriodTag(p); metrics.forEach(m => { head1.push(tag); head2.push(m); }); });
-      // 相邻期波动列（红线价 / 标准DDP / 选用DDP）
+      metrics.forEach(m => { sel.forEach(p => { head1.push(m.label); head2.push(rlPeriodTag(p)); }); });
+      // 相邻期波动列（按指标分组，与屏幕表头同序）
       for (let k = 1; k < sel.length; k++) {
         const tagA = rlPeriodTag(sel[k - 1]), tagB = rlPeriodTag(sel[k]);
-        ['红线价', '标准DDP', '选用DDP'].forEach(m => { head1.push(tagA + '→' + tagB); head2.push(m + '波动'); });
+        ['红线价', '标准DDP', '选用DDP'].forEach(m => { head1.push(m + '波动'); head2.push(tagA + '→' + tagB); });
       }
       const data2d = [head1, head2, ...matrix.rows.map(row => {
         const base = [row.sku, PLATFORM_LABEL[row.platform] || row.platform, row.store, row.operator || '', row.operatorGroup || ''];
-        sel.forEach(p => {
-          const c = row.cells[p.id] || {};
-          base.push(c.totalRedLine !== null ? c.totalRedLine : '', c.biaoDdp !== null ? c.biaoDdp : '',
-                    c.xuanDdp !== null ? c.xuanDdp : '', c.price !== null ? c.price : '', c.status || '');
+        metrics.forEach(m => {
+          sel.forEach(p => {
+            const c = row.cells[p.id] || {}, v = c[m.k];
+            base.push(v === null || v === undefined ? '' : v);
+          });
         });
         for (let k = 1; k < sel.length; k++) {
           const a = row.cells[sel[k - 1].id] || {}, b = row.cells[sel[k].id] || {};
@@ -4926,7 +4967,7 @@ function exportDetailData() {
 }
 
 /* ============ 多期趋势：共用聚合函数（宽表/折线图/导出同口径） ============ */
-function rlPeriodTag(p) { return (p && (p.pEnd || p.date) || '').slice(0, 16); }
+function rlPeriodTag(p) { return rlDay(p && (p.pEnd || p.date) || ''); }
 function rlDelta(curr, prev) {
   if (curr === null || curr === undefined || prev === null || prev === undefined || curr === '' || prev === '') return null;
   const c = Number(curr), p = Number(prev);
@@ -4987,34 +5028,35 @@ function renderTrendTable() {
   const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
   const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
   $('trendResultCard').style.display = 'block';
-  // 两级表头：期次分组 + 指标
-  const metrics = ['红线价', '标准DDP', '选用DDP', '比较价', '状态'];
-  let h1 = '<tr><th>上架SKU</th><th>平台</th><th>店铺</th>';
-  let h2 = '<tr><th></th><th></th><th></th>';
-  sel.forEach(p => {
-    metrics.forEach(m => { h1 += '<th colspan="1">' + rlPeriodTag(p) + '</th>'; h2 += '<th>' + m + '</th>'; });
+  // v3: 两级表头——第一行按【指标】分组，第二行各指标下按周期从左到右（远→近）
+  const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
+                   { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
+  const deltaKeys = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' }, { k: 'xuanDdp', label: '选用DDP' }];
+  let h1 = '<tr class="period-head"><th>上架SKU</th><th>平台</th><th>店铺</th>';
+  let h2 = '<tr class="metric-head"><th></th><th></th><th></th>';
+  metrics.forEach(m => {
+    h1 += '<th colspan="' + sel.length + '">' + m.label + '</th>';
+    sel.forEach(p => { h2 += '<th>' + rlPeriodTag(p) + '</th>'; });
   });
   for (let k = 1; k < sel.length; k++) {
-    const tag = rlPeriodTag(sel[k - 1]) + '→' + rlPeriodTag(sel[k]);
-    ['红线价', '标准DDP', '选用DDP'].forEach(m => { h1 += '<th>' + tag + '</th>'; h2 += '<th>' + m + '波动</th>'; });
+    h1 += '<th colspan="3">' + rlPeriodTag(sel[k - 1]) + '→' + rlPeriodTag(sel[k]) + '</th>';
+    deltaKeys.forEach(d => { h2 += '<th>' + d.label + '波动</th>'; });
   }
   h1 += '</tr>'; h2 += '</tr>';
   $('trendHead').innerHTML = h1 + h2;
   $('trendBody').innerHTML = matrix.rows.map(row => {
     let tds = '<td>' + esc(row.sku) + '</td><td>' + (PLATFORM_LABEL[row.platform] || row.platform) + '</td><td class="store-clip" title="' + esc(row.store) + '">' + esc(row.store) + '</td>';
-    sel.forEach(p => {
-      const c = row.cells[p.id] || {};
-      tds += '<td>' + (c.totalRedLine !== null ? fmtMoney(c.totalRedLine) : '—') + '</td>'
-          +  '<td>' + (c.biaoDdp !== null ? fmtMoney(c.biaoDdp) : '—') + '</td>'
-          +  '<td>' + (c.xuanDdp !== null ? fmtMoney(c.xuanDdp) : '—') + '</td>'
-          +  '<td>' + (c.price !== null ? fmtMoney(c.price) : '—') + '</td>'
-          +  '<td>' + (c.status ? (STATUS_META[c.status]?.label || c.status) : '—') + '</td>';
+    // 同指标跨周期连排（与表头列序严格一致）
+    metrics.forEach(m => {
+      sel.forEach(p => {
+        const c = row.cells[p.id] || {}, v = c[m.k];
+        tds += '<td>' + (v === null || v === undefined ? '—'
+          : (m.k === 'status' ? (STATUS_META[v]?.label || v) : fmtMoney(v))) + '</td>';
+      });
     });
     for (let k = 1; k < sel.length; k++) {
       const a = row.cells[sel[k - 1].id] || {}, b = row.cells[sel[k].id] || {};
-      tds += rlDeltaHtml(rlDelta(b.totalRedLine, a.totalRedLine))
-          +  rlDeltaHtml(rlDelta(b.biaoDdp, a.biaoDdp))
-          +  rlDeltaHtml(rlDelta(b.xuanDdp, a.xuanDdp));
+      deltaKeys.forEach(d => { tds += rlDeltaHtml(rlDelta(b[d.k], a[d.k])); });
     }
     return '<tr>' + tds + '</tr>';
   }).join('');
