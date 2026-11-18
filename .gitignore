@@ -18,6 +18,7 @@ ddl_notify_state.json
 
 na_data/
 _*.py
+_*.js
 _*.txt
 output/
 # 子账号明文口令文件：只在 ECS 本地存在，绝不入库

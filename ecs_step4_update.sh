@@ -269,6 +269,23 @@ echo "  提示：本次修的是「数据源 WeightOz 列名是历史遗留，�
 echo "        导致 757 个 SKU 判定偏差、71 个应判 LTL（不可上架）被漏判。"
 echo "        改完必须重跑「处理并生成报告」，新品页/新色页/Excel 导出的重量与 FedEx 类型才会更新。"
 
+say "4.15 红线价趋势分析改造自查（2026-11-18 多周期宽表+DDP趋势）"
+T1=$(count_in "$APP/redline_app/index.html" "const MAX_PERIODS = 30;")
+T2=$(count_in "$APP/redline_app/index.html" "operator: r.operator || ''")
+T3=$(count_in "$APP/redline_app/index.html" "function rlBuildTrendMatrix(sel, filters)")
+T4=$(count_in "$APP/redline_app/index.html" "function renderDdpTrendChart(sel, totals)")
+T5=$(count_in "$APP/redline_app/index.html" "async function rlBackfillPeriod(file, st, ed)")
+T6=$(count_in "$APP/redline_app/index.html" "function rlOpenDateDialog(mode, cb)")
+[ "$T1" -ge 1 ] && ok "期次上限 30（原 4）" || bad "MAX_PERIODS 未更新为 30"
+[ "$T2" -ge 1 ] && ok "期次快照存运营/运营组（修复下拉空白）" || bad "快照未存运营字段，趋势下拉仍会空"
+[ "$T3" -ge 1 ] && ok "多期聚合函数就位（宽表/图表/导出同口径）" || bad "rlBuildTrendMatrix 缺失"
+[ "$T4" -ge 1 ] && ok "DDP趋势折线图函数就位" || bad "renderDdpTrendChart 缺失"
+[ "$T5" -ge 1 ] && ok "历史期补录入口就位" || bad "rlBackfillPeriod 缺失"
+[ "$T6" -ge 1 ] && ok "周期日期弹窗就位（首次起止/之后截止日）" || bad "rlOpenDateDialog 缺失"
+echo "  提示：趋势分析现在支持多选周期（最多8期）宽表对比 + 标准DDP/选用DDP 折线图；"
+echo "        「调整分析」会先弹日期窗选周期，历史数据用多期面板的「补录历史期」上传带日期的旧红线价表。"
+echo "        前端改动，改完重启后版本号 ASSET_VER 会变化，用公网 app.js?v= 核对。"
+
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
   ok "找到 accounts.json（说明界面里保存过子账号）"

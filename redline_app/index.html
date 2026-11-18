@@ -639,11 +639,43 @@
   .period-tag.active .p-del:hover { background: rgba(255,255,255,.28); color: #fff; }
   .period-tag.active .p-del.confirm { background: #dc2626; color: #fff; }
 
-  /* ===== 趋势分析表 ===== */
-  .trend-table th { background: #f0f3f9; position: sticky; top: 0; z-index: 3; }
+  /* ===== 趋势分析表（与 SKU 明细一致的固定表头/双向滚动/店铺定宽） ===== */
+  #module-history .module-title { position: -webkit-sticky; position: sticky; top: 0; z-index: 60; background: var(--bg); padding: 6px 0 10px; margin: -6px 0 0; }
+  #module-history .trend-filters { position: -webkit-sticky; position: sticky; top: 40px; z-index: 55; background: var(--bg); padding: 8px 0; margin-bottom: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  #module-history .table-wrap {
+    margin-top: 10px;
+    max-height: calc(100vh - 260px);
+    overflow: auto;
+  }
+  #module-history #trendTable { min-width: 1880px; border-collapse: separate; border-spacing: 0; }
+  #module-history #trendTable th { background: #f0f3f9; position: sticky; top: 0; z-index: 4; white-space: nowrap; }
+  /* 前 3 列（SKU/平台/店铺）横向滚动时固定，右侧滚动条常驻框底 */
+  #module-history #trendTable th:nth-child(1), #module-history #trendTable td:nth-child(1) { position: sticky; left: 0; z-index: 5; background: #fff; }
+  #module-history #trendTable th:nth-child(2), #module-history #trendTable td:nth-child(2) { position: sticky; left: 96px; z-index: 5; background: #fff; }
+  #module-history #trendTable th:nth-child(3), #module-history #trendTable td:nth-child(3) { position: sticky; left: 168px; z-index: 5; background: #fff; }
+  #module-history #trendTable th:nth-child(1), #module-history #trendTable th:nth-child(2), #module-history #trendTable th:nth-child(3) { z-index: 6; background: #f0f3f9; }
   .trend-up { color: var(--red); font-weight: 600; }   /* 差额变大=更差 */
   .trend-down { color: var(--green); font-weight: 600; } /* 差额变小=好转 */
   .trend-same { color: var(--muted); }
+  /* 多期宽表：期次分组表头 + 波动列 */
+  #trendTable thead tr.period-head th { background: var(--primary, #2563eb); color: #fff; text-align: center; font-weight: 600; }
+  #trendTable td.trend-delta-up { color: var(--red); font-weight: 600; }
+  #trendTable td.trend-delta-down { color: var(--green); font-weight: 600; }
+  #trendTable td.trend-delta-same { color: var(--muted); }
+  .ddp-chart-box { margin-top: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .ddp-chart { width: 100%; height: 340px; }
+  /* 周期日期弹窗 */
+  .date-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .date-overlay.show { display: flex; }
+  .date-box { background: #fff; border-radius: 12px; width: 100%; max-width: 440px; padding: 22px 24px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+  .date-box h3 { margin: 0 0 6px; font-size: 17px; }
+  .date-box .db-sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; line-height: 1.6; }
+  .date-box .db-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .date-box .db-row label { min-width: 76px; font-size: 13px; font-weight: 500; }
+  .date-box .db-row input[type=date] { flex: 1; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .date-box .db-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .date-box .db-err { color: #b91c1c; font-size: 12px; min-height: 16px; margin-top: 4px; }
+  .date-box .db-hint { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #1e40af; margin-bottom: 14px; line-height: 1.6; }
   
   /* 筛选和导出按钮样式 */
   .filter-row {
@@ -793,9 +825,10 @@ try {
     <div class="w-module w-active" id="module-upload" style="display:block;">
       <div class="module-title">📤 数据上传</div>
       <div class="period-panel" id="periodPanel" style="display:none;">
-        <h3>📅 多期数据管理（最多保留4期）</h3>
+        <h3>📅 多期数据管理（按周期归档，最多保留30期）</h3>
         <div class="period-list" id="periodList"></div>
-        <div class="upload-hint">覆盖 = 替换当前最新期数据；调整分析 = 保存为上期数据，本次为当期，进行变动趋势对比；点期次标签上的 <b>✕</b> 可撤回该期（本机与工作台共享存储同步删除，两步确认）</div>
+        <div style="margin-top:10px;"><button class="btn btn-adjust" id="backfillPeriodBtn" type="button">＋ 补录历史期（上传带日期的旧红线价表）</button></div>
+        <div class="upload-hint">覆盖 = 替换当前最新期数据；调整分析 = 选周期日期后把当前结果存为一期（首次选起止、之后只选截止日，周期=上期结束次日~本次截止日）；点 <b>✕</b> 可撤回该期。历史数据可用「补录历史期」上传带日期的旧红线价表。</div>
       </div>
   <div class="card">
     <h2><span class="step">1</span> 上传数据（红线价表 + SKU平台信息表 + 各平台清单）</h2>
@@ -882,6 +915,39 @@ try {
         <h3>正在计算…</h3>
         <div class="calc-bar"><i id="calcBar"></i></div>
         <div class="calc-step" id="calcStep">准备数据</div>
+      </div>
+    </div>
+
+    <!-- 周期日期弹窗（调整分析 / 历史补录共用） -->
+    <div class="date-overlay" id="dateOverlay">
+      <div class="date-box">
+        <h3 id="dateDlgTitle">选择周期日期</h3>
+        <div class="db-sub" id="dateDlgSub"></div>
+        <div class="db-hint" id="dateDlgHint"></div>
+        <div class="db-row" id="dateRowStart"><label>开始日期</label><input type="date" id="dlgDateStart"></div>
+        <div class="db-row" id="dateRowEnd"><label>结束日期</label><input type="date" id="dlgDateEnd"></div>
+        <div class="db-err" id="dateDlgErr"></div>
+        <div class="db-actions">
+          <button class="btn btn-ghost" id="dateDlgCancel">取消</button>
+          <button class="btn btn-primary" id="dateDlgOk">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史期补录弹窗 -->
+    <div class="date-overlay" id="backfillOverlay">
+      <div class="date-box" style="max-width:480px;">
+        <h3>补录历史期</h3>
+        <div class="db-sub">上传某一历史周期的红线价表，系统会用当前已上传的 SKU平台信息表 + 各平台清单重算，然后存成一个带日期区间的历史期，供趋势分析对比。</div>
+        <div class="db-hint">⚠ 补录会临时用该文件替换红线价表重算，完成后【自动恢复】你当前正在用的红线价表与计算结果。请确认当前结果已计算过。</div>
+        <div class="db-row"><label>历史红线价表</label><input type="file" id="bfFile" accept=".xlsx,.xls,.csv" style="flex:1;font-size:12px;"></div>
+        <div class="db-row"><label>开始日期</label><input type="date" id="bfStart"></div>
+        <div class="db-row"><label>结束日期</label><input type="date" id="bfEnd"></div>
+        <div class="db-err" id="bfErr"></div>
+        <div class="db-actions">
+          <button class="btn btn-ghost" id="bfCancel">取消</button>
+          <button class="btn btn-primary" id="bfOk">补录</button>
+        </div>
       </div>
     </div>
 
@@ -1034,7 +1100,7 @@ try {
         <h3>选择对比期数</h3>
         <div class="period-list" id="trendPeriodList"></div>
       </div>
-      <div class="filter-row" id="trendFilters">
+      <div class="filter-row trend-filters" id="trendFilters">
         <label>店铺筛选：</label>
         <div class="ms" id="msStoreTrend" data-ph="全部店铺"><button type="button" class="ms-btn"><span class="ms-label">全部店铺</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
         <label>运营筛选：</label>
@@ -1047,19 +1113,15 @@ try {
         <h2>趋势对比表</h2>
         <div class="table-wrap">
           <table id="trendTable">
-            <thead class="sticky-thead">
-              <tr>
-                <th>上架SKU</th><th>平台</th><th>店铺</th>
-                <th>上期比较价</th><th>当期比较价</th><th>价格变动</th>
-                <th>上期红线价</th><th>当期红线价</th><th>红线价变动</th>
-                <th>上期状态</th><th>当期状态</th><th>状态变化</th>
-                <th>上期差额</th><th>当期差额</th><th>差额趋势</th>
-                <th>上期标准DDP</th><th>当期标准DDP</th><th>标准DDP变动</th>
-                <th>上期选用DDP</th><th>当期选用DDP</th><th>选用DDP变动</th>
-              </tr>
+            <thead class="sticky-thead" id="trendHead">
+              <tr><th>上架SKU</th><th>平台</th><th>店铺</th><th>请选择周期后生成</th></tr>
             </thead>
             <tbody id="trendBody"></tbody>
           </table>
+        </div>
+        <div class="ddp-chart-box" id="ddpChartBox">
+          <h3 style="margin:0 0 10px; font-size:14px;">📉 标准DDP / 选用DDP 多周期趋势（各期平均）</h3>
+          <div class="ddp-chart" id="chartDdpTrendMulti"></div>
         </div>
       </div>
     </div><!-- /module-history -->
@@ -1943,7 +2005,10 @@ async function cloudLoadAll() {
     const periodsArr = Object.keys(pg).map(k => {
       const g = restoreGroupRecords(pg[k]);
       const first = g.recs[0] || {};
-      return { id: Number(k), date: Cloud._f(first, 'date') || '', label: Cloud._f(first, 'label') || '', rows: (g.obj && g.obj.rows) || [] };
+      return { id: Number(k), date: Cloud._f(first, 'date') || '', label: Cloud._f(first, 'label') || '',
+               pStart: Cloud._f(g.obj || {}, 'pStart') || Cloud._f(first, 'pStart') || '',
+               pEnd: Cloud._f(g.obj || {}, 'pEnd') || Cloud._f(first, 'pEnd') || '',
+               rows: (g.obj && g.obj.rows) || [] };
     }).sort((a, b) => b.id - a.id);
     if (periodsArr.length) {
       _periods = periodsArr;
@@ -3313,7 +3378,7 @@ function renderCharts(counts, rows) {
       { name: '无映射', type: 'bar', stack: 't', data: plats.map(p => platCount[p].nobom), itemStyle: { color: '#8b8d98' } }
     ]
   });
-  setTimeout(() => { pieChart.resize(); barChart.resize(); if (chartDdpTrend) chartDdpTrend.resize(); if (chartRedLineTrend) chartRedLineTrend.resize(); }, 60);
+  setTimeout(() => { pieChart.resize(); barChart.resize(); if (chartDdpTrend) chartDdpTrend.resize(); if (chartRedLineTrend) chartRedLineTrend.resize(); if (typeof ddpTrendChart !== 'undefined' && ddpTrendChart) ddpTrendChart.resize(); }, 60);
 
   // ===== 红线价变化趋势 / DDP 变化趋势（当期 vs 上期，按平台聚合）=====
   const platsAll = [...new Set(rows.map(r => r.platform))].sort();
@@ -3800,11 +3865,73 @@ function switchModule(name) {
   if (name === 'history') renderTrendInit();
 }
 
-/* ================= 多期历史管理（最多4期） ================= */
+/* ================= 多期历史管理（周期归档，最多30期） ================= */
+/* 期次对象：{ id, date, label, pStart, pEnd, rows }
+   pStart/pEnd = 该期覆盖的业务日期区间（YYYY-MM-DD）；旧期次无此字段，显示时用 date 兜底。
+   运营/运营组 已随 rows 每行存 operator/operatorGroup（v2 起）。 */
 const PERIODS_KEY = 'redline_periods_v1';
-const MAX_PERIODS = 4;
-let _periods = []; // [{ id, date, label, rows }]
+const MAX_PERIODS = 30;
+let _periods = []; // [{ id, date, label, pStart, pEnd, rows }]
 
+/* ---------- 周期日期工具 ---------- */
+function rlDateAddDays(ymd, days) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd || '')) return '';
+  const d = new Date(ymd + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  const p = x => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function rlToday() {
+  const d = new Date(), p = x => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+/* 最新期的结束日（无期次返回空） */
+function rlLatestPeriodEnd() {
+  if (!_periods || !_periods.length) return '';
+  const sorted = _periods.slice().sort((a, b) => (b.pEnd || '').localeCompare(a.pEnd || '') || (b.id || 0) - (a.id || 0));
+  return sorted[0].pEnd || '';
+}
+/* 打开周期日期弹窗：mode='first'（首次，起止都要）| 'next'（之后，只选截止日）
+   cb({start, end}) 回传；取消不调用。 */
+function rlOpenDateDialog(mode, cb) {
+  const ov = $('dateOverlay'); if (!ov) return;
+  const isFirst = mode === 'first';
+  const lastEnd = rlLatestPeriodEnd();
+  const autoStart = lastEnd ? rlDateAddDays(lastEnd, 1) : '';
+  $('dateDlgTitle').textContent = isFirst ? '选择首个周期' : '选择本周期截止日';
+  $('dateRowStart').style.display = isFirst ? 'flex' : 'none';
+  $('dlgDateStart').value = isFirst ? (autoStart || rlDateAddDays(rlToday(), -14)) : autoStart;
+  $('dlgDateEnd').value = rlToday();
+  $('dateDlgErr').textContent = '';
+  if (isFirst) {
+    $('dateDlgSub').textContent = '第一次归档：请选择这个周期的起止日期（例如 2026-11-01 ~ 2026-11-15）。';
+    $('dateDlgHint').textContent = '之后每次点「调整分析」，只需选一个截止日，周期自动 = 上期结束日的次日 ~ 本次截止日。';
+  } else {
+    $('dateDlgSub').textContent = '上期结束于 ' + (lastEnd || '—') + '，本周期自动从 ' + (autoStart || '—') + ' 开始。';
+    $('dateDlgHint').textContent = '只需选择本周期的截止日期（例如 2026-11-20），起始日已按规则自动推算。';
+  }
+  const ok = $('dateDlgOk'), cancel = $('dateDlgCancel');
+  const cleanup = () => { ov.classList.remove('show'); ok.onclick = null; cancel.onclick = null; ov.onclick = null; };
+  ok.onclick = () => {
+    const start = isFirst ? ($('dlgDateStart').value || '') : autoStart;
+    const end = $('dlgDateEnd').value || '';
+    if (!start) { $('dateDlgErr').textContent = '请选择开始日期'; return; }
+    if (!end) { $('dateDlgErr').textContent = '请选择截止日期'; return; }
+    if (end < start) { $('dateDlgErr').textContent = '截止日期不能早于开始日期（' + start + '）'; return; }
+    cleanup(); cb && cb({ start: start, end: end });
+  };
+  cancel.onclick = cleanup;
+  ov.onclick = e => { if (e.target === ov) cleanup(); };
+  ov.classList.add('show');
+}
+
+function periodRangeLabel(p) {
+  if (!p) return '';
+  if (p.pStart && p.pEnd) return p.pStart + ' ~ ' + p.pEnd;
+  if (p.pEnd) return '截至 ' + p.pEnd;
+  return p.date || '';
+}
 function loadPeriods() {
   try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); }
   catch (e) { _periods = []; }
@@ -3814,7 +3941,7 @@ function savePeriods() {
   try { localStorage.setItem(PERIODS_KEY, JSON.stringify(_periods)); } catch (e) {}
   renderPeriodPanel();
 }
-function pushPeriod(label, rows) {
+function pushPeriod(label, rows, pStart, pEnd) {
   if (!rows || !rows.length) return;
   const compact = rows.map(r => ({
     sku: r.sku, platform: r.platform, store: r.store,
@@ -3823,9 +3950,11 @@ function pushPeriod(label, rows) {
     currency: r.currency, linkStatus: r.linkStatus || '',
     biaoDdp: r.biaoDdp !== undefined ? r.biaoDdp : null,   // 标准DDP（红线价表原始列，用于趋势波动）
     xuanDdp: r.xuanDdp !== undefined ? r.xuanDdp : null,   // 选用DDP（红线价表原始列，用于趋势波动）
+    operator: r.operator || '', operatorGroup: r.operatorGroup || '',  // v2：趋势筛选下拉依赖这两列
     missingSkus: r.missingSkus || [], bom: r.bom ? r.bom.map(b => ({ shipSku: b.shipSku, qty: b.qty, price: b.price, subTotal: b.subTotal })) : null
   }));
-  _periods.unshift({ id: Date.now(), date: new Date().toLocaleString('zh-CN'), label: label || '未命名', rows: compact });
+  _periods.unshift({ id: Date.now(), date: new Date().toLocaleString('zh-CN'), label: label || '未命名',
+                     pStart: pStart || '', pEnd: pEnd || '', rows: compact });
   if (_periods.length > MAX_PERIODS) _periods = _periods.slice(0, MAX_PERIODS);
   savePeriods();
   // 云端模式：把多期历史同步到工作台共享存储（协作者可见）
@@ -3879,7 +4008,7 @@ function renderPeriodPanel() {
   if (!_periods.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${i === 0 ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
+    <span class="p-date">${periodRangeLabel(p)}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -3890,6 +4019,68 @@ function renderPeriodPanel() {
   bindPeriodDelete(list);
 }
 
+/* ---- 历史期补录：临时替换红线价表→重算→存带日期期次→恢复原数据 ---- */
+function openBackfillDialog() {
+  const ov = $('backfillOverlay'); if (!ov) return;
+  $('bfFile').value = '';
+  $('bfStart').value = rlLatestPeriodEnd() ? rlDateAddDays(rlLatestPeriodEnd(), 1) : rlDateAddDays(rlToday(), -30);
+  $('bfEnd').value = rlLatestPeriodEnd() || rlToday();
+  $('bfErr').textContent = '';
+  const ok = $('bfOk'), cancel = $('bfCancel');
+  const cleanup = () => { ov.classList.remove('show'); ok.onclick = null; cancel.onclick = null; ov.onclick = null; };
+  cancel.onclick = cleanup;
+  ov.onclick = e => { if (e.target === ov) cleanup(); };
+  ok.onclick = async () => {
+    const file = ($('bfFile').files || [])[0];
+    const st = $('bfStart').value, ed = $('bfEnd').value;
+    if (!file) { $('bfErr').textContent = '请选择历史红线价表文件'; return; }
+    if (!st || !ed) { $('bfErr').textContent = '请选择起止日期'; return; }
+    if (ed < st) { $('bfErr').textContent = '结束日期不能早于开始日期'; return; }
+    if (!state.mapping || !((state.mapping.rows || []).length)) { $('bfErr').textContent = '请先在「数据上传」上传并计算过 SKU平台信息表'; return; }
+    cleanup();
+    await rlBackfillPeriod(file, st, ed);
+  };
+  ov.classList.add('show');
+}
+async function rlBackfillPeriod(file, st, ed) {
+  try {
+    // 备份当前红线价表 & 结果
+    const bak = { aoa: state.redLine.aoa, headers: state.redLine.headers,
+                  config: JSON.parse(JSON.stringify(state.redLine.config || {})),
+                  rows: state.redLine.rows, result: state.result };
+    setCalcProgress('补录：解析历史红线价表…', 15);
+    const wb = await readExcel(file);
+    const aoa = sheetToAoa(wb);
+    if (!aoa.length) throw new Error('历史文件为空');
+    // 临时替换
+    state.redLine.aoa = aoa;
+    state.redLine.config = { skuCol: 0, sellerCol: 3, temuUsCol: 4, temuNewCol: 5, xuanDdpCol: -1, biaoDdpCol: -1, startRow: 2 };
+    autoMapDdpCols(state.redLine);
+    applyRedLine();
+    setCalcProgress('补录：按当前映射重算…', 45);
+    await doCalc({ silent: true, skipHistory: true });
+    const histRows = state.result && state.result.rows ? state.result.rows : [];
+    if (!histRows.length) throw new Error('重算后无数据，未保存');
+    setCalcProgress('补录：归档历史期…', 80);
+    pushPeriod('补录_' + st.slice(5) + '~' + ed.slice(5), histRows, st, ed);
+    toast('✓ 已补录历史期 ' + st + ' ~ ' + ed + '（' + histRows.length + ' 行）');
+  } catch (e) {
+    console.error('补录失败', e);
+    toast('补录失败：' + e.message);
+  } finally {
+    // 恢复当前红线价表与结果
+    try {
+      state.redLine.aoa = bak.aoa; state.redLine.headers = bak.headers;
+      state.redLine.config = bak.config; state.redLine.rows = bak.rows;
+      state.result = bak.result;
+      if (state.redLine.aoa && state.redLine.aoa.length) applyRedLine();
+      renderWithModules();
+    } catch (e2) { console.error('补录恢复失败', e2); toast('⚠ 补录后恢复当前数据出错，请刷新页面'); }
+    hideCalcProgress();
+    renderTrendInit();
+  }
+}
+
 /* 上传入口操作：覆盖 / 调整分析 */
 function bindUploadActions() {
   const sources = [
@@ -3898,6 +4089,9 @@ function bindUploadActions() {
     { cover: 'amzCoverBtn', adjust: 'amzAdjustBtn', name: 'Amazon' },
     { cover: 'wmtCoverBtn', adjust: 'wmtAdjustBtn', name: 'Walmart' }
   ];
+  // 补录历史期按钮
+  const bfBtn = $('backfillPeriodBtn');
+  if (bfBtn) bfBtn.addEventListener('click', openBackfillDialog);
   sources.forEach(s => {
     const coverBtn = $(s.cover);
     const adjustBtn = $(s.adjust);
@@ -3906,15 +4100,17 @@ function bindUploadActions() {
     coverBtn.addEventListener('click', () => {
       toast(s.name + '：请选择文件进行覆盖');
     });
-    // 调整分析 = 先保存当前期为历史，再提示上传新数据
+    // 调整分析 = 选周期日期后保存当前期为历史期
     adjustBtn.addEventListener('click', () => {
       if (!state.result || !state.result.rows.length) {
         toast('当前无计算结果，无法进行对比分析。请先「开始计算」一次。');
         return;
       }
-      pushPeriod('上期_' + s.name, state.result.rows);
-      toast('已保存当前结果为「上期」数据。请上传新的 ' + s.name + ' 作为「当期」');
-      // 清除该数据源，让用户重新上传（实际不清除，用户手动上传新文件即可）
+      const mode = (_periods && _periods.length) ? 'next' : 'first';
+      rlOpenDateDialog(mode, d => {
+        pushPeriod('周期_' + d.start.slice(5) + '~' + d.end.slice(5), state.result.rows, d.start, d.end);
+        toast('✓ 已归档周期 ' + d.start + ' ~ ' + d.end + '（' + state.result.rows.length + ' 行）。请上传新一期数据后重算。');
+      });
     });
   });
 }
@@ -4617,16 +4813,18 @@ function renderTrendInit() {
   const list = $('trendPeriodList');
   if (!_periods.length) { list.innerHTML = '<span class="upload-hint">暂无历史数据。请先在数据上传页点击「调整分析」保存上期数据。</span>'; return; }
   list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${_selectedPeriods.includes(i) ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${p.date}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
+    <span class="p-date">${periodRangeLabel(p)}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
       const idx = parseInt(tag.dataset.idx);
       if (_selectedPeriods.includes(idx)) _selectedPeriods = _selectedPeriods.filter(x => x !== idx);
-      else if (_selectedPeriods.length < 2) _selectedPeriods.push(idx);
-      else { _selectedPeriods.shift(); _selectedPeriods.push(idx); }
+      else if (_selectedPeriods.length < 8) _selectedPeriods.push(idx);
+      else { toast('最多同时对比 8 个周期，请先取消一个'); return; }
+      // 按日期正序排列，保证宽表从左到右时间递增
+      _selectedPeriods.sort((a, b) => String(_periods[a].pEnd || _periods[a].date).localeCompare(String(_periods[b].pEnd || _periods[b].date)));
       renderTrendInit();
-      if (_selectedPeriods.length === 2) renderTrendTable();
+      if (_selectedPeriods.length >= 2) renderTrendTable(); else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) { ddpTrendChart.clear(); } }
     });
   });
   bindPeriodDelete(list);
@@ -4649,80 +4847,39 @@ function exportTrendData() {
     label: '导出趋势数据',
     format: 'csv',
     precheck: () => {
-      if (_selectedPeriods.length !== 2) return { error: '请先在趋势分析页选择两个期次再导出' };
-      const [a, b] = _selectedPeriods;
-      if (!_periods[a] || !_periods[b]) return { error: '所选期次数据不存在，请重新选择' };
+      if (_selectedPeriods.length < 2) return { error: '请先在趋势分析页选择至少两个周期再导出' };
+      if (_selectedPeriods.some(i => !_periods[i])) return { error: '所选期次数据不存在，请重新选择' };
       return null;
     },
     build: () => {
-  const [prevIdx, currIdx] = _selectedPeriods;
-  const prev = _periods[prevIdx], curr = _periods[currIdx];
-  if (!prev || !curr) return;
-  
-  const storeFilter = msGet('msStoreTrend');
-  const opFilter = msGet('msOpTrend');
-  const ogFilter = msGet('msOgTrend');
-  
-  const prevFiltered = prev.rows.filter(r => {
-    if (storeFilter.length && storeFilter.indexOf(r.store) < 0) return false;
-    if (opFilter.length && opFilter.indexOf(r.operator) < 0) return false;
-    if (ogFilter.length && ogFilter.indexOf(r.operatorGroup) < 0) return false;
-    return true;
-  });
-  const currFiltered = curr.rows.filter(r => {
-    if (storeFilter.length && storeFilter.indexOf(r.store) < 0) return false;
-    if (opFilter.length && opFilter.indexOf(r.operator) < 0) return false;
-    if (ogFilter.length && ogFilter.indexOf(r.operatorGroup) < 0) return false;
-    return true;
-  });
-  
-  const prevMap = {};
-  prevFiltered.forEach(r => { prevMap[r.sku + '|' + r.platform + '|' + r.store] = r; });
-  const currMap = {};
-  currFiltered.forEach(r => { currMap[r.sku + '|' + r.platform + '|' + r.store] = r; });
-  const allKeys = [...new Set([...Object.keys(prevMap), ...Object.keys(currMap)])];
-  const trendRows = allKeys.map(k => {
-    const p = prevMap[k], c = currMap[k];
-    return {
-      sku: p ? p.sku : c.sku,
-      platform: p ? p.platform : c.platform,
-      store: p ? p.store : c.store,
-      operator: p ? p.operator : c.operator,
-      operatorGroup: p ? p.operatorGroup : c.operatorGroup,
-      prevPrice: p ? p.price : '',
-      currPrice: c ? c.price : '',
-      prevRedLine: p ? p.totalRedLine : '',
-      currRedLine: c ? c.totalRedLine : '',
-      prevStatus: p ? p.status : '',
-      currStatus: c ? c.status : '',
-      priceDiff: c && p ? toNum(c.price) - toNum(p.price) : '',
-      redLineDiff: c && p ? toNum(c.totalRedLine) - toNum(p.totalRedLine) : '',
-      priceDiffPct: c && p && toNum(p.price) ? ((toNum(c.price) - toNum(p.price)) / toNum(p.price) * 100).toFixed(2) : '',
-      redLineDiffPct: c && p && toNum(p.totalRedLine) ? ((toNum(c.totalRedLine) - toNum(p.totalRedLine)) / toNum(p.totalRedLine) * 100).toFixed(2) : ''
-    };
-  });
-  
-      const data2d = [
-        ['SKU', '平台', '店铺', '运营', '运营组', '上期价格', '当期价格', '上期红线价', '当期红线价', '上期状态', '当期状态', '价格变动', '红线价变动', '价格变动率(%)', '红线价变动率(%)'],
-        ...trendRows.map(row => [
-          row.sku,
-          PLATFORM_LABEL[row.platform] || row.platform,
-          row.store,
-          row.operator || '',
-          row.operatorGroup || '',
-          row.prevPrice || '',
-          row.currPrice || '',
-          row.prevRedLine || '',
-          row.currRedLine || '',
-          row.prevStatus || '',
-          row.currStatus || '',
-          row.priceDiff || '',
-          row.redLineDiff || '',
-          row.priceDiffPct || '',
-          row.redLineDiffPct || ''
-        ])
-      ];
-      return { data2d, baseName: `趋势分析数据_${prev.date}_${curr.date}` };
+      const sel = _selectedPeriods.map(i => _periods[i]).filter(Boolean);
+      const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
+      const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
+      const metrics = ['红线价', '标准DDP', '选用DDP', '比较价', '状态'];
+      const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
+      const head2 = ['', '', '', '', ''];
+      sel.forEach(p => { const tag = rlPeriodTag(p); metrics.forEach(m => { head1.push(tag); head2.push(m); }); });
+      // 相邻期波动列（红线价 / 标准DDP / 选用DDP）
+      for (let k = 1; k < sel.length; k++) {
+        const tagA = rlPeriodTag(sel[k - 1]), tagB = rlPeriodTag(sel[k]);
+        ['红线价', '标准DDP', '选用DDP'].forEach(m => { head1.push(tagA + '→' + tagB); head2.push(m + '波动'); });
+      }
+      const data2d = [head1, head2, ...matrix.rows.map(row => {
+        const base = [row.sku, PLATFORM_LABEL[row.platform] || row.platform, row.store, row.operator || '', row.operatorGroup || ''];
+        sel.forEach(p => {
+          const c = row.cells[p.id] || {};
+          base.push(c.totalRedLine !== null ? c.totalRedLine : '', c.biaoDdp !== null ? c.biaoDdp : '',
+                    c.xuanDdp !== null ? c.xuanDdp : '', c.price !== null ? c.price : '', c.status || '');
+        });
+        for (let k = 1; k < sel.length; k++) {
+          const a = row.cells[sel[k - 1].id] || {}, b = row.cells[sel[k].id] || {};
+          ['totalRedLine', 'biaoDdp', 'xuanDdp'].forEach(key => {
+            const d = rlDelta(b[key], a[key]); base.push(d === null ? '' : Number(d.toFixed(2)));
+          });
+        }
+        return base;
+      })];
+      return { data2d, baseName: `趋势分析数据_${sel.length}期_${todayTag()}` };
     }
   });
 }
@@ -4768,83 +4925,125 @@ function exportDetailData() {
   });
 }
 
-function renderTrendTable() {
-  if (_selectedPeriods.length !== 2) return;
-  const [prevIdx, currIdx] = _selectedPeriods;
-  const prev = _periods[prevIdx], curr = _periods[currIdx];
-  if (!prev || !curr) return;
-  
-  // 获取筛选条件（多选）
-  const storeFilter = msGet('msStoreTrend');
-  const opFilter = msGet('msOpTrend');
-  const ogFilter = msGet('msOgTrend');
-  
-  // 筛选数据
-  const prevFiltered = prev.rows.filter(r => {
-    if (storeFilter.length && storeFilter.indexOf(r.store) < 0) return false;
-    if (opFilter.length && opFilter.indexOf(r.operator) < 0) return false;
-    if (ogFilter.length && ogFilter.indexOf(r.operatorGroup) < 0) return false;
+/* ============ 多期趋势：共用聚合函数（宽表/折线图/导出同口径） ============ */
+function rlPeriodTag(p) { return (p && (p.pEnd || p.date) || '').slice(0, 16); }
+function rlDelta(curr, prev) {
+  if (curr === null || curr === undefined || prev === null || prev === undefined || curr === '' || prev === '') return null;
+  const c = Number(curr), p = Number(prev);
+  if (isNaN(c) || isNaN(p)) return null;
+  return c - p;
+}
+/* 返回 { rows:[{sku,platform,store,operator,operatorGroup,cells:{[periodId]:{price,totalRedLine,biaoDdp,xuanDdp,status}}}], totals:{[periodId]:{biaoDdp,xuanDdp,totalRedLine,n}} }
+   cells 中缺失值为 null；totals 只对有数值的取平均，供折线图用。 */
+function rlBuildTrendMatrix(sel, filters) {
+  const f = filters || {};
+  const flt = r => {
+    if (f.store && f.store.length && f.store.indexOf(r.store) < 0) return false;
+    if (f.operator && f.operator.length && f.operator.indexOf(r.operator) < 0) return false;
+    if (f.operatorGroup && f.operatorGroup.length && f.operatorGroup.indexOf(r.operatorGroup) < 0) return false;
     return true;
+  };
+  const byKey = {}, totals = {};
+  sel.forEach(p => { totals[p.id] = { biaoDdp: 0, xuanDdp: 0, totalRedLine: 0, n: 0 }; });
+  sel.forEach(p => {
+    (p.rows || []).filter(flt).forEach(r => {
+      const k = r.sku + '|' + r.platform + '|' + r.store;
+      if (!byKey[k]) byKey[k] = { sku: r.sku, platform: r.platform, store: r.store,
+        operator: r.operator || '', operatorGroup: r.operatorGroup || '', cells: {} };
+      const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
+      const cell = { price: num(r.price), totalRedLine: num(r.totalRedLine), biaoDdp: num(r.biaoDdp),
+                     xuanDdp: num(r.xuanDdp), status: r.status || '' };
+      byKey[k].cells[p.id] = cell;
+      if (!byKey[k].operator && r.operator) byKey[k].operator = r.operator;
+      if (!byKey[k].operatorGroup && r.operatorGroup) byKey[k].operatorGroup = r.operatorGroup;
+      const t = totals[p.id];
+      if (cell.biaoDdp !== null) { t.biaoDdp += cell.biaoDdp; t.n++; }
+      if (cell.xuanDdp !== null) t.xuanDdp += cell.xuanDdp;
+      if (cell.totalRedLine !== null) t.totalRedLine += cell.totalRedLine;
+    });
   });
-  
-  const currFiltered = curr.rows.filter(r => {
-    if (storeFilter.length && storeFilter.indexOf(r.store) < 0) return false;
-    if (opFilter.length && opFilter.indexOf(r.operator) < 0) return false;
-    if (ogFilter.length && ogFilter.indexOf(r.operatorGroup) < 0) return false;
-    return true;
+  Object.keys(totals).forEach(id => {
+    const t = totals[id];
+    ['biaoDdp', 'xuanDdp', 'totalRedLine'].forEach(m => { t[m] = t.n ? Number((t[m] / t.n).toFixed(2)) : null; });
   });
-  
-  const prevMap = {};
-  prevFiltered.forEach(r => { prevMap[r.sku + '|' + r.platform + '|' + r.store] = r; });
-  const currMap = {};
-  currFiltered.forEach(r => { currMap[r.sku + '|' + r.platform + '|' + r.store] = r; });
-  const allKeys = [...new Set([...Object.keys(prevMap), ...Object.keys(currMap)])];
-  const trendRows = allKeys.map(k => {
-    const p = prevMap[k], c = currMap[k];
-    return {
-      sku: (p || c).sku, platform: (p || c).platform, store: (p || c).store,
-      prevPrice: p ? p.price : null, currPrice: c ? c.price : null,
-      prevRedLine: p ? p.totalRedLine : null, currRedLine: c ? c.totalRedLine : null,
-      prevStatus: p ? p.status : null, currStatus: c ? c.status : null,
-      prevDiff: p ? p.diff : null, currDiff: c ? c.diff : null,
-      prevBiao: p ? p.biaoDdp : null, currBiao: c ? c.biaoDdp : null,
-      prevXuan: p ? p.xuanDdp : null, currXuan: c ? c.xuanDdp : null,
-      existsPrev: !!p, existsCurr: !!c
-    };
-  }).sort((a, b) => {
-    const SO = RedLineEngine.STATUS_ORDER;
-    const sa = SO[a.currStatus || a.prevStatus || 'normal'];
-    const sb = SO[b.currStatus || b.prevStatus || 'normal'];
+  const SO = RedLineEngine.STATUS_ORDER || {};
+  const rows = Object.values(byKey).sort((a, b) => {
+    const sa = SO[a.cells[sel[sel.length - 1].id]?.status || 'normal'] ?? 99;
+    const sb = SO[b.cells[sel[sel.length - 1].id]?.status || 'normal'] ?? 99;
     return sa - sb;
   });
+  return { rows: rows, totals: totals };
+}
+function rlDeltaHtml(d) {
+  if (d === null) return '<span class="trend-same">—</span>';
+  const cls = d > 0 ? 'trend-delta-up' : d < 0 ? 'trend-delta-down' : 'trend-delta-same';
+  const arrow = d > 0 ? '↑' : d < 0 ? '↓' : '';
+  return '<td class="' + cls + '">' + (d > 0 ? '+' : '') + fmtMoney(d) + ' ' + arrow + '</td>';
+}
+function renderTrendTable() {
+  if (_selectedPeriods.length < 2) return;
+  const sel = _selectedPeriods.map(i => _periods[i]).filter(Boolean);
+  if (sel.length < 2) return;
+  const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
+  const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
   $('trendResultCard').style.display = 'block';
-  $('trendBody').innerHTML = trendRows.map(r => {
-    const priceDiff = r.prevPrice !== null && r.currPrice !== null ? r.currPrice - r.prevPrice : null;
-    const redDiff = r.prevRedLine !== null && r.currRedLine !== null ? r.currRedLine - r.prevRedLine : null;
-    const diffDiff = r.prevDiff !== null && r.currDiff !== null ? r.currDiff - r.prevDiff : null;
-    const biaoDiff = r.prevBiao !== null && r.currBiao !== null ? toNum(r.currBiao) - toNum(r.prevBiao) : null;
-    const xuanDiff = r.prevXuan !== null && r.currXuan !== null ? toNum(r.currXuan) - toNum(r.prevXuan) : null;
-    const statusChange = !r.existsPrev ? '<span class="tag new">新增</span>'
-      : !r.existsCurr ? '<span class="tag" style="background:#eee;color:#999;">下架</span>'
-      : r.prevStatus !== r.currStatus ? `<span class="tag" style="background:${STATUS_META[r.currStatus]?.cls || 'gray'}20;color:${STATUS_META[r.currStatus]?.cls || 'gray'};">${STATUS_META[r.prevStatus]?.label || '—'} → ${STATUS_META[r.currStatus]?.label || '—'}</span>`
-      : '<span class="trend-same">—</span>';
-    return `<tr>
-      <td>${r.sku}</td><td>${PLATFORM_LABEL[r.platform] || r.platform}</td><td>${r.store}</td>
-      <td>${fmtMoney(r.prevPrice)}</td><td>${fmtMoney(r.currPrice)}</td>
-      <td>${priceDiff !== null ? (priceDiff > 0 ? '+' : '') + fmtMoney(priceDiff) + (priceDiff > 0 ? ' <span style="color:var(--red)">↑</span>' : priceDiff < 0 ? ' <span style="color:var(--green)">↓</span>' : '') : '—'}</td>
-      <td>${fmtMoney(r.prevRedLine)}</td><td>${fmtMoney(r.currRedLine)}</td>
-      <td>${redDiff !== null ? (redDiff > 0 ? '+' : '') + fmtMoney(redDiff) + (redDiff > 0 ? ' <span style="color:var(--red)">↑</span>' : redDiff < 0 ? ' <span style="color:var(--green)">↓</span>' : '') : '—'}</td>
-      <td>${r.prevStatus ? STATUS_META[r.prevStatus]?.label || r.prevStatus : '—'}</td>
-      <td>${r.currStatus ? STATUS_META[r.currStatus]?.label || r.currStatus : '—'}</td>
-      <td>${statusChange}</td>
-      <td>${fmtMoney(r.prevDiff)}</td><td>${fmtMoney(r.currDiff)}</td>
-      <td class="${diffDiff !== null ? (diffDiff > 0 ? 'trend-up' : diffDiff < 0 ? 'trend-down' : 'trend-same') : ''}">${diffDiff !== null ? (diffDiff > 0 ? '+' : '') + fmtMoney(diffDiff) : '—'}</td>
-      <td>${fmtMoney(toNum(r.prevBiao))}</td><td>${fmtMoney(toNum(r.currBiao))}</td>
-      <td class="${biaoDiff !== null ? (biaoDiff > 0 ? 'trend-up' : biaoDiff < 0 ? 'trend-down' : 'trend-same') : ''}">${biaoDiff !== null ? (biaoDiff > 0 ? '+' : '') + fmtMoney(biaoDiff) : '—'}</td>
-      <td>${fmtMoney(toNum(r.prevXuan))}</td><td>${fmtMoney(toNum(r.currXuan))}</td>
-      <td class="${xuanDiff !== null ? (xuanDiff > 0 ? 'trend-up' : xuanDiff < 0 ? 'trend-down' : 'trend-same') : ''}">${xuanDiff !== null ? (xuanDiff > 0 ? '+' : '') + fmtMoney(xuanDiff) : '—'}</td>
-    </tr>`;
+  // 两级表头：期次分组 + 指标
+  const metrics = ['红线价', '标准DDP', '选用DDP', '比较价', '状态'];
+  let h1 = '<tr><th>上架SKU</th><th>平台</th><th>店铺</th>';
+  let h2 = '<tr><th></th><th></th><th></th>';
+  sel.forEach(p => {
+    metrics.forEach(m => { h1 += '<th colspan="1">' + rlPeriodTag(p) + '</th>'; h2 += '<th>' + m + '</th>'; });
+  });
+  for (let k = 1; k < sel.length; k++) {
+    const tag = rlPeriodTag(sel[k - 1]) + '→' + rlPeriodTag(sel[k]);
+    ['红线价', '标准DDP', '选用DDP'].forEach(m => { h1 += '<th>' + tag + '</th>'; h2 += '<th>' + m + '波动</th>'; });
+  }
+  h1 += '</tr>'; h2 += '</tr>';
+  $('trendHead').innerHTML = h1 + h2;
+  $('trendBody').innerHTML = matrix.rows.map(row => {
+    let tds = '<td>' + esc(row.sku) + '</td><td>' + (PLATFORM_LABEL[row.platform] || row.platform) + '</td><td class="store-clip" title="' + esc(row.store) + '">' + esc(row.store) + '</td>';
+    sel.forEach(p => {
+      const c = row.cells[p.id] || {};
+      tds += '<td>' + (c.totalRedLine !== null ? fmtMoney(c.totalRedLine) : '—') + '</td>'
+          +  '<td>' + (c.biaoDdp !== null ? fmtMoney(c.biaoDdp) : '—') + '</td>'
+          +  '<td>' + (c.xuanDdp !== null ? fmtMoney(c.xuanDdp) : '—') + '</td>'
+          +  '<td>' + (c.price !== null ? fmtMoney(c.price) : '—') + '</td>'
+          +  '<td>' + (c.status ? (STATUS_META[c.status]?.label || c.status) : '—') + '</td>';
+    });
+    for (let k = 1; k < sel.length; k++) {
+      const a = row.cells[sel[k - 1].id] || {}, b = row.cells[sel[k].id] || {};
+      tds += rlDeltaHtml(rlDelta(b.totalRedLine, a.totalRedLine))
+          +  rlDeltaHtml(rlDelta(b.biaoDdp, a.biaoDdp))
+          +  rlDeltaHtml(rlDelta(b.xuanDdp, a.xuanDdp));
+    }
+    return '<tr>' + tds + '</tr>';
   }).join('');
+  renderDdpTrendChart(sel, matrix.totals);
+}
+
+/* 标准DDP / 选用DDP 多周期趋势折线图（按各期平均值） */
+let ddpTrendChart = null;
+function renderDdpTrendChart(sel, totals) {
+  if (typeof echarts === 'undefined') return;
+  const el = $('chartDdpTrendMulti'); if (!el) return;
+  if (!ddpTrendChart) ddpTrendChart = echarts.init(el);
+  const labels = sel.map(p => rlPeriodTag(p));
+  const biao = sel.map(p => (totals[p.id] || {}).biaoDdp);
+  const xuan = sel.map(p => (totals[p.id] || {}).xuanDdp);
+  const red = sel.map(p => (totals[p.id] || {}).totalRedLine);
+  ddpTrendChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['标准DDP', '选用DDP', '红线价'], top: 0 },
+    grid: { left: 55, right: 24, top: 36, bottom: 30 },
+    xAxis: { type: 'category', data: labels, axisLabel: { rotate: 20, fontSize: 10 } },
+    yAxis: { type: 'value', scale: true },
+    series: [
+      { name: '标准DDP', type: 'line', smooth: true, data: biao, symbolSize: 7 },
+      { name: '选用DDP', type: 'line', smooth: true, data: xuan, symbolSize: 7 },
+      { name: '红线价', type: 'line', smooth: true, data: red, symbolSize: 7, lineStyle: { type: 'dashed' } }
+    ]
+  }, true);
+  ddpTrendChart.resize();
 }
 
 /* ================= 更新 render 以支持新模块 ================= */
