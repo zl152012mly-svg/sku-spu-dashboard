@@ -299,7 +299,23 @@ U6=$(count_in "$APP/redline_app/index.html" "metrics.forEach(m => { sel.forEach(
 [ "$U4" -ge 1 ] && [ "$U5" -ge 1 ] && ok "双行表头分层：指标组+周期日期，滚动不重叠" || bad "双行表头 class 缺失"
 [ "$U6" -ge 1 ] && ok "宽表/导出按指标分组（同指标跨周期连排，远→近）" || bad "按指标分组逻辑缺失"
 echo "  提示：趋势表头现在是「红线价 P1 P2 P3… | 标准DDP P1 P2 P3… | …」，每组内左→右时间由远及近；"
-echo "        周期只显示到年月日；「周期筛选」下拉与上方 chip 两处选择自动同步，最多 8 期。"
+echo "        周期只显示到年月日；周期筛选下拉为唯一选择入口，最多 8 期。"
+
+say "4.17 红线价趋势 v4 自查（去 chip + 只留区间 + 当前数据 + 按钮语义）"
+V1=$(count_in "$APP/redline_app/index.html" 'id="trendPeriodPanel"')
+V2=$(count_in "$APP/redline_app/index.html" 'function trendPeriodLabel(p)')
+V3=$(count_in "$APP/redline_app/index.html" 'function getTrendPeriods()')
+V4=$(count_in "$APP/redline_app/index.html" 'const sel = selectedTrendPeriods();')
+V5=$(count_in "$APP/redline_app/index.html" '归档当前期为历史期（不上传）')
+V6=$(count_in "$APP/redline_app/index.html" 'input.click();')
+[ "$V1" -eq 0 ] && ok "顶部「选择对比期数」chip 已移除" || bad "chip 仍在，趋势页会有两套选择入口"
+[ "$V2" -ge 1 ] && ok "周期选项只显示 MM-DD~MM-DD 区间（当前数据显示「当前数据」）" || bad "trendPeriodLabel 缺失"
+[ "$V3" -ge 1 ] && ok "当前数据常驻虚拟期已就位（不写入历史期）" || bad "getTrendPeriods 缺失，当前数据仍进不了下拉"
+[ "$V4" -ge 1 ] && ok "表格/导出按已选 id 取期次，选 N 期只用 N 期" || bad "selectedTrendPeriods 缺失"
+[ "$V5" -ge 1 ] && ok "「调整分析」已改名为归档当前期（不上传）" || bad "按钮文案未更新，仍会误导上传顺序"
+[ "$V6" -ge 1 ] && ok "「覆盖」按钮真正打开文件选择框" || bad "覆盖按钮仍未触发文件选择"
+echo "  提示：正确顺序=先在旧数据上点「归档当前期为历史期」→ 再上传新文件 → 再点计算；"
+echo "        趋势分析里「当前数据」始终可选，不需要先归档。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then

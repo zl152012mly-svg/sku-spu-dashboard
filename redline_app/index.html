@@ -837,7 +837,7 @@ try {
         <h3>📅 多期数据管理（按周期归档，最多保留30期）</h3>
         <div class="period-list" id="periodList"></div>
         <div style="margin-top:10px;"><button class="btn btn-adjust" id="backfillPeriodBtn" type="button">＋ 补录历史期（上传带日期的旧红线价表）</button></div>
-        <div class="upload-hint">覆盖 = 替换当前最新期数据；调整分析 = 选周期日期后把当前结果存为一期（首次选起止、之后只选截止日，周期=上期结束次日~本次截止日）；点 <b>✕</b> 可撤回该期。历史数据可用「补录历史期」上传带日期的旧红线价表。</div>
+        <div class="upload-hint">覆盖 = 替换当前最新期数据；归档当前期 = 先把当前结果按周期存为历史期（首次选起止、之后只选截止日，周期=上期结束次日~本次截止日），再上传新数据并重算；点 <b>✕</b> 可撤回该期。历史数据可用「补录历史期」上传带日期的旧红线价表。</div>
       </div>
   <div class="card">
     <h2><span class="step">1</span> 上传数据（红线价表 + SKU平台信息表 + 各平台清单）</h2>
@@ -850,9 +850,9 @@ try {
         <div class="file-status" id="redLineStatus">未上传</div>
         <div class="upload-actions">
           <button class="btn btn-cover" id="redLineCoverBtn">覆盖</button>
-          <button class="btn btn-adjust" id="redLineAdjustBtn">调整分析</button>
+          <button class="btn btn-adjust" id="redLineAdjustBtn">归档当前期为历史期（不上传）</button>
         </div>
-        <div class="upload-hint">覆盖 = 替换当前最新数据；调整分析 = 保存为上期数据，本次为当期</div>
+        <div class="upload-hint">覆盖 = 选文件后替换当前数据；归档当前期 = 把当前计算结果存为历史期（不上传），之后再上传新一期并重算</div>
         <div class="map-panel" id="redLineMap"></div>
       </div>
       <!-- SKU平台信息表 -->
@@ -863,9 +863,9 @@ try {
         <div class="file-status" id="mapStatus">未上传</div>
         <div class="upload-actions">
           <button class="btn btn-cover" id="mapCoverBtn">覆盖</button>
-          <button class="btn btn-adjust" id="mapAdjustBtn">调整分析</button>
+          <button class="btn btn-adjust" id="mapAdjustBtn">归档当前期为历史期（不上传）</button>
         </div>
-        <div class="upload-hint">覆盖 = 替换当前映射表；调整分析 = 与上期映射对比，检测SKU构成变动</div>
+        <div class="upload-hint">覆盖 = 选文件后替换当前映射表；归档当前期 = 把当前结果存为历史期（不上传），再上传新表并重算</div>
         <div class="map-panel" id="mapMapPanel"></div>
       </div>
       <!-- Amazon 清单 -->
@@ -876,9 +876,9 @@ try {
         <div class="file-status" id="amzStatus">未上传</div>
         <div class="upload-actions">
           <button class="btn btn-cover" id="amzCoverBtn">覆盖</button>
-          <button class="btn btn-adjust" id="amzAdjustBtn">调整分析</button>
+          <button class="btn btn-adjust" id="amzAdjustBtn">归档当前期为历史期（不上传）</button>
         </div>
-        <div class="upload-hint">覆盖 = 替换当前 Amazon 数据；调整分析 = 与上期对比价格/状态变动</div>
+        <div class="upload-hint">覆盖 = 选文件后替换当前 Amazon 数据；归档当前期 = 把当前结果存为历史期（不上传），再上传新清单并重算</div>
         <div class="map-panel" id="amzMap"></div>
       </div>
       <!-- Walmart 清单 -->
@@ -889,9 +889,9 @@ try {
         <div class="file-status" id="wmtStatus">未上传</div>
         <div class="upload-actions">
           <button class="btn btn-cover" id="wmtCoverBtn">覆盖</button>
-          <button class="btn btn-adjust" id="wmtAdjustBtn">调整分析</button>
+          <button class="btn btn-adjust" id="wmtAdjustBtn">归档当前期为历史期（不上传）</button>
         </div>
-        <div class="upload-hint">覆盖 = 替换当前 Walmart 数据；调整分析 = 与上期对比价格/运费变动</div>
+        <div class="upload-hint">覆盖 = 选文件后替换当前 Walmart 数据；归档当前期 = 把当前结果存为历史期（不上传），再上传新清单并重算</div>
         <div class="map-row"><label>店铺名</label><select id="wmtStoreSelect" class="t-store-select" style="min-width:180px;"><option value="">请先上传SKU平台信息表</option></select><span class="hint">（从SKU平台信息表提取，必选）</span></div>
         <div class="map-panel" id="wmtMap"></div>
       </div>
@@ -1105,10 +1105,6 @@ try {
     <!-- ========== 模块：趋势分析 ========== -->
     <div class="w-module" id="module-history" style="display:none;">
       <div class="module-title">📈 红线价变动趋势分析</div>
-      <div class="period-panel" id="trendPeriodPanel">
-        <h3>选择对比期数</h3>
-        <div class="period-list" id="trendPeriodList"></div>
-      </div>
       <div class="filter-row trend-filters" id="trendFilters">
         <label>周期筛选：</label>
         <div class="ms" id="msPeriodTrend" data-ph="选择对比周期"><button type="button" class="ms-btn"><span class="ms-label">选择对比周期</span><span class="ms-caret">▾</span></button><div class="ms-panel"><div class="ms-actions"><a data-act="all">全选</a><a data-act="clear">清空</a></div><div class="ms-opts"></div></div></div>
@@ -3555,9 +3551,15 @@ function initMultiSelects() {
   msInit('msPeriodTrend', () => {
     const ids = msGet('msPeriodTrend');
     if (ids.length > 8) { toast('最多同时对比 8 个周期，已忽略多余选择'); }
-    _selectedPeriods = ids.slice(0, 8).map(id => _periods.findIndex(p => String(p.id) === String(id))).filter(i => i >= 0);
-    _selectedPeriods.sort((a, b) => rlPeriodTag(_periods[a]).localeCompare(rlPeriodTag(_periods[b])));
-    renderTrendInit();   // 同步 chip 高亮（内部会回写下拉选中态，不触发本回调）
+    const periods = getTrendPeriods();
+    // 选中态直接存期次 id：当前数据出现/消失都不会让历史选择错位
+    _selectedPeriods = ids.slice(0, 8).filter(id => periods.some(p => String(p.id) === String(id)));
+    _selectedPeriods.sort((a, b) => {
+      const pa = periods.find(p => String(p.id) === String(a));
+      const pb = periods.find(p => String(p.id) === String(b));
+      return trendPeriodSortKey(pa).localeCompare(trendPeriodSortKey(pb));
+    });
+    renderTrendInit();   // 只刷下拉选项与筛选项（msSetSelected 不触发本回调）
     if (_selectedPeriods.length >= 2) renderTrendTable();
     else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) ddpTrendChart.clear(); }
   });
@@ -3933,7 +3935,7 @@ function rlOpenDateDialog(mode, cb) {
   $('dateDlgErr').textContent = '';
   if (isFirst) {
     $('dateDlgSub').textContent = '第一次归档：请选择这个周期的起止日期（例如 2026-11-01 ~ 2026-11-15）。';
-    $('dateDlgHint').textContent = '之后每次点「调整分析」，只需选一个截止日，周期自动 = 上期结束日的次日 ~ 本次截止日。';
+    $('dateDlgHint').textContent = '之后每次点「归档当前期为历史期」，只需选一个截止日，周期自动 = 上期结束日的次日 ~ 本次截止日。';
   } else {
     $('dateDlgSub').textContent = '上期结束于 ' + (lastEnd || '—') + '，本周期自动从 ' + (autoStart || '—') + ' 开始。';
     $('dateDlgHint').textContent = '只需选择本周期的截止日期（例如 2026-11-20），起始日已按规则自动推算。';
@@ -4004,7 +4006,7 @@ function removePeriod(idx) {
   const p = _periods[idx];
   if (!p) return;
   _periods.splice(idx, 1);
-  _selectedPeriods = [];                 // 期次索引已变，清空趋势页已选，防止串期
+  _selectedPeriods = [];                 // 期次已变，清空趋势页已选，防止串期
   savePeriods();
   renderTrendInit();
   if (Cloud.available && !_cloudRestoring) {
@@ -4114,13 +4116,13 @@ async function rlBackfillPeriod(file, st, ed) {
   }
 }
 
-/* 上传入口操作：覆盖 / 调整分析 */
+/* 上传入口操作：覆盖（选文件后替换）/ 归档当前期为历史期（不上传） */
 function bindUploadActions() {
   const sources = [
-    { cover: 'redLineCoverBtn', adjust: 'redLineAdjustBtn', name: '红线价表' },
-    { cover: 'mapCoverBtn', adjust: 'mapAdjustBtn', name: 'SKU平台信息表' },
-    { cover: 'amzCoverBtn', adjust: 'amzAdjustBtn', name: 'Amazon' },
-    { cover: 'wmtCoverBtn', adjust: 'wmtAdjustBtn', name: 'Walmart' }
+    { cover: 'redLineCoverBtn', adjust: 'redLineAdjustBtn', file: 'redLineFile', name: '红线价表' },
+    { cover: 'mapCoverBtn', adjust: 'mapAdjustBtn', file: 'mapFile', name: 'SKU平台信息表' },
+    { cover: 'amzCoverBtn', adjust: 'amzAdjustBtn', file: 'amzFile', name: 'Amazon' },
+    { cover: 'wmtCoverBtn', adjust: 'wmtAdjustBtn', file: 'wmtFile', name: 'Walmart' }
   ];
   // 补录历史期按钮
   const bfBtn = $('backfillPeriodBtn');
@@ -4129,20 +4131,24 @@ function bindUploadActions() {
     const coverBtn = $(s.cover);
     const adjustBtn = $(s.adjust);
     if (!coverBtn || !adjustBtn) return;
-    // 覆盖 = 直接触发文件选择（已有行为）
+    // 覆盖 = 真正打开文件选择框；选定文件后原 change 处理器会替换当前数据源
     coverBtn.addEventListener('click', () => {
+      const input = $(s.file);
+      if (!input) { toast(s.name + '：找不到文件选择框'); return; }
       toast(s.name + '：请选择文件进行覆盖');
+      input.value = '';
+      input.click();
     });
-    // 调整分析 = 选周期日期后保存当前期为历史期
+    // 归档当前期 = 选周期日期后把当前计算结果存为历史期（不上传、不覆盖当前数据）
     adjustBtn.addEventListener('click', () => {
       if (!state.result || !state.result.rows.length) {
-        toast('当前无计算结果，无法进行对比分析。请先「开始计算」一次。');
+        toast('当前无计算结果，无法归档。请先「开始计算」一次。');
         return;
       }
       const mode = (_periods && _periods.length) ? 'next' : 'first';
       rlOpenDateDialog(mode, d => {
         pushPeriod('周期_' + d.start.slice(5) + '~' + d.end.slice(5), state.result.rows, d.start, d.end);
-        toast('✓ 已归档周期 ' + d.start + ' ~ ' + d.end + '（' + state.result.rows.length + ' 行）。请上传新一期数据后重算。');
+        toast('✓ 已归档周期 ' + d.start + ' ~ ' + d.end + '（' + state.result.rows.length + ' 行）。当前数据未变，请再上传新一期并重新计算。');
       });
     });
   });
@@ -4841,39 +4847,55 @@ function exportMissingData() {
 }
 
 /* ================= 趋势分析模块 ================= */
-let _selectedPeriods = []; // 选中的期数索引
+let _selectedPeriods = []; // 选中的期次 id（字符串），可含虚拟「当前数据」
+const CURRENT_PERIOD_ID = '__current__';
+/* 趋势对比用的完整期次表：虚拟当前数据 + 已归档历史期（不写入 _periods/云端） */
+function getTrendPeriods() {
+  const hasCur = !!(state && state.result && state.result.rows && state.result.rows.length);
+  const cur = hasCur ? [{ id: CURRENT_PERIOD_ID, virtual: true, label: '当前数据',
+                          date: '', pStart: '', pEnd: '', rows: state.result.rows }] : [];
+  return cur.concat(_periods || []);
+}
+/* 当前数据排最后（最新）；历史期按结束日正序 */
+function trendPeriodSortKey(p) {
+  if (!p) return '';
+  if (p.virtual) return '9999-12-31';
+  return rlPeriodTag(p);
+}
+/* 周期标签：历史期只显示 MM-DD~MM-DD（对应截图红框），当前数据显示「当前数据」 */
+function trendPeriodLabel(p) {
+  if (!p) return '';
+  if (p.virtual) return '当前数据';
+  const s = rlDay(p.pStart || ''), e = rlDay(p.pEnd || p.date || '');
+  if (s && e) return s.slice(5) + '~' + e.slice(5);
+  return (e || s).slice(5);
+}
+/* 按已选 id 取回期次对象，顺序=界面左→右（远→近） */
+function selectedTrendPeriods() {
+  const periods = getTrendPeriods();
+  const ids = (_selectedPeriods || []).map(String);
+  return periods.filter(p => ids.indexOf(String(p.id)) >= 0);
+}
 function renderTrendInit() {
-  const list = $('trendPeriodList');
-  if (!_periods.length) { list.innerHTML = '<span class="upload-hint">暂无历史数据。请先在数据上传页点击「调整分析」保存上期数据。</span>'; return; }
-  // v3: 周期筛选下拉选项（按日期正序，只到年月日），选中态以 _selectedPeriods 为唯一真相源
-  const periodOpts = _periods.map((p, i) => ({ value: String(p.id),
-    label: rlPeriodTag(p) + ' ' + p.label + ' (' + p.rows.length + '条)' }));
+  const periods = getTrendPeriods();
+  const card = $('trendResultCard');
+  if (!periods.length) {
+    msSetOptions('msPeriodTrend', []);
+    msSetSelected('msPeriodTrend', []);
+    if (card) card.style.display = 'none';
+    if (ddpTrendChart) ddpTrendChart.clear();
+    return;
+  }
+  // 周期下拉为唯一选择入口：选几期就对比几期，选项只显示区间（无年份/前缀/条数）
+  const periodOpts = periods.map(p => ({ value: String(p.id), label: trendPeriodLabel(p) }));
   msSetOptions('msPeriodTrend', periodOpts);
-  msSetSelected('msPeriodTrend', _selectedPeriods.map(i => _periods[i] && String(_periods[i].id)).filter(Boolean));
-  list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${_selectedPeriods.includes(i) ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${periodRangeLabel(p)}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
-  </span>`).join('');
-  list.querySelectorAll('.period-tag').forEach(tag => {
-    tag.addEventListener('click', () => {
-      const idx = parseInt(tag.dataset.idx);
-      if (_selectedPeriods.includes(idx)) _selectedPeriods = _selectedPeriods.filter(x => x !== idx);
-      else if (_selectedPeriods.length < 8) _selectedPeriods.push(idx);
-      else { toast('最多同时对比 8 个周期，请先取消一个'); return; }
-      // 按日期正序排列，保证宽表从左到右时间递增
-      _selectedPeriods.sort((a, b) => rlPeriodTag(_periods[a]).localeCompare(rlPeriodTag(_periods[b])));
-      msSetSelected('msPeriodTrend', _selectedPeriods.map(i => String(_periods[i].id)));  // chip→下拉同步
-      renderTrendInit();
-      if (_selectedPeriods.length >= 2) renderTrendTable(); else { $('trendResultCard').style.display = 'none'; if (ddpTrendChart) { ddpTrendChart.clear(); } }
-    });
-  });
-  bindPeriodDelete(list);
-  
-  // 更新筛选项
-  const allRows = _periods.flatMap(p => p.rows);
+  msSetSelected('msPeriodTrend', _selectedPeriods.map(String));
+  // 筛选项覆盖「当前数据 + 历史期」，避免当前期新增店铺/运营选不到
+  const allRows = periods.flatMap(p => p.rows || []);
   const stores = [...new Set(allRows.map(r => r.store))].sort();
   const operators = [...new Set(allRows.map(r => r.operator))].filter(Boolean).sort();
   const operatorGroups = [...new Set(allRows.map(r => r.operatorGroup))].filter(Boolean).sort();
-  
+
   const optsOf = items => items.map(v => ({ value: v, label: v }));
   msSetOptions('msStoreTrend', optsOf(stores));
   msSetOptions('msOpTrend', optsOf(operators));
@@ -4887,21 +4909,21 @@ function exportTrendData() {
     format: 'csv',
     precheck: () => {
       if (_selectedPeriods.length < 2) return { error: '请先在趋势分析页选择至少两个周期再导出' };
-      if (_selectedPeriods.some(i => !_periods[i])) return { error: '所选期次数据不存在，请重新选择' };
+      if (selectedTrendPeriods().length !== _selectedPeriods.length) return { error: '所选期次数据不存在，请重新选择' };
       return null;
     },
     build: () => {
-      const sel = _selectedPeriods.map(i => _periods[i]).filter(Boolean);
+      const sel = selectedTrendPeriods();
       const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
       const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
       const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
                        { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
       const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
       const head2 = ['', '', '', '', ''];
-      metrics.forEach(m => { sel.forEach(p => { head1.push(m.label); head2.push(rlPeriodTag(p)); }); });
+      metrics.forEach(m => { sel.forEach(p => { head1.push(m.label); head2.push(trendPeriodLabel(p)); }); });
       // 相邻期波动列（按指标分组，与屏幕表头同序）
       for (let k = 1; k < sel.length; k++) {
-        const tagA = rlPeriodTag(sel[k - 1]), tagB = rlPeriodTag(sel[k]);
+        const tagA = trendPeriodLabel(sel[k - 1]), tagB = trendPeriodLabel(sel[k]);
         ['红线价', '标准DDP', '选用DDP'].forEach(m => { head1.push(m + '波动'); head2.push(tagA + '→' + tagB); });
       }
       const data2d = [head1, head2, ...matrix.rows.map(row => {
@@ -5023,7 +5045,7 @@ function rlDeltaHtml(d) {
 }
 function renderTrendTable() {
   if (_selectedPeriods.length < 2) return;
-  const sel = _selectedPeriods.map(i => _periods[i]).filter(Boolean);
+  const sel = selectedTrendPeriods();
   if (sel.length < 2) return;
   const storeFilter = msGet('msStoreTrend'), opFilter = msGet('msOpTrend'), ogFilter = msGet('msOgTrend');
   const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter });
@@ -5036,10 +5058,10 @@ function renderTrendTable() {
   let h2 = '<tr class="metric-head"><th></th><th></th><th></th>';
   metrics.forEach(m => {
     h1 += '<th colspan="' + sel.length + '">' + m.label + '</th>';
-    sel.forEach(p => { h2 += '<th>' + rlPeriodTag(p) + '</th>'; });
+    sel.forEach(p => { h2 += '<th>' + trendPeriodLabel(p) + '</th>'; });
   });
   for (let k = 1; k < sel.length; k++) {
-    h1 += '<th colspan="3">' + rlPeriodTag(sel[k - 1]) + '→' + rlPeriodTag(sel[k]) + '</th>';
+    h1 += '<th colspan="3">' + trendPeriodLabel(sel[k - 1]) + '→' + trendPeriodLabel(sel[k]) + '</th>';
     deltaKeys.forEach(d => { h2 += '<th>' + d.label + '波动</th>'; });
   }
   h1 += '</tr>'; h2 += '</tr>';
@@ -5069,7 +5091,7 @@ function renderDdpTrendChart(sel, totals) {
   if (typeof echarts === 'undefined') return;
   const el = $('chartDdpTrendMulti'); if (!el) return;
   if (!ddpTrendChart) ddpTrendChart = echarts.init(el);
-  const labels = sel.map(p => rlPeriodTag(p));
+  const labels = sel.map(p => trendPeriodLabel(p));
   const biao = sel.map(p => (totals[p.id] || {}).biaoDdp);
   const xuan = sel.map(p => (totals[p.id] || {}).xuanDdp);
   const red = sel.map(p => (totals[p.id] || {}).totalRedLine);
@@ -5092,6 +5114,7 @@ function renderDdpTrendChart(sel, totals) {
 function renderWithModules() {
   render();
   renderAbnormal();
+  renderTrendInit();   // 当前结果变化后，刷新虚拟「当前数据」期与筛选项
   // 自动切换到有数据的模块（如果当前在upload模块且已有结果）
   if (state.result && state.result.rows.length && document.querySelector('.nav-item.active, .rl-tab.active')?.dataset.module === 'upload') {
     // 保持当前模块，不自动切换
