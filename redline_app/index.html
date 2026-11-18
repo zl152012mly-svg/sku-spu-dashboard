@@ -17,7 +17,7 @@
  *   listings : [{ sku, platform, store, price, currency, redCol?, linkStatus? }]
  *              platform: 'amazon' | 'walmart' | 'temu'
  *              store:    店铺名（Amazon 用清单店铺名，Walmart/Temu 用上传时指定店铺名）
- *              price:    比较价（Amazon = min(价格,优惠价,B2B价,B2B折扣价)+运费，已在解析层算好）
+ *              price:    上架SKU最低成交价（Amazon = min(价格,优惠价,B2B价,B2B折扣价)+运费，已在解析层算好）
  *              redCol:   'temuUs' | 'temuNew'（Temu 按经营站点由解析层决定；amazon/walmart 忽略）
  *              linkStatus: 链接状态（在售/停售/已删除等，仅透传展示，不参与判定；已删除在解析层过滤）
  *   mappings : [{ listingSku, store, shipSku, qty, internalId? }]
@@ -27,9 +27,9 @@
  * 判定逻辑：
  *   Amazon/Walmart: 红线价合计 = Σ(成员库存SKU的 seller 红线价 × 数量)   [按上架SKU+店铺查映射]
  *   Temu:           红线价 = 上架SKU直连红线价表，按 redCol 取列
- *   🔴 breach  比较价 < 红线价合计
- *   🟡 warning 合计 ≤ 比较价 < 合计 × 1.05
- *   🟢 normal  比较价 ≥ 合计 × 1.05
+ *   🔴 breach  上架SKU最低成交价 < 红线价合计
+ *   🟡 warning 合计 ≤ 上架SKU最低成交价 < 合计 × 1.05
+ *   🟢 normal  上架SKU最低成交价 ≥ 合计 × 1.05
  *   🟠 missing 成员SKU中有红线价缺口（缺价部分不计入合计，先提示数据问题）
  *   ⚫ nobom   上架SKU在映射表中无记录（amazon/walmart）
  */
@@ -128,7 +128,7 @@
         linkStatus: clean(r.linkStatus) || '',   // 链接状态（透传展示）
         srcStatus: clean(r.srcStatus) || '',     // 清单自带状态说明（如 Walmart「No online price found」→ 解释为何无价格）
         manualPrice: !!r.manualPrice,            // 该价格是否来自人工填价
-        promoExpired: !!r.promoExpired,          // Walmart：促销已过期（只打标提醒，价格仍按报表 Price 列）
+        promoExpired: !!r.promoExpired,          // Walmart：促销已过期（价格改用原价，标记说明已切换口径）
         priceDetail: r.priceDetail || null       // 原始价格明细（展示用）
       });
     });
@@ -872,7 +872,7 @@ try {
       <!-- Amazon 清单 -->
       <div class="upload-box">
         <label>③ Amazon 清单</label>
-        <div class="desc">列：店铺 / MSKU / 价格 / 优惠价 / B2B价格 / B2B数量折扣 / 运费 / 状态。<br>比较价 = min(四价) + 运费，店铺名自动映射；「已删除」链接自动过滤不参与判定</div>
+        <div class="desc">列：店铺 / MSKU / 价格 / 优惠价 / B2B价格 / B2B数量折扣 / 运费 / 状态。<br>上架SKU最低成交价 = min(四价) + 运费，店铺名自动映射；「已删除」链接自动过滤不参与判定</div>
         <input type="file" id="amzFile" accept=".xlsx,.xls,.csv">
         <div class="file-status" id="amzStatus">未上传</div>
         <div class="upload-actions">
@@ -885,7 +885,7 @@ try {
       <!-- Walmart 清单 -->
       <div class="upload-box">
         <label>④ Walmart 清单</label>
-        <div class="desc">列：SKU / Price / Buy Box Shipping Price。报表无店铺列，需先上传SKU平台信息表，再从此处下拉选择店铺。比较价 = Price + Shipping；Price 为空/非数字（如USD）/197104253781/超过1万时标记异常需人工核对</div>
+        <div class="desc">列：SKU / Price / Buy Box Shipping Price / Comparison Price（原价，促销过期用）/ Promo End Date / Price Type。报表无店铺列，需先上传SKU平台信息表，再从此处下拉选择店铺。上架SKU最低成交价 = Price + Shipping；<b>促销已结束时改用 Comparison Price（原价）+ Shipping</b>（原价无效则回退 Price 并标注）；Price 为空/非数字（如USD）/197104253781/超过1万时标记异常需人工核对</div>
         <input type="file" id="wmtFile" accept=".xlsx,.xls,.csv">
         <div class="file-status" id="wmtStatus">未上传</div>
         <div class="upload-actions">
@@ -1015,7 +1015,7 @@ try {
           <thead class="sticky-thead">
             <tr>
               <th></th><th>状态</th><th>变化</th><th>运营</th><th>运营组</th><th>上架SKU</th><th>平台</th><th>店铺</th><th>链接状态</th>
-              <th>标准DDP</th><th>选用DDP</th><th>最新上架SKU最低价</th><th>上架SKU红线价</th><th>差额</th><th>差额%</th>
+              <th>标准DDP</th><th>选用DDP</th><th>上架SKU最低成交价</th><th>上架SKU红线价</th><th>差额</th><th>差额%</th>
               <th>红线价变动趋势</th><th>选用DDP趋势</th><th>标准DDP趋势</th>
               <th>构成明细</th>
             </tr>
@@ -1122,7 +1122,7 @@ try {
       </div>
       <div class="card" id="trendResultCard" style="display:none;">
         <h2>趋势对比表</h2>
-        <div class="trend-note">红线价表内的 SKU 全部纳入：未匹配到上架记录的 SKU，店铺 / 运营 / 运营组显示「无上架记录」，红线价 / 标准DDP / 选用DDP 取红线价表原列；比较价与状态因无上架记录显示「—」。<b>历史期无上架记录行按当前红线价表补值</b>。</div>
+        <div class="trend-note">红线价表内的 SKU 全部纳入：未匹配到上架记录的 SKU，店铺 / 运营 / 运营组显示「无上架记录」，红线价 / 标准DDP / 选用DDP 取红线价表原列；上架SKU最低成交价与状态因无上架记录显示「—」。<b>历史期无上架记录行按当前红线价表补值</b>。表头日期为该周期起始日（如 10-31 代表 10-31~11-16），当前期为最新归档结束日次日 ~ 至今。</div>
         <div class="table-wrap">
           <table id="trendTable">
             <thead class="sticky-thead" id="trendHead">
@@ -1218,7 +1218,7 @@ const ALIAS = {
   },
   walmart: {
     sku:   A(['SKU','ITEM ID','ITEM_ID','ITEMID','上架SKU']),
-    // 售价口径：Price + Buy Box Shipping Price（见 applyWalmart）
+    // 上架SKU最低成交价口径：Price + Buy Box Shipping Price；促销过期改用 Comparison Price（见 applyWalmart）
     // 硬排除「Price Type」，避免报表里没有 Price 时误取类型列
     price: A(['PRICE','PRICE(USD)','售价','价格'], /TYPE|类型/),
     // 运费取「Buy Box Shipping Price」；硬排除 Shipping Weight / Shipping Weight Unit 这类干扰列
@@ -2468,7 +2468,7 @@ function applyAmazon() {
   });
   c.rows = rows;
   const st = $('amzStatus');
-  st.textContent = `已解析 ${rows.length} 行 · 比较价=min(四价)+运费 · 店铺已映射${dropped ? ` · 已过滤「已删除」${dropped} 行` : ''}${noPrice ? ` · ⚠ 在售无价格 ${noPrice} 条需人工核对` : ''}`;
+  st.textContent = `已解析 ${rows.length} 行 · 上架SKU最低成交价=min(四价)+运费 · 店铺已映射${dropped ? ` · 已过滤「已删除」${dropped} 行` : ''}${noPrice ? ` · ⚠ 在售无价格 ${noPrice} 条需人工核对` : ''}`;
   st.className = 'file-status ' + (rows.length ? 'ok' : 'err');
   if (!c.mapped.sku) {
     st.textContent = '⚠ 缺少上架SKU列（MSKU），请在上方选择'; st.className = 'file-status err';
@@ -2505,26 +2505,34 @@ function applyWalmart() {
       rows.push({ sku, platform: 'WALMART', store: normStore(c.storeManual), price: null, currency: 'USD', abnormal: true, linkStatus: pub, priceDetail: abnormalReason + '（需人工核对）', srcStatus, operator: r.op ? String(r.op).trim() : '', operatorGroup: r.og ? String(r.og).trim() : '' });
       return;
     }
-    /* --- 促销到期判定（2026-09-29 口径更新）--------------------------------
-       Walmart 报表的 Price 列在促销期内是「促销价」。促销结束后 Price 仍是促销期快照。
-       口径（用户确认）：一律按 Price + Buy Box Shipping Price 计算，**不改价**；
-       促销已结束的行只打「促销已结束」标记 + 明细说明，提醒以最新导出报表为准。 */
+    /* --- 促销到期判定（2026-11-18 口径变更）--------------------------------
+       Walmart 报表的 Price 列在促销期内是「促销价」，促销结束后 Price 仍是促销期快照。
+       新口径：促销已结束（价格类型含 Promo 且促销结束日 < 今天）时改用 Comparison Price
+       （原价/划线价）+ Buy Box Shipping Price；原价无效时回退 Price 并标注需人工核对。
+       促销未结束仍按 Price + 运费。保留「促销已结束」标记，说明已切换口径。 */
     const ptStr = String(r.priceType == null ? '' : r.priceType).trim();
     const promoEnd = parseAnyDate(r.promoEnd);
     const isPromo = /promo/i.test(ptStr);
     const today0 = startOfToday();
     const promoExpired = !!(isPromo && promoEnd && promoEnd < today0);
+    const cp = toNum(r.comparePrice);
+    const cpValid = promoExpired && cp !== null && cp > 0 && cp !== ABNORMAL_VAL && cp <= 10000;
+    const base = cpValid ? cp : p;
+    const baseLabel = cpValid ? 'Comparison Price（原价）' : 'Price';
     const promoNote = promoExpired
-      ? '⏰ 促销已于 ' + fmtDate(promoEnd) + ' 结束，按 Price=' + p + ' 计（促销期快照价，建议以最新导出报表为准）'
+      ? (cpValid
+          ? '⏰ 促销已于 ' + fmtDate(promoEnd) + ' 结束，已按原价 ' + cp + '（代替促销价 ' + p + '）计算'
+          : '⏰ 促销已于 ' + fmtDate(promoEnd) + ' 结束，但原价列无效，仍按 Price=' + p + ' 计（需人工核对）')
       : '';
-    /* Walmart 售价口径（用户确认）：price = Price + Buy Box Shipping Price（促销过期也不改价，只打标） */
+    /* Walmart 上架SKU最低成交价：促销中 = Price + 运费；促销过期 = 原价 + 运费 */
     const shipColName = c.mapped.shipping || 'Buy Box Shipping Price';
-    const total = Math.round((p + ship) * 100) / 100; // 避免浮点尾差（179.99+29.9=209.89000000000001）
+    const total = Math.round((base + ship) * 100) / 100; // 避免浮点尾差（179.99+29.9=209.89000000000001）
     rows.push({
       sku, platform: 'WALMART', store: normStore(c.storeManual), price: total, currency: 'USD',
       linkStatus: pub,
-      priceDetail: 'Price ' + p + ' + ' + shipColName + ' ' + ship + ' = ' + total + (promoNote ? '　| ' + promoNote : ''),
+      priceDetail: baseLabel + ' ' + base + ' + ' + shipColName + ' ' + ship + ' = ' + total + (promoNote ? '　| ' + promoNote : ''),
       promoExpired: promoExpired, promoEndDate: promoEnd ? fmtDate(promoEnd) : '',
+      promoPriceSource: promoExpired ? baseLabel : '',
       srcStatus, operator: r.op ? String(r.op).trim() : '', operatorGroup: r.og ? String(r.og).trim() : ''
     });
   });
@@ -2532,7 +2540,7 @@ function applyWalmart() {
   const st = $('wmtStatus');
   const abnormalCnt = rows.filter(r => r.abnormal).length;
   const promoCnt = rows.filter(r => r.promoExpired).length;
-  st.textContent = `已解析 ${rows.length} 行 · 店铺：${c.storeManual || '未指定'}${abnormalCnt ? ' · ⚠ 价格异常 ' + abnormalCnt + ' 条需核对' : ''}${promoCnt ? ' · ⏰ 促销已结束 ' + promoCnt + ' 条（按Price计）' : ''}`;
+  st.textContent = `已解析 ${rows.length} 行 · 店铺：${c.storeManual || '未指定'}${abnormalCnt ? ' · ⚠ 价格异常 ' + abnormalCnt + ' 条需核对' : ''}${promoCnt ? ' · ⏰ 促销已结束 ' + promoCnt + ' 条（按原价计）' : ''}`;
   if (!c.storeManual) { st.textContent = '⚠ 未选择店铺，请从SKU平台信息表中选择'; st.className = 'file-status err'; }
   else if (!c.mapped.sku) { st.textContent = '⚠ 缺少SKU列，请在上方选择'; st.className = 'file-status err'; }
   else st.className = 'file-status ' + (rows.length ? 'ok' : 'err');
@@ -3719,7 +3727,7 @@ function renderRow(r) {
       <td>${r.linkStatus || '—'}</td>
       <td>${r.biaoDdp === null || r.biaoDdp === undefined ? '—' : fmtMoney(r.biaoDdp)}</td>
       <td>${r.xuanDdp === null || r.xuanDdp === undefined ? '—' : fmtMoney(r.xuanDdp)}</td>
-      <td>${fmtMoney(r.price)}${r.currency ? ' ' + r.currency : ''}${r.manualPrice ? '<span class="tag-manual">人工填价</span>' : ''}${r.promoExpired ? '<span class="tag-promo" title="促销已结束，当前按报表 Price 列（促销期快照价）计算，建议以最新导出报表为准">促销已结束</span>' : ''}${r.abnormal ? '<br><span style="color:#7c3aed;font-size:11px;">需人工核对</span>' : ''}</td>
+      <td>${fmtMoney(r.price)}${r.currency ? ' ' + r.currency : ''}${r.manualPrice ? '<span class="tag-manual">人工填价</span>' : ''}${r.promoExpired ? '<span class="tag-promo" title="促销已结束，已按 Comparison Price（原价）+ 运费计算；原价无效时回退 Price 并标注需核对">促销已结束</span>' : ''}${r.abnormal ? '<br><span style="color:#7c3aed;font-size:11px;">需人工核对</span>' : ''}</td>
       <td>${r.totalRedLine === null ? '—' : fmtMoney(r.totalRedLine)}${r.missingSkus && r.missingSkus.length ? '<br><span style="color:var(--orange);font-size:11px;">缺：' + r.missingSkus.join(', ') + '</span>' : ''}</td>
       <td class="${diffCls}">${r.diff === null ? '—' : (r.diff > 0 ? '+' : '') + fmtMoney(r.diff)}</td>
       <td class="${diffCls}">${r.diffPct == null ? '—' : r.diffPct.toFixed(2) + '%'}</td>
@@ -3734,8 +3742,8 @@ function renderRow(r) {
           ? `<div style="font-weight:600; margin-bottom:4px;">Temu 直连红线价（${r.redCol === 'TEMUNEW' ? '新市场 F 列' : '美国 E 列'}）· 店铺 ${r.store}${r.site ? ' · ' + r.site : ''}</div>`
           : `<div style="font-weight:600; margin-bottom:4px;">构成明细（按 SKU平台信息表 · ${r.store}）</div>`}
         ${(r.bom || []).map(b => `<div class="bom-line">${b.shipSku} × ${b.qty}　单价 ${b.price === null ? '<span class="miss">缺红线价</span>' : fmtMoney(b.price)}　小计 ${b.subTotal === null ? '—' : fmtMoney(b.subTotal)}</div>`).join('')}
-        ${r.priceDetail ? `<div class="bom-line" style="color:var(--muted);">价格明细：${typeof r.priceDetail === 'string' ? r.priceDetail : priceDetailText(r.priceDetail)}　→ 比较价 = <b>${fmtMoney(r.price)}</b></div>` : ''}
-        <div class="bom-line" style="margin-top:4px; font-weight:600;">红线价合计：${r.totalRedLine === null ? '—' : fmtMoney(r.totalRedLine)}　比较价：${fmtMoney(r.price)}${r.abnormal ? ' <span style="color:#7c3aed;">（价格异常，需人工核对）</span>' : ''}　差额：${r.diff === null ? '—' : (r.diff > 0 ? '+' : '') + fmtMoney(r.diff)}（${r.diffPct == null ? '—' : r.diffPct.toFixed(2) + '%'}）</div>
+        ${r.priceDetail ? `<div class="bom-line" style="color:var(--muted);">价格明细：${typeof r.priceDetail === 'string' ? r.priceDetail : priceDetailText(r.priceDetail)}　→ 上架SKU最低成交价 = <b>${fmtMoney(r.price)}</b></div>` : ''}
+        <div class="bom-line" style="margin-top:4px; font-weight:600;">红线价合计：${r.totalRedLine === null ? '—' : fmtMoney(r.totalRedLine)}　上架SKU最低成交价：${fmtMoney(r.price)}${r.abnormal ? ' <span style="color:#7c3aed;">（价格异常，需人工核对）</span>' : ''}　差额：${r.diff === null ? '—' : (r.diff > 0 ? '+' : '') + fmtMoney(r.diff)}（${r.diffPct == null ? '—' : r.diffPct.toFixed(2) + '%'}）</div>
       </div></td>
     </tr>`;
 }
@@ -3786,7 +3794,7 @@ function doExport() {
     '运营': r.operator || '',
     '运营组': r.operatorGroup || '',
     '链接状态': r.linkStatus || '',
-    '比较价': r.price,
+    '上架SKU最低成交价': r.price,
     '币种': r.currency,
     '价格明细': r.priceDetail ? priceDetailText(r.priceDetail) : '',
     '红线价合计': r.totalRedLine,
@@ -3911,8 +3919,8 @@ function rlToday() {
 /* 最新期的结束日（无期次返回空） */
 function rlLatestPeriodEnd() {
   if (!_periods || !_periods.length) return '';
-  const sorted = _periods.slice().sort((a, b) => (b.pEnd || '').localeCompare(a.pEnd || '') || (b.id || 0) - (a.id || 0));
-  return sorted[0].pEnd || '';
+  const sorted = _periods.slice().sort((a, b) => rlPeriodTag(b).localeCompare(rlPeriodTag(a)) || (b.id || 0) - (a.id || 0));
+  return rlPeriodTag(sorted[0]);
 }
 /* 打开周期日期弹窗：mode='first'（首次，起止都要）| 'next'（之后，只选截止日）
    cb({start, end}) 回传；取消不调用。 */
@@ -3954,11 +3962,27 @@ function rlDay(v) {
   const m = String(v).trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : String(v).trim().slice(0, 10);
 }
+/* 老期次（截图里 2026-11-18 归档的那批）只存了 label=周期_10-31~11-16，没存 pStart/pEnd；
+   统一从这里解析真实业务区间，年份用归档日推断，避免把上传日当成周期起点。 */
+function rlPeriodBounds(p) {
+  if (!p) return { s: '', e: '' };
+  const s = rlDay(p.pStart || ''), e = rlDay(p.pEnd || '');
+  if (s && e) return { s: s, e: e };
+  const m = String(p.label || '').match(/(\d{1,2})-(\d{1,2})\s*[~～]\s*(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const y = rlDay(p.date || '').slice(0, 4) || String(rlToday()).slice(0, 4);
+    const md = x => String(x).padStart(2, '0');
+    return { s: s || (y + '-' + md(m[1]) + '-' + md(m[2])),
+             e: e || (y + '-' + md(m[3]) + '-' + md(m[4])) };
+  }
+  return { s: s, e: e };
+}
+/* 多期管理 chip：只显示 MM-DD~MM-DD（不再显示上传日、周期_前缀、条数） */
 function periodRangeLabel(p) {
   if (!p) return '';
-  if (p.pStart && p.pEnd) return rlDay(p.pStart) + ' ~ ' + rlDay(p.pEnd);
-  if (p.pEnd) return '截至 ' + rlDay(p.pEnd);
-  return rlDay(p.date);
+  const b = rlPeriodBounds(p);
+  if (b.s && b.e) return b.s.slice(5) + '~' + b.e.slice(5);
+  return (b.e || b.s || rlDay(p.date)).slice(5);
 }
 function loadPeriods() {
   try { _periods = JSON.parse(localStorage.getItem(PERIODS_KEY) || '[]'); }
@@ -4035,8 +4059,9 @@ function renderPeriodPanel() {
   const list = $('periodList');
   if (!_periods.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${i === 0 ? 'active' : ''}" data-idx="${i}">
-    <span class="p-date">${periodRangeLabel(p)}</span> ${p.label} (${p.rows.length}条)${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
+  // v6：chip 只显示真实业务区间（10-31~11-16），上传日/条数移到 title 里备查
+  list.innerHTML = _periods.map((p, i) => `<span class="period-tag ${i === 0 ? 'active' : ''}" data-idx="${i}" title="归档于 ${rlDay(p.date)} · ${p.rows.length} 条">
+    <span class="p-date">${periodRangeLabel(p)}</span>${RL_IS_ADMIN ? `<button type="button" class="p-del" data-idx="${i}" title="撤回该期：从本机与工作台共享存储删除，趋势对比中不再出现">✕</button>` : ''}
   </span>`).join('');
   list.querySelectorAll('.period-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -4847,8 +4872,13 @@ const NO_LISTING_SENTINEL = '无上架记录';
 /* 趋势对比用的完整期次表：虚拟当前数据 + 已归档历史期（不写入 _periods/云端） */
 function getTrendPeriods() {
   const hasCur = !!(state && state.result && state.result.rows && state.result.rows.length);
-  const cur = hasCur ? [{ id: CURRENT_PERIOD_ID, virtual: true, label: '当前数据',
-                          date: '', pStart: '', pEnd: '', rows: state.result.rows }] : [];
+  let cur = [];
+  if (hasCur) {
+    // v6：当前数据 = 最新归档结束日的次日 ~ 至今（不再叫「当前数据」）
+    const nextDay = rlDateAddDays(rlLatestPeriodEnd(), 1) || rlToday();
+    cur = [{ id: CURRENT_PERIOD_ID, virtual: true, label: rlDay(nextDay).slice(5) + '~至今',
+             date: '', pStart: nextDay, pEnd: '', startDay: rlDay(nextDay), rows: state.result.rows }];
+  }
   return cur.concat(_periods || []);
 }
 /* 当前数据排最后（最新）；历史期按结束日正序 */
@@ -4857,19 +4887,26 @@ function trendPeriodSortKey(p) {
   if (p.virtual) return '9999-12-31';
   return rlPeriodTag(p);
 }
-/* 周期标签：历史期只显示 MM-DD~MM-DD（对应截图红框），当前数据显示「当前数据」 */
+/* 周期下拉/筛选项标签：历史期 MM-DD~MM-DD，当前期 MM-DD~至今 */
 function trendPeriodLabel(p) {
   if (!p) return '';
-  if (p.virtual) return '当前数据';
-  const s = rlDay(p.pStart || ''), e = rlDay(p.pEnd || p.date || '');
-  if (s && e) return s.slice(5) + '~' + e.slice(5);
-  return (e || s).slice(5);
+  if (p.virtual) return p.label || '至今';
+  return periodRangeLabel(p);
+}
+/* v6 表头标签：每期只显示起始日 MM-DD；当前期取「11-17~至今」的前半段 */
+function trendHeaderLabel(p) {
+  if (!p) return '';
+  if (p.virtual) return String(p.label || '至今').split('~')[0];
+  const b = rlPeriodBounds(p);
+  return (b.s || b.e || rlDay(p.date)).slice(5);
 }
 /* 按已选 id 取回期次对象，顺序=界面左→右（远→近） */
 function selectedTrendPeriods() {
   const periods = getTrendPeriods();
   const ids = (_selectedPeriods || []).map(String);
-  return periods.filter(p => ids.indexOf(String(p.id)) >= 0);
+  // v6：按业务日期正序（历史期远→近，当前期永远最后），保证表头/导出/折线图从左到右时间递增
+  return periods.filter(p => ids.indexOf(String(p.id)) >= 0)
+                .sort((a, b) => trendPeriodSortKey(a).localeCompare(trendPeriodSortKey(b)));
 }
 function renderTrendInit() {
   const periods = getTrendPeriods();
@@ -4927,13 +4964,13 @@ function exportTrendData() {
       const matrix = rlBuildTrendMatrix(sel, { store: storeFilter, operator: opFilter, operatorGroup: ogFilter,
                                                q: qEl ? qEl.value : '' });
       const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
-                       { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
+                       { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '上架SKU最低成交价' }, { k: 'status', label: '状态' }];
       const head1 = ['SKU', '平台', '店铺', '运营', '运营组'];
       const head2 = ['', '', '', '', ''];
-      metrics.forEach(m => { sel.forEach(p => { head1.push(m.label); head2.push(trendPeriodLabel(p)); }); });
+      metrics.forEach(m => { sel.forEach(p => { head1.push(m.label); head2.push(trendHeaderLabel(p)); }); });
       // 相邻期波动列（按指标分组，与屏幕表头同序）
       for (let k = 1; k < sel.length; k++) {
-        const tagA = trendPeriodLabel(sel[k - 1]), tagB = trendPeriodLabel(sel[k]);
+        const tagA = trendHeaderLabel(sel[k - 1]), tagB = trendHeaderLabel(sel[k]);
         ['红线价', '标准DDP', '选用DDP'].forEach(m => { head1.push(m + '波动'); head2.push(tagA + '→' + tagB); });
       }
       const data2d = [head1, head2, ...matrix.rows.map(row => {
@@ -4970,7 +5007,7 @@ function exportDetailData() {
       const trendVal = (curr, prev) => (curr === null || curr === undefined || prev === null || prev === undefined) ? '' : (toNum(curr) - toNum(prev));
       const numOrEmpty = v => (v === null || v === undefined || isNaN(Number(v))) ? '' : Number(Number(v).toFixed(2));
       const data2d = [
-        ['状态', '变化', '运营', '运营组', '上架SKU', '平台', '店铺', '链接状态', '标准DDP', '选用DDP', '最新上架SKU最低价', '上架SKU红线价', '差额', '差额%', '红线价变动趋势', '选用DDP趋势', '标准DDP趋势', '构成明细', '促销状态'],
+        ['状态', '变化', '运营', '运营组', '上架SKU', '平台', '店铺', '链接状态', '标准DDP', '选用DDP', '上架SKU最低成交价', '上架SKU红线价', '差额', '差额%', '红线价变动趋势', '选用DDP趋势', '标准DDP趋势', '构成明细', '促销状态'],
         ...data.map(row => [
           STATUS_META[row.status]?.label || row.status,
           row.change || '',
@@ -4999,7 +5036,7 @@ function exportDetailData() {
 }
 
 /* ============ 多期趋势：共用聚合函数（宽表/折线图/导出同口径） ============ */
-function rlPeriodTag(p) { return rlDay(p && (p.pEnd || p.date) || ''); }
+function rlPeriodTag(p) { return rlPeriodBounds(p).e || rlDay(p && p.date || ''); }
 function rlDelta(curr, prev) {
   if (curr === null || curr === undefined || prev === null || prev === undefined || curr === '' || prev === '') return null;
   const c = Number(curr), p = Number(prev);
@@ -5061,7 +5098,7 @@ function rlBuildTrendMatrix(sel, filters) {
       const k = src.sku + '|' + NO_LISTING_SENTINEL + '|' + NO_LISTING_SENTINEL;
       if (!byKey[k]) byKey[k] = { sku: src.sku, platform: '', store: NO_LISTING_SENTINEL,
         operator: NO_LISTING_SENTINEL, operatorGroup: NO_LISTING_SENTINEL, cells: {} };
-      // 无上架记录 → 比较价/状态无值；红线价取 Seller，标准/选用DDP 取红线价表原列（历史期同样按当前表补）
+      // 无上架记录 → 上架SKU最低成交价/状态无值；红线价取 Seller，标准/选用DDP 取红线价表原列（历史期同样按当前表补）
       const cell = { price: null, totalRedLine: num(src.seller), biaoDdp: num(src.biaoDdp),
                      xuanDdp: num(src.xuanDdp), status: '' };
       byKey[k].cells[p.id] = cell;
@@ -5100,16 +5137,16 @@ function renderTrendTable() {
   clearTrendDirty();
   // v5: 两级表头——前 5 列固定（SKU/平台/店铺/运营/运营组），第一行按【指标】分组，第二行各指标下按周期从左到右（远→近）
   const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
-                   { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '比较价' }, { k: 'status', label: '状态' }];
+                   { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '上架SKU最低成交价' }, { k: 'status', label: '状态' }];
   const deltaKeys = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' }, { k: 'xuanDdp', label: '选用DDP' }];
   let h1 = '<tr class="period-head"><th>上架SKU</th><th>平台</th><th>店铺</th><th>运营</th><th>运营组</th>';
   let h2 = '<tr class="metric-head"><th></th><th></th><th></th><th></th><th></th>';
   metrics.forEach(m => {
     h1 += '<th colspan="' + sel.length + '">' + m.label + '</th>';
-    sel.forEach(p => { h2 += '<th>' + trendPeriodLabel(p) + '</th>'; });
+    sel.forEach(p => { h2 += '<th>' + trendHeaderLabel(p) + '</th>'; });
   });
   for (let k = 1; k < sel.length; k++) {
-    h1 += '<th colspan="3">' + trendPeriodLabel(sel[k - 1]) + '→' + trendPeriodLabel(sel[k]) + '</th>';
+    h1 += '<th colspan="3">' + trendHeaderLabel(sel[k - 1]) + '→' + trendHeaderLabel(sel[k]) + '</th>';
     deltaKeys.forEach(d => { h2 += '<th>' + d.label + '波动</th>'; });
   }
   h1 += '</tr>'; h2 += '</tr>';
@@ -5141,7 +5178,7 @@ function renderDdpTrendChart(sel, totals) {
   if (typeof echarts === 'undefined') return;
   const el = $('chartDdpTrendMulti'); if (!el) return;
   if (!ddpTrendChart) ddpTrendChart = echarts.init(el);
-  const labels = sel.map(p => trendPeriodLabel(p));
+  const labels = sel.map(p => trendHeaderLabel(p));
   const biao = sel.map(p => (totals[p.id] || {}).biaoDdp);
   const xuan = sel.map(p => (totals[p.id] || {}).xuanDdp);
   const red = sel.map(p => (totals[p.id] || {}).totalRedLine);

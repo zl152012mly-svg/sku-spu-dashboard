@@ -309,13 +309,13 @@ V4=$(count_in "$APP/redline_app/index.html" 'const sel = selectedTrendPeriods();
 V5=$(count_in "$APP/redline_app/index.html" '归档当前期为历史期（不上传）')
 V6=$(count_in "$APP/redline_app/index.html" 'input.click();')
 [ "$V1" -eq 0 ] && ok "顶部「选择对比期数」chip 已移除" || bad "chip 仍在，趋势页会有两套选择入口"
-[ "$V2" -ge 1 ] && ok "周期选项只显示 MM-DD~MM-DD 区间（当前数据显示「当前数据」）" || bad "trendPeriodLabel 缺失"
+[ "$V2" -ge 1 ] && ok "周期选项只显示 MM-DD~MM-DD 区间（当前期为 MM-DD~至今，见 4.19）" || bad "trendPeriodLabel 缺失"
 [ "$V3" -ge 1 ] && ok "当前数据常驻虚拟期已就位（不写入历史期）" || bad "getTrendPeriods 缺失，当前数据仍进不了下拉"
 [ "$V4" -ge 1 ] && ok "表格/导出按已选 id 取期次，选 N 期只用 N 期" || bad "selectedTrendPeriods 缺失"
 [ "$V5" -ge 1 ] && ok "「调整分析」已改名为归档当前期（不上传）" || bad "按钮文案未更新，仍会误导上传顺序"
 [ "$V6" -ge 1 ] && ok "「覆盖」按钮真正打开文件选择框" || bad "覆盖按钮仍未触发文件选择"
 echo "  提示：正确顺序=先在旧数据上点「归档当前期为历史期」→ 再上传新文件 → 再点计算；"
-echo "        趋势分析里「当前数据」始终可选，不需要先归档。"
+echo "        趋势分析里当前期（结束日次日~至今）始终可选，不需要先归档。"
 
 say "4.18 红线价趋势 v5 自查（搜索框 + 计算按钮 + 全量SKU补齐）"
 W1=$(count_in "$APP/redline_app/index.html" 'id="fSearchTrend"')
@@ -329,8 +329,23 @@ W6=$(count_in "$APP/redline_app/index.html" '<th>上架SKU</th><th>平台</th><t
 [ "$W3" -ge 1 ] && ok "条件变更只打脏标记，点计算按钮才刷新表格" || bad "markTrendDirty 缺失"
 [ "$W4" -ge 1 ] && [ "$W5" -ge 1 ] && ok "红线价表全量 SKU 补齐：无匹配行三列=无上架记录，指标取表内原列" || bad "全量补齐逻辑缺失"
 [ "$W6" -ge 1 ] && ok "趋势表新增运营/运营组两列（前 5 列固定）" || bad "运营/运营组列缺失"
-echo "  提示：历史期无上架记录行按当前红线价表补值；比较价/状态因无上架记录显示「—」；"
+echo "  提示：历史期无上架记录行按当前红线价表补值；上架SKU最低成交价/状态因无上架记录显示「—」；"
 echo "        周期/筛选/搜索选好后必须点「📊 计算趋势」才刷新，导出沿用同一口径。"
+
+say "4.19 红线价趋势 v6 自查（周期区间/表头起始日/改名/促销过期价）"
+X1=$(count_in "$APP/redline_app/index.html" 'function rlPeriodBounds(p)')
+X2=$(count_in "$APP/redline_app/index.html" 'function trendHeaderLabel(p)')
+X3=$(count_in "$APP/redline_app/index.html" "rlDateAddDays(rlLatestPeriodEnd(), 1)")
+X4=$(count_in "$APP/redline_app/index.html" '上架SKU最低成交价')
+X5=$(count_in "$APP/redline_app/index.html" 'const cpValid = promoExpired && cp !== null')
+X6=$(count_in "$APP/redline_app/index.html" "<th>最新上架SKU最低价</th>")
+[ "$X1" -ge 1 ] && ok "多期 chip 从真实业务区间解析（老期次不再显示 11-18 上传日）" || bad "rlPeriodBounds 缺失"
+[ "$X2" -ge 1 ] && ok "趋势表头只显示每期起始日（10-31 / 10-15 / 当前期次日）" || bad "trendHeaderLabel 缺失"
+[ "$X3" -ge 1 ] && ok "当前期标签=最新归档结束日次日 ~ 至今（如 11-17~至今）" || bad "当前期起点规则缺失"
+[ "$X4" -ge 2 ] && [ "$X6" -eq 0 ] && ok "比较价已全部改名为「上架SKU最低成交价」" || bad "改名未完成"
+[ "$X5" -ge 1 ] && ok "Walmart 促销过期改用 Comparison Price（原价）+ 运费，原价无效回退并标注" || bad "促销过期价口径未更新"
+echo "  提示：多期管理 chip 只显示 10-31~11-16；表头列显示 10-31、10-15、11-17（远→近）；"
+echo "        促销已结束行仍保留标记，说明文案已改为「已按原价计算」。"
 
 say "5. 子账号文件自查"
 if [ -f "$APP/accounts.json" ]; then
