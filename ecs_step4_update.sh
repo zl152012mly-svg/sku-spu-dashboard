@@ -355,7 +355,9 @@ Y4=$(count_in "$APP/redline_app/index.html" "const RL_TREND_SESSION_KEY = 'trend
 Y5=$(count_in "$APP/redline_app/index.html" 'restoreTrendSession();')
 Y6=$(count_in "$APP/redline_app/index.html" 'window.__rlTrendDisplay')
 Y7=$(count_in "$APP/redline_app/index.html" 'id="trendSessionHint"')
+Y8=$(count_in "$APP/redline_app/index.html" 'table-layout: fixed')
 [ "$Y1" -ge 1 ] && [ "$Y2" -ge 1 ] && [ "$Y3" -eq 0 ] && ok "前 5 列定宽 + left 累计一致，JS 按真实列宽校准（横向滚动不再重叠）" || bad "固定列 left 偏移未修复"
+[ "$Y8" -ge 1 ] && ok "趋势表 table-layout:fixed（列宽由声明决定，杜绝 auto 协商导致的错位）" || bad "table-layout:fixed 缺失"
 [ "$Y4" -ge 1 ] && [ "$Y5" -ge 1 ] && ok "点「计算趋势」的结果写入本机会话，进入趋势页默认恢复" || bad "趋势结果持久化缺失"
 [ "$Y6" -ge 3 ] && ok "导出直接复用屏幕展示矩阵，与页面同口径" || bad "导出未复用展示快照"
 [ "$Y7" -ge 1 ] && ok "筛选行显示「已恢复 xx 的分析结果」提示" || bad "会话提示缺失"

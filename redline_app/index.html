@@ -647,8 +647,12 @@
     max-height: calc(100vh - 260px);
     overflow: auto;
   }
-  #module-history #trendTable { min-width: 2080px; border-collapse: separate; border-spacing: 0; }
-  #module-history #trendTable th { background: #f0f3f9; position: sticky; top: 0; z-index: 4; white-space: nowrap; }
+  /* v7.1：table-layout:fixed 让列宽完全由声明决定（auto 布局按内容协商列宽，
+     会与 sticky left 偏移不一致，造成横向滚动时数据列透进固定列——截图复现的
+     「运营组列里透出周期日期/状态字样」即此根因）。fixed 下前 5 列宽度严格等于
+     声明值，其余指标列均分剩余宽度，sticky 偏移永远精确匹配。 */
+  #module-history #trendTable { min-width: 2080px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+  #module-history #trendTable th { background: #f0f3f9; position: sticky; top: 0; z-index: 4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* v7：前 5 列（SKU/平台/店铺/运营/运营组）横向滚动时固定。
      固定宽度 + left 与累计宽度严格一致；JS rlAlignTrendSticky() 再按实际渲染宽度校准，
      避免原来 left 偏移小于真实列宽时后面的数据列钻进固定列造成重叠错位。 */
@@ -5244,6 +5248,9 @@ function renderTrendTable(opts) {
   const metrics = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' },
                    { k: 'xuanDdp', label: '选用DDP' }, { k: 'price', label: '上架SKU最低成交价' }, { k: 'status', label: '状态' }];
   const deltaKeys = [{ k: 'totalRedLine', label: '红线价' }, { k: 'biaoDdp', label: '标准DDP' }, { k: 'xuanDdp', label: '选用DDP' }];
+  /* fixed 布局下剩余列均分表宽：周期多时按每列 ≥90px 动态抬高 min-width，防止表头/数字被裁 */
+  const nCols = 5 + metrics.length * sel.length + deltaKeys.length * (sel.length - 1);
+  $('trendTable').style.minWidth = Math.max(2080, 650 + (nCols - 5) * 90) + 'px';
   let h1 = '<tr class="period-head"><th>上架SKU</th><th>平台</th><th>店铺</th><th>运营</th><th>运营组</th>';
   let h2 = '<tr class="metric-head"><th></th><th></th><th></th><th></th><th></th>';
   metrics.forEach(m => {
